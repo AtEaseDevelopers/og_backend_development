@@ -26,7 +26,9 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Support\Enums\MaxWidth;
 use Filament\Tables;
+use Filament\Tables\Enums\FiltersLayout;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Throwable;
 
@@ -89,12 +91,142 @@ class ConsignmentNoteResource extends Resource
                     ->counts('subsheets')
                     ->label('Subsheets'),
             ])
+            ->defaultSort('created_at', 'desc')
+            ->striped()
+            ->searchPlaceholder('Search CSN no. or customer…')
             ->filters([
+                Tables\Filters\SelectFilter::make('customer_id')
+                    ->label('Customer')
+                    ->relationship('customer', 'company_name')
+                    ->searchable()
+                    ->preload(),
                 Tables\Filters\SelectFilter::make('status')
+                    ->label('Status')
                     ->options(collect(CsnStatus::cases())->mapWithKeys(
                         fn (CsnStatus $c) => [$c->value => $c->getLabel()]
                     )),
+                Tables\Filters\SelectFilter::make('payment_status')
+                    ->label('Payment status')
+                    ->options(collect(PaymentStatus::cases())->mapWithKeys(
+                        fn (PaymentStatus $c) => [$c->value => $c->getLabel()]
+                    )),
+                Tables\Filters\SelectFilter::make('billing_type')
+                    ->label('Billing type')
+                    ->options(collect(CsnBillingType::cases())->mapWithKeys(
+                        fn (CsnBillingType $c) => [$c->value => $c->label()]
+                    )),
+                Tables\Filters\SelectFilter::make('quotation_id')
+                    ->label('Quotation')
+                    ->relationship('quotation', 'number')
+                    ->searchable()
+                    ->preload(),
+                Tables\Filters\Filter::make('main_lorry_id')
+                    ->label('Main lorry')
+                    ->form([
+                        Forms\Components\Select::make('value')
+                            ->label('Main lorry')
+                            ->options(fn () => static::lorryOptions())
+                            ->searchable(),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query->when(
+                            $data['value'] ?? null,
+                            fn (Builder $query, $lorryId): Builder => $query->whereHas(
+                                'deliveryOrder',
+                                fn (Builder $query) => $query->where('lorry_id', $lorryId)
+                            ),
+                        );
+                    }),
+                Tables\Filters\TernaryFilter::make('assigned')
+                    ->label('Assigned to lorry')
+                    ->queries(
+                        true: fn (Builder $query) => $query->whereHas('deliveryOrder'),
+                        false: fn (Builder $query) => $query->whereDoesntHave('deliveryOrder'),
+                        blank: fn (Builder $query) => $query,
+                    ),
+                Tables\Filters\TernaryFilter::make('has_subsheets')
+                    ->label('Has subsheets')
+                    ->queries(
+                        true: fn (Builder $query) => $query->whereHas('subsheets'),
+                        false: fn (Builder $query) => $query->whereDoesntHave('subsheets'),
+                        blank: fn (Builder $query) => $query,
+                    ),
+                Tables\Filters\Filter::make('issued_at')
+                    ->label('Issued date')
+                    ->form([
+                        Forms\Components\DatePicker::make('from')->label('From'),
+                        Forms\Components\DatePicker::make('until')->label('Until'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when(
+                                $data['from'] ?? null,
+                                fn (Builder $query, string $date): Builder => $query->whereDate('issued_at', '>=', $date),
+                            )
+                            ->when(
+                                $data['until'] ?? null,
+                                fn (Builder $query, string $date): Builder => $query->whereDate('issued_at', '<=', $date),
+                            );
+                    }),
+                Tables\Filters\Filter::make('job_date')
+                    ->label('Job date')
+                    ->form([
+                        Forms\Components\DatePicker::make('from')->label('From'),
+                        Forms\Components\DatePicker::make('until')->label('Until'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when(
+                                $data['from'] ?? null,
+                                fn (Builder $query, string $date): Builder => $query->whereDate('job_date', '>=', $date),
+                            )
+                            ->when(
+                                $data['until'] ?? null,
+                                fn (Builder $query, string $date): Builder => $query->whereDate('job_date', '<=', $date),
+                            );
+                    }),
+                Tables\Filters\Filter::make('created_at')
+                    ->label('Created at')
+                    ->form([
+                        Forms\Components\DatePicker::make('from')->label('From'),
+                        Forms\Components\DatePicker::make('until')->label('Until'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when(
+                                $data['from'] ?? null,
+                                fn (Builder $query, string $date): Builder => $query->whereDate('created_at', '>=', $date),
+                            )
+                            ->when(
+                                $data['until'] ?? null,
+                                fn (Builder $query, string $date): Builder => $query->whereDate('created_at', '<=', $date),
+                            );
+                    }),
+                Tables\Filters\Filter::make('total_amount')
+                    ->label('Total amount')
+                    ->form([
+                        Forms\Components\TextInput::make('min')
+                            ->label('Min (MYR)')
+                            ->numeric(),
+                        Forms\Components\TextInput::make('max')
+                            ->label('Max (MYR)')
+                            ->numeric(),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when(
+                                $data['min'] ?? null,
+                                fn (Builder $query, $amount): Builder => $query->where('total_amount', '>=', $amount),
+                            )
+                            ->when(
+                                $data['max'] ?? null,
+                                fn (Builder $query, $amount): Builder => $query->where('total_amount', '<=', $amount),
+                            );
+                    }),
             ])
+            ->filtersFormColumns(3)
+            ->filtersLayout(FiltersLayout::AboveContentCollapsible)
+            ->persistFiltersInSession()
             ->actions([
                 Tables\Actions\ViewAction::make(),
                 Tables\Actions\EditAction::make(),
