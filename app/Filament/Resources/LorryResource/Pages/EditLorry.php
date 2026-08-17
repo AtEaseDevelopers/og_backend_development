@@ -12,6 +12,9 @@ class EditLorry extends EditRecord
 
     protected function getHeaderActions(): array
     {
-        return [Actions\DeleteAction::make()];
+        return [
+            Actions\ViewAction::make(),
+            Actions\DeleteAction::make(),
+        ];
     }
 }

@@ -37,7 +37,15 @@
         <div class="brand">O<span>&</span>G Transport Portal</div>
         <nav>
             @auth
+                @if ($branch = \App\Support\PortalSelection::branch())
+                    <span class="muted" style="margin-left:1rem;font-size:.85rem">{{ $branch->code }}</span>
+                @endif
+                @if ($company = \App\Support\PortalSelection::company())
+                    <span class="muted" style="margin-left:.5rem;font-size:.85rem">/ {{ $company->code }}</span>
+                @endif
                 <a href="{{ route('portal.dashboard') }}">Dashboard</a>
+                <a href="{{ route('portal.select-branch.reset') }}">Switch branch</a>
+                <a href="{{ route('portal.select-company') }}">Switch company</a>
                 <a href="{{ route('portal.enquiry.create') }}">New Enquiry</a>
                 <form action="{{ route('portal.logout') }}" method="POST" style="display:inline">
                     @csrf

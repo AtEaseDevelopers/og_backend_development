@@ -30,7 +30,11 @@
                             {{ $branch->name }}
                         </div>
                         <div class="text-sm leading-relaxed text-gray-500 dark:text-gray-400">
-                            Next: select or register a company
+                            @if ($branch->isKlBranch())
+                                HQ / superadmin branch
+                            @else
+                                Branch admin
+                            @endif
                         </div>
                     </div>
                 </button>

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Portal;
 
 use App\Domains\MasterData\Models\Customer;
+use App\Support\PortalSelection;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
@@ -41,7 +42,7 @@ class AuthController extends Controller
             return back()->withErrors(['email' => 'Portal access not approved.']);
         }
 
-        return redirect()->route('portal.dashboard');
+        return redirect()->route('portal.select-branch');
     }
 
     public function showRegister(): View
@@ -95,6 +96,7 @@ class AuthController extends Controller
 
     public function logout(Request $request): RedirectResponse
     {
+        PortalSelection::clear();
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();

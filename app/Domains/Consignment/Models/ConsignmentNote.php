@@ -34,12 +34,19 @@ class ConsignmentNote extends Model
 
     protected $fillable = [
         'number', 'company_id', 'source_branch_id', 'quotation_id', 'quotation_destination_id',
-        'customer_id', 'billing_type', 'status', 'return_status', 'payment_status',
-        'customer_name', 'customer_brn', 'customer_tin', 'consignor_address',
+        'customer_id', 'billing_type', 'issued_at', 'status', 'return_status', 'payment_status',
+        'customer_name', 'customer_brn', 'customer_tin', 'customer_phone', 'customer_reference',
+        'do_number', 'job_no', 'job_date', 'from_location_id', 'to_location_id',
+        'consignor_address', 'consignor_name', 'consignor_phone',
         'consignee_name', 'consignee_pic', 'consignee_phone', 'delivery_address',
-        'delivery_postcode', 'delivery_state', 'delivery_city',
-        'subtotal', 'tax_amount', 'total_amount', 'storekeeper_id',
-        'qr_token', 'tracking_token', 'created_by', 'cancelled_at',
+        'delivery_postcode', 'delivery_state', 'delivery_city', 'remarks',
+        'profit_sharing_period', 'ps_job_no', 'ps_job_date',
+        'gl_account', 'gl_account_name', 'tax_code', 'tax_code_name',
+        'other_do_numbers', 'marking',
+        'transport_charges', 'master_charges', 'profit_sharing_amount', 'expenses',
+        'subtotal', 'discount', 'tax_amount', 'tax_rate', 'total_amount',
+        'cost_center', 'is_taxable', 'advance_taken', 'issue_invoice',
+        'storekeeper_id', 'qr_token', 'tracking_token', 'created_by', 'cancelled_at',
     ];
 
     protected function casts(): array
@@ -47,9 +54,22 @@ class ConsignmentNote extends Model
         return [
             'billing_type' => CsnBillingType::class,
             'status' => CsnStatus::class,
+            'issued_at' => 'date',
+            'job_date' => 'date',
+            'ps_job_date' => 'date',
+            'transport_charges' => 'decimal:2',
+            'master_charges' => 'decimal:2',
+            'profit_sharing_amount' => 'decimal:2',
+            'expenses' => 'decimal:2',
             'subtotal' => 'decimal:2',
+            'discount' => 'decimal:2',
             'tax_amount' => 'decimal:2',
+            'tax_rate' => 'decimal:2',
             'total_amount' => 'decimal:2',
+            'other_do_numbers' => 'array',
+            'is_taxable' => 'boolean',
+            'advance_taken' => 'boolean',
+            'issue_invoice' => 'boolean',
             'cancelled_at' => 'datetime',
         ];
     }
@@ -67,6 +87,16 @@ class ConsignmentNote extends Model
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    public function fromLocation(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\MasterData\Models\Location::class, 'from_location_id');
+    }
+
+    public function toLocation(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\MasterData\Models\Location::class, 'to_location_id');
     }
 
     public function quotation(): BelongsTo

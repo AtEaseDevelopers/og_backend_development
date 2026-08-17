@@ -15,6 +15,7 @@ use App\Enums\CsnStatus;
 use App\Enums\PaymentStatus;
 use App\Filament\Resources\ConsignmentNoteResource\Pages;
 use App\Filament\Resources\ConsignmentNoteResource\RelationManagers;
+use App\Filament\Resources\ConsignmentNoteResource\Schemas\ConsignmentNoteForm;
 use App\Support\CurrentCompany;
 use Filament\Forms;
 use Filament\Forms\Form;
@@ -41,103 +42,7 @@ class ConsignmentNoteResource extends Resource
 
     public static function form(Form $form): Form
     {
-        return $form->schema([
-            Forms\Components\Section::make('Consignment')->schema([
-                Forms\Components\Hidden::make('company_id')
-                    ->default(fn () => CurrentCompany::id())
-                    ->required(),
-                Forms\Components\Hidden::make('source_branch_id')
-                    ->default(fn () => CurrentCompany::branchId())
-                    ->required(),
-                Forms\Components\Placeholder::make('current_company')
-                    ->label('Company')
-                    ->content(fn () => CurrentCompany::get()?->getFilamentName() ?? '—'),
-                Forms\Components\Select::make('customer_id')
-                    ->label('Customer')
-                    ->options(fn () => static::customerOptions())
-                    ->required()
-                    ->searchable()
-                    ->live()
-                    ->afterStateUpdated(function ($state, Forms\Set $set) {
-                        $customer = \App\Domains\MasterData\Models\Customer::find($state);
-                        if ($customer) {
-                            $set('customer_name', $customer->company_name);
-                            $set('customer_brn', $customer->brn);
-                            $set('customer_tin', $customer->tin);
-                            $set('consignor_address', $customer->address);
-                        }
-                    }),
-                Forms\Components\Select::make('billing_type')
-                    ->options(collect(CsnBillingType::cases())->mapWithKeys(
-                        fn ($c) => [$c->value => $c->label()]
-                    ))
-                    ->default(CsnBillingType::CashBill->value)
-                    ->required(),
-                Forms\Components\Select::make('status')
-                    ->options(collect(CsnStatus::cases())->mapWithKeys(
-                        fn ($c) => [$c->value => ucfirst(str_replace('_', ' ', $c->value))]
-                    ))
-                    ->default(CsnStatus::Confirmed->value),
-                Forms\Components\Hidden::make('customer_name'),
-                Forms\Components\Hidden::make('customer_brn'),
-                Forms\Components\Hidden::make('customer_tin'),
-                Forms\Components\Textarea::make('consignor_address'),
-                Forms\Components\TextInput::make('consignee_name'),
-                Forms\Components\TextInput::make('consignee_pic'),
-                Forms\Components\TextInput::make('consignee_phone'),
-                Forms\Components\Textarea::make('delivery_address')->required()->columnSpanFull(),
-                Forms\Components\TextInput::make('delivery_postcode'),
-                Forms\Components\TextInput::make('delivery_state'),
-                Forms\Components\TextInput::make('delivery_city'),
-            ])->columns(2),
-            Forms\Components\Section::make('Items')->schema([
-                Forms\Components\Repeater::make('lines')
-                    ->relationship()
-                    ->schema([
-                        Forms\Components\TextInput::make('item_name')->required(),
-                        Forms\Components\TextInput::make('uom'),
-                        Forms\Components\TextInput::make('quantity')->numeric()->default(1),
-                        Forms\Components\TextInput::make('weight')->numeric(),
-                        Forms\Components\TextInput::make('unit_price')->numeric()->default(0),
-                        Forms\Components\TextInput::make('line_total')->numeric()->default(0),
-                    ])
-                    ->columns(3)
-                    ->columnSpanFull(),
-            ]),
-            Forms\Components\Section::make('Assign lorry / driver')
-                ->description('Optional on create. You can also assign later from the CSN list or view.')
-                ->schema([
-                    Forms\Components\Select::make('assign_lorry_id')
-                        ->label('Main lorry')
-                        ->options(fn () => static::lorryOptions())
-                        ->searchable()
-                        ->live()
-                        ->afterStateUpdated(function ($state, Forms\Set $set) {
-                            $lorry = Lorry::query()->find($state);
-                            $set('assign_driver_id', $lorry?->default_driver_id);
-                        })
-                        ->dehydrated(false),
-                    Forms\Components\Select::make('assign_driver_id')
-                        ->label('Driver')
-                        ->options(fn () => static::driverOptions())
-                        ->searchable()
-                        ->dehydrated(false),
-                    Forms\Components\Select::make('assign_sub_lorry_ids')
-                        ->label('Additional lorries (subsheets)')
-                        ->options(fn (Forms\Get $get) => static::lorryOptions(
-                            excludeIds: array_filter([(int) $get('assign_lorry_id')])
-                        ))
-                        ->multiple()
-                        ->searchable()
-                        ->dehydrated(false),
-                    Forms\Components\DatePicker::make('assign_operating_date')
-                        ->label('Operating date')
-                        ->default(now())
-                        ->dehydrated(false),
-                ])
-                ->columns(2)
-                ->visibleOn('create'),
-        ]);
+        return ConsignmentNoteForm::configure($form);
     }
 
     public static function table(Table $table): Table

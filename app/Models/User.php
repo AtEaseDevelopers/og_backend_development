@@ -84,7 +84,7 @@ class User extends Authenticatable implements FilamentUser, HasTenants
 
     public function getTenants(Panel $panel): array | Collection
     {
-        if ($this->is_hq || $this->hasRole('hq_admin')) {
+        if ($this->isSuperadmin()) {
             return Company::query()->where('is_active', true)->orderBy('code')->get();
         }
 
@@ -100,7 +100,7 @@ class User extends Authenticatable implements FilamentUser, HasTenants
             return false;
         }
 
-        if ($this->is_hq || $this->hasRole('hq_admin')) {
+        if ($this->isSuperadmin()) {
             return true;
         }
 
@@ -109,11 +109,21 @@ class User extends Authenticatable implements FilamentUser, HasTenants
 
     public function canAccessBranch(Branch $branch): bool
     {
-        if ($this->is_hq || $this->hasRole('hq_admin')) {
+        if ($this->isSuperadmin()) {
             return true;
         }
 
         return $this->branches()->where('branches.id', $branch->id)->exists();
+    }
+
+    public function isSuperadmin(): bool
+    {
+        return $this->is_hq || $this->hasRole('hq_admin');
+    }
+
+    public function canManageStaff(): bool
+    {
+        return $this->isSuperadmin() || $this->branches()->where('branches.code', 'KL')->exists();
     }
 
     /**
@@ -121,7 +131,7 @@ class User extends Authenticatable implements FilamentUser, HasTenants
      */
     public function accessibleBranches(): Collection
     {
-        if ($this->is_hq || $this->hasRole('hq_admin')) {
+        if ($this->isSuperadmin()) {
             return Branch::query()->where('is_active', true)->orderBy('code')->get();
         }
 
@@ -132,11 +142,68 @@ class User extends Authenticatable implements FilamentUser, HasTenants
     }
 
     /**
+     * @return Collection<int, Branch>
+     */
+    public function accessiblePortalBranches(): Collection
+    {
+        $customerIds = $this->approvedCustomerIds();
+
+        if ($customerIds->isEmpty()) {
+            return collect();
+        }
+
+        return Branch::query()
+            ->where('is_active', true)
+            ->whereHas('customers', fn ($query) => $query->whereIn('customers.id', $customerIds))
+            ->orderBy('code')
+            ->get();
+    }
+
+    /**
+     * @return Collection<int, Company>
+     */
+    public function accessiblePortalCompanies(Branch $branch): Collection
+    {
+        $customerIds = $this->approvedCustomerIds();
+
+        return Company::query()
+            ->where('branch_id', $branch->id)
+            ->where('is_active', true)
+            ->whereHas('customers', fn ($query) => $query->whereIn('customers.id', $customerIds))
+            ->orderBy('code')
+            ->get();
+    }
+
+    public function canAccessPortalBranch(Branch $branch): bool
+    {
+        return $this->accessiblePortalBranches()->contains('id', $branch->id);
+    }
+
+    public function canAccessPortalCompany(Company $company): bool
+    {
+        return $this->accessiblePortalCompanies(
+            Branch::query()->findOrFail($company->branch_id)
+        )->contains('id', $company->id);
+    }
+
+    /** @return Collection<int, int> */
+    public function approvedCustomerIds(): Collection
+    {
+        $ids = $this->customers()->wherePivot('status', 'approved')->pluck('customers.id');
+
+        if ($ids->isEmpty() && $this->customer_id) {
+            return collect([$this->customer_id]);
+        }
+
+        return $ids;
+    }
+
+    /**
      * @return Collection<int, Company>
      */
     public function accessibleCompaniesForBranch(Branch $branch): Collection
     {
-        if ($this->is_hq || $this->hasRole('hq_admin')) {
+        if ($this->isSuperadmin()) {
             return Company::query()
                 ->where('branch_id', $branch->id)
                 ->where('is_active', true)
@@ -149,6 +216,21 @@ class User extends Authenticatable implements FilamentUser, HasTenants
             ->where('companies.is_active', true)
             ->orderBy('code')
             ->get();
+    }
+
+    public function assignToBranch(Branch $branch, bool $isDefault = false): void
+    {
+        $this->branches()->syncWithoutDetaching([
+            $branch->id => ['is_default' => $isDefault],
+        ]);
+
+        $company = $branch->defaultCompany();
+
+        if ($company) {
+            $this->companies()->syncWithoutDetaching([
+                $company->id => ['is_default' => $isDefault],
+            ]);
+        }
     }
 
     public function driver(): BelongsTo

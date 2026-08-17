@@ -373,6 +373,8 @@ class DatabaseSeeder extends Seeder
 
         // Rich multi-company fleet, customers, quotations, CSNs, deliveries
         $this->call(DemoOperationsSeeder::class);
+        $this->call(DemoCustomersSeeder::class);
+        $this->call(CustomerSpecialPricingSeeder::class);
 
         $this->command?->info('Seeded O&G Transport demo data.');
         $this->command?->table(

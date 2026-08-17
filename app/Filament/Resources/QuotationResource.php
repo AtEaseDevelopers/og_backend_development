@@ -7,12 +7,15 @@ use App\Domains\Quotation\Actions\EvaluateCreditEligibility;
 use App\Domains\Quotation\Models\Quotation;
 use App\Enums\QuotationStatus;
 use App\Filament\Resources\QuotationResource\Pages;
+use App\Filament\Resources\QuotationResource\Schemas\QuotationForm;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
+use Filament\Tables\Enums\FiltersLayout;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class QuotationResource extends Resource
 {
@@ -29,82 +32,7 @@ class QuotationResource extends Resource
 
     public static function form(Form $form): Form
     {
-        return $form->schema([
-            Forms\Components\Section::make('Header')->schema([
-                Forms\Components\Hidden::make('company_id')->default(fn () => \App\Support\CurrentCompany::id())->required(),
-                Forms\Components\Hidden::make('branch_id')
-                    ->default(fn () => \App\Support\CurrentCompany::branchId())
-                    ->required(),
-                Forms\Components\Placeholder::make('current_branch')
-                    ->label('Company')
-                    ->content(fn () => \App\Support\CurrentCompany::get()?->getFilamentName() ?? 'Select a company first'),
-                Forms\Components\Select::make('customer_id')
-                    ->relationship('customer', 'company_name')
-                    ->required()
-                    ->searchable(),
-                Forms\Components\Select::make('salesperson_id')
-                    ->relationship('salesperson', 'name')
-                    ->searchable(),
-                Forms\Components\Select::make('status')
-                    ->options(collect(QuotationStatus::cases())->mapWithKeys(
-                        fn ($c) => [$c->value => $c->label()]
-                    ))
-                    ->default(QuotationStatus::Draft->value)
-                    ->required(),
-                Forms\Components\DatePicker::make('valid_until'),
-                Forms\Components\Select::make('pricing_source')
-                    ->options([
-                        'default' => 'Default Pricing',
-                        'previous' => 'Previous Quotation',
-                        'formula' => 'Formula Pricing',
-                        'manual' => 'Manual Pricing',
-                    ]),
-                Forms\Components\TextInput::make('tax_amount')->numeric()->default(0),
-                Forms\Components\Textarea::make('notes')->columnSpanFull(),
-            ])->columns(2),
-            Forms\Components\Section::make('Destinations')->schema([
-                Forms\Components\Repeater::make('destinations')
-                    ->relationship()
-                    ->schema([
-                        Forms\Components\TextInput::make('consignee_name'),
-                        Forms\Components\TextInput::make('consignee_pic'),
-                        Forms\Components\TextInput::make('consignee_phone'),
-                        Forms\Components\Textarea::make('address')->required()->columnSpanFull(),
-                        Forms\Components\TextInput::make('postcode'),
-                        Forms\Components\TextInput::make('state'),
-                        Forms\Components\TextInput::make('city'),
-                    ])
-                    ->columns(3)
-                    ->defaultItems(1)
-                    ->columnSpanFull(),
-            ]),
-            Forms\Components\Section::make('Items')->schema([
-                Forms\Components\Repeater::make('lines')
-                    ->relationship()
-                    ->schema([
-                        Forms\Components\Select::make('quotation_destination_id')
-                            ->label('Destination')
-                            ->options(fn (?Quotation $record) => $record
-                                ? $record->destinations()->pluck('address', 'id')
-                                : [])
-                            ->searchable(),
-                        Forms\Components\TextInput::make('item_name')->required(),
-                        Forms\Components\TextInput::make('uom'),
-                        Forms\Components\TextInput::make('quantity')->numeric()->default(1)->required(),
-                        Forms\Components\TextInput::make('weight')->numeric(),
-                        Forms\Components\TextInput::make('dimensions'),
-                        Forms\Components\TextInput::make('unit_price')->numeric()->default(0)->required()
-                            ->live(onBlur: true)
-                            ->afterStateUpdated(function (Forms\Set $set, Forms\Get $get) {
-                                $set('line_total', round(((float) $get('quantity')) * ((float) $get('unit_price')), 2));
-                            }),
-                        Forms\Components\TextInput::make('line_total')->numeric()->default(0)->required(),
-                    ])
-                    ->columns(4)
-                    ->defaultItems(1)
-                    ->columnSpanFull(),
-            ]),
-        ]);
+        return QuotationForm::configure($form);
     }
 
     public static function table(Table $table): Table
@@ -112,25 +40,126 @@ class QuotationResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('number')->searchable()->sortable(),
-                Tables\Columns\TextColumn::make('branch.name')->label('Branch'),
-                Tables\Columns\TextColumn::make('customer.company_name')->searchable(),
+                Tables\Columns\TextColumn::make('company.name')->label('Company')->searchable()->sortable(),
+                Tables\Columns\TextColumn::make('branch.name')->label('Branch')->searchable()->sortable(),
+                Tables\Columns\TextColumn::make('customer.company_name')->label('Customer')->searchable()->sortable(),
+                Tables\Columns\TextColumn::make('salesperson.name')->label('Salesperson')->searchable()->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('status')->badge()->formatStateUsing(
                     fn ($state) => $state instanceof QuotationStatus ? $state->label() : $state
                 ),
-                Tables\Columns\TextColumn::make('total_amount')->money('MYR'),
-                Tables\Columns\TextColumn::make('valid_until')->date(),
+                Tables\Columns\TextColumn::make('pricing_source')
+                    ->label('Pricing')
+                    ->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('total_amount')->money('MYR')->sortable(),
+                Tables\Columns\TextColumn::make('valid_until')->date()->sortable(),
                 Tables\Columns\TextColumn::make('created_at')->dateTime()->sortable(),
             ])
             ->filters([
+                Tables\Filters\SelectFilter::make('company_id')
+                    ->label('Company')
+                    ->relationship('company', 'name')
+                    ->searchable()
+                    ->preload(),
+                Tables\Filters\SelectFilter::make('branch_id')
+                    ->label('Branch')
+                    ->relationship('branch', 'name')
+                    ->searchable()
+                    ->preload(),
+                Tables\Filters\SelectFilter::make('customer_id')
+                    ->label('Customer')
+                    ->relationship('customer', 'company_name')
+                    ->searchable()
+                    ->preload(),
+                Tables\Filters\SelectFilter::make('salesperson_id')
+                    ->label('Salesperson')
+                    ->relationship('salesperson', 'name')
+                    ->searchable()
+                    ->preload(),
                 Tables\Filters\SelectFilter::make('status')
+                    ->label('Status')
                     ->options(collect(QuotationStatus::cases())->mapWithKeys(
                         fn ($c) => [$c->value => $c->label()]
                     )),
-                Tables\Filters\SelectFilter::make('branch_id')->relationship('branch', 'name'),
+                Tables\Filters\SelectFilter::make('pricing_source')
+                    ->label('Pricing source')
+                    ->options([
+                        'default' => 'Default Pricing',
+                        'special' => 'Customer Special',
+                        'previous' => 'Previous Quotation',
+                        'formula' => 'Formula Pricing',
+                        'manual' => 'Manual Pricing',
+                        'ocr' => 'OCR',
+                    ]),
+                Tables\Filters\Filter::make('valid_until')
+                    ->label('Valid until')
+                    ->form([
+                        Forms\Components\DatePicker::make('from')->label('From'),
+                        Forms\Components\DatePicker::make('until')->label('Until'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when(
+                                $data['from'] ?? null,
+                                fn (Builder $query, string $date): Builder => $query->whereDate('valid_until', '>=', $date),
+                            )
+                            ->when(
+                                $data['until'] ?? null,
+                                fn (Builder $query, string $date): Builder => $query->whereDate('valid_until', '<=', $date),
+                            );
+                    }),
+                Tables\Filters\Filter::make('created_at')
+                    ->label('Created at')
+                    ->form([
+                        Forms\Components\DatePicker::make('from')->label('From'),
+                        Forms\Components\DatePicker::make('until')->label('Until'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when(
+                                $data['from'] ?? null,
+                                fn (Builder $query, string $date): Builder => $query->whereDate('created_at', '>=', $date),
+                            )
+                            ->when(
+                                $data['until'] ?? null,
+                                fn (Builder $query, string $date): Builder => $query->whereDate('created_at', '<=', $date),
+                            );
+                    }),
+                Tables\Filters\Filter::make('total_amount')
+                    ->label('Total amount')
+                    ->form([
+                        Forms\Components\TextInput::make('min')
+                            ->label('Min (MYR)')
+                            ->numeric(),
+                        Forms\Components\TextInput::make('max')
+                            ->label('Max (MYR)')
+                            ->numeric(),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when(
+                                $data['min'] ?? null,
+                                fn (Builder $query, $amount): Builder => $query->where('total_amount', '>=', $amount),
+                            )
+                            ->when(
+                                $data['max'] ?? null,
+                                fn (Builder $query, $amount): Builder => $query->where('total_amount', '<=', $amount),
+                            );
+                    }),
             ])
+            ->filtersFormColumns(3)
+            ->filtersLayout(FiltersLayout::AboveContentCollapsible)
+            ->persistFiltersInSession()
             ->actions([
                 Tables\Actions\ViewAction::make(),
                 Tables\Actions\EditAction::make(),
+                Tables\Actions\Action::make('previewPdf')
+                    ->label('PDF')
+                    ->icon('heroicon-o-document-arrow-down')
+                    ->url(fn (Quotation $record): string => route('filament.admin.quotations.pdf', [
+                        'tenant' => \Filament\Facades\Filament::getTenant(),
+                        'quotation' => $record,
+                    ]))
+                    ->openUrlInNewTab(),
                 Tables\Actions\Action::make('confirm')
                     ->icon('heroicon-o-check')
                     ->color('success')

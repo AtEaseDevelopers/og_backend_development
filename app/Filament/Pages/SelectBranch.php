@@ -36,7 +36,7 @@ class SelectBranch extends SimplePage
 
     public function getSubheading(): string | Htmlable | null
     {
-        return 'Pick a branch first. Next you will select or register a company under that branch.';
+        return 'Pick the branch you want to work in. You will go straight to the dashboard.';
     }
 
     public function getMaxWidth(): MaxWidth | string | null
@@ -65,7 +65,12 @@ class SelectBranch extends SimplePage
 
         SelectedBranch::set($branch);
 
-        $this->redirect(route('filament.admin.select-company'));
+        $company = $branch->defaultCompany();
+        abort_unless($company instanceof \App\Domains\MasterData\Models\Company, 404);
+        abort_unless($user->canAccessTenant($company), 403);
+
+        $panel = Filament::getCurrentPanel() ?? Filament::getPanel('admin');
+        $this->redirect($panel->getUrl($company));
     }
 
     public static function getUrl(array $parameters = [], bool $isAbsolute = true, ?string $panel = null, ?\Illuminate\Database\Eloquent\Model $tenant = null): string

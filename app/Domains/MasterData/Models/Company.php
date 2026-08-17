@@ -2,6 +2,7 @@
 
 namespace App\Domains\MasterData\Models;
 
+use App\Domains\Quotation\Models\Quotation;
 use App\Models\User;
 use Filament\Models\Contracts\HasName;
 use Illuminate\Database\Eloquent\Model;
@@ -57,5 +58,10 @@ class Company extends Model implements HasName
     public function customers(): HasMany
     {
         return $this->hasMany(Customer::class);
+    }
+
+    public function quotations(): HasMany
+    {
+        return $this->hasMany(Quotation::class);
     }
 }

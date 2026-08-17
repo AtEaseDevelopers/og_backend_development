@@ -9,7 +9,7 @@ class CsnLine extends Model
 {
     protected $fillable = [
         'consignment_note_id', 'item_name', 'uom', 'quantity',
-        'weight', 'dimensions', 'unit_price', 'line_total',
+        'weight', 'dimensions', 'handling_notes', 'unit_price', 'line_total',
     ];
 
     protected function casts(): array

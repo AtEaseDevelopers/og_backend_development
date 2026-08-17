@@ -47,6 +47,20 @@ class Branch extends Model implements HasName
         return $this->hasMany(Company::class);
     }
 
+    public function defaultCompany(): ?Company
+    {
+        return $this->companies()
+            ->where('is_active', true)
+            ->where('code', $this->code)
+            ->first()
+            ?? $this->companies()->where('is_active', true)->orderBy('id')->first();
+    }
+
+    public function isKlBranch(): bool
+    {
+        return strtoupper($this->code) === 'KL';
+    }
+
     public function customers(): HasMany
     {
         return $this->hasMany(Customer::class);

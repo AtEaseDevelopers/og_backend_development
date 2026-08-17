@@ -4,6 +4,7 @@ namespace App\Domains\MasterData\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Item extends Model
 {
@@ -17,5 +18,10 @@ class Item extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(ItemCategory::class, 'item_category_id');
+    }
+
+    public function rates(): HasMany
+    {
+        return $this->hasMany(ItemRate::class);
     }
 }

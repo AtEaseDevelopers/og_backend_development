@@ -23,7 +23,12 @@ class Quotation extends Model
 
     protected $fillable = [
         'number', 'company_id', 'branch_id', 'customer_id', 'salesperson_id', 'portal_enquiry_id',
-        'status', 'valid_until', 'pricing_source', 'subtotal', 'tax_amount',
+        'status', 'valid_until', 'title', 'is_active', 'quoted_at', 'expected_delivery_date',
+        'myr_to_sgd_rate', 'sgd_to_myr_rate', 'from_location_id', 'to_location_id',
+        'consignor_brn', 'pickup_location', 'consignee_name', 'consignee_brn',
+        'consignee_address', 'drop_off_location', 'customer_address',
+        'attention', 'customer_fax', 'customer_phone_alt', 'issued_by_name', 'terms_of_payment',
+        'pricing_source', 'subtotal', 'tax_amount',
         'total_amount', 'notes', 'rejection_reason', 'sent_at', 'confirmed_at',
         'converted_at', 'created_by',
     ];
@@ -33,6 +38,11 @@ class Quotation extends Model
         return [
             'status' => QuotationStatus::class,
             'valid_until' => 'date',
+            'quoted_at' => 'date',
+            'expected_delivery_date' => 'date',
+            'myr_to_sgd_rate' => 'decimal:6',
+            'sgd_to_myr_rate' => 'decimal:6',
+            'is_active' => 'boolean',
             'subtotal' => 'decimal:2',
             'tax_amount' => 'decimal:2',
             'total_amount' => 'decimal:2',
@@ -55,6 +65,16 @@ class Quotation extends Model
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    public function fromLocation(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\MasterData\Models\Location::class, 'from_location_id');
+    }
+
+    public function toLocation(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\MasterData\Models\Location::class, 'to_location_id');
     }
 
     public function salesperson(): BelongsTo

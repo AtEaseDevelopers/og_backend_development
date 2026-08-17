@@ -5,6 +5,7 @@ namespace App\Filament\Resources\ConsignmentNoteResource\Pages;
 use App\Domains\Consignment\Models\ConsignmentNote;
 use App\Enums\DocumentType;
 use App\Filament\Resources\ConsignmentNoteResource;
+use App\Filament\Resources\ConsignmentNoteResource\Schemas\ConsignmentNoteForm;
 use App\Services\DocumentNumberingService;
 use App\Support\CurrentCompany;
 use Filament\Notifications\Notification;
@@ -21,6 +22,8 @@ class CreateConsignmentNote extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
+        $data = ConsignmentNoteForm::applyPersistedTotals($data);
+
         $data['company_id'] = CurrentCompany::id() ?? $data['company_id'] ?? null;
         $data['source_branch_id'] = CurrentCompany::branchId() ?? $data['source_branch_id'] ?? null;
 
@@ -43,9 +46,13 @@ class CreateConsignmentNote extends CreateRecord
         $data['created_by'] = auth()->id();
 
         $lines = $this->data['lines'] ?? [];
-        $subtotal = collect($lines)->sum(fn ($l) => (float) ($l['line_total'] ?? 0));
-        $data['subtotal'] = $subtotal;
-        $data['total_amount'] = $subtotal;
+        foreach ($lines as &$line) {
+            $line['unit_price'] = 0;
+            $line['line_total'] = 0;
+        }
+        $data['lines'] = $lines;
+
+        $data['issued_at'] = $data['issued_at'] ?? now()->toDateString();
 
         return $data;
     }
