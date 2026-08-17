@@ -26,9 +26,15 @@ class QuotationResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-document-text';
 
+    protected static ?string $navigationLabel = 'Quotation Management';
+
     protected static ?string $navigationGroup = 'Operations';
 
     protected static ?int $navigationSort = 1;
+
+    protected static ?string $modelLabel = 'quotation';
+
+    protected static ?string $pluralModelLabel = 'quotations';
 
     public static function form(Form $form): Form
     {
@@ -39,32 +45,38 @@ class QuotationResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('number')->searchable()->sortable(),
-                Tables\Columns\TextColumn::make('company.name')->label('Company')->searchable()->sortable(),
-                Tables\Columns\TextColumn::make('branch.name')->label('Branch')->searchable()->sortable(),
-                Tables\Columns\TextColumn::make('customer.company_name')->label('Customer')->searchable()->sortable(),
-                Tables\Columns\TextColumn::make('salesperson.name')->label('Salesperson')->searchable()->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\TextColumn::make('status')->badge()->formatStateUsing(
-                    fn ($state) => $state instanceof QuotationStatus ? $state->label() : $state
-                ),
+                Tables\Columns\TextColumn::make('number')
+                    ->label('Quote ID')
+                    ->searchable()
+                    ->sortable()
+                    ->weight('medium'),
+                Tables\Columns\TextColumn::make('customer.company_name')
+                    ->label('Customer Name')
+                    ->searchable()
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('salesperson.name')
+                    ->label('Salesperson')
+                    ->searchable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('status')
+                    ->badge()
+                    ->sortable(),
                 Tables\Columns\TextColumn::make('pricing_source')
                     ->label('Pricing')
                     ->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\TextColumn::make('total_amount')->money('MYR')->sortable(),
-                Tables\Columns\TextColumn::make('valid_until')->date()->sortable(),
-                Tables\Columns\TextColumn::make('created_at')->dateTime()->sortable(),
+                Tables\Columns\TextColumn::make('total_amount')
+                    ->label('Total Amount (MYR)')
+                    ->money('MYR')
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('created_at')
+                    ->label('Date')
+                    ->date()
+                    ->sortable(),
             ])
+            ->defaultSort('created_at', 'desc')
+            ->striped()
+            ->searchPlaceholder('Search ID or customer…')
             ->filters([
-                Tables\Filters\SelectFilter::make('company_id')
-                    ->label('Company')
-                    ->relationship('company', 'name')
-                    ->searchable()
-                    ->preload(),
-                Tables\Filters\SelectFilter::make('branch_id')
-                    ->label('Branch')
-                    ->relationship('branch', 'name')
-                    ->searchable()
-                    ->preload(),
                 Tables\Filters\SelectFilter::make('customer_id')
                     ->label('Customer')
                     ->relationship('customer', 'company_name')

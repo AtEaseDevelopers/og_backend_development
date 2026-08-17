@@ -15,6 +15,38 @@ class QuotationHistoryPanel
 
     /**
      * @param  list<string>  $destinations
+     * @return list<array{measurement: string, qty: float, price: ?float, prices: array<string, float|null>}>
+     */
+    public function defaultPricesForAllMeasurements(array $destinations): array
+    {
+        $destinations = $this->normalizeDestinations($destinations);
+
+        $items = collect(array_keys($this->lookup->catalogOptions()))
+            ->map(fn (string $key) => $this->lookup->resolveCatalogName($key))
+            ->filter()
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+
+        return collect($items)->map(function (string $measurement) use ($destinations) {
+            $prices = collect($destinations)->mapWithKeys(
+                fn (string $destination) => [$destination => $this->lookup->lookup($measurement, $destination)]
+            )->all();
+
+            $firstPrice = collect($prices)->first(fn ($price) => $price !== null);
+
+            return [
+                'measurement' => $measurement,
+                'qty' => 1,
+                'price' => $firstPrice,
+                'prices' => $prices,
+            ];
+        })->values()->all();
+    }
+
+    /**
+     * @param  list<string>  $destinations
      * @param  list<string>  $seedItems
      * @return list<array{measurement: string, qty: float, price: ?float, prices: array<string, float|null>}>
      */

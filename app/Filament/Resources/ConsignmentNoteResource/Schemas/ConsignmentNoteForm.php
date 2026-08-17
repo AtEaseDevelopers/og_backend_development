@@ -5,22 +5,21 @@ namespace App\Filament\Resources\ConsignmentNoteResource\Schemas;
 use App\Domains\MasterData\Models\Branch;
 use App\Domains\MasterData\Models\Customer;
 use App\Domains\MasterData\Models\CustomerAddress;
-use App\Domains\MasterData\Models\DocumentNumberSequence;
 use App\Domains\MasterData\Models\Location;
-use App\Domains\MasterData\Models\Lorry;
 use App\Domains\Quotation\Models\Quotation;
 use App\Domains\Quotation\Models\QuotationDestination;
 use App\Enums\CsnBillingType;
 use App\Enums\CsnStatus;
-use App\Enums\DocumentType;
 use App\Enums\QuotationStatus;
 use App\Filament\Resources\ConsignmentNoteResource;
+use App\Support\CsnTransportMatrix;
 use App\Support\CurrentCompany;
+use App\Support\QuotationMatrix;
+use App\Support\QuotationPricingLookup;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
 use Filament\Forms\Set;
-use Illuminate\Support\Carbon;
 
 class ConsignmentNoteForm
 {
@@ -73,33 +72,24 @@ class ConsignmentNoteForm
                 ->default(0)
                 ->dehydrated(),
 
-            Forms\Components\Section::make('Period & quotation')
+            Forms\Components\Section::make('Quotation')
                 ->collapsible()
                 ->compact()
                 ->schema([
                     Forms\Components\Grid::make(12)->schema([
-                        Forms\Components\Placeholder::make('period_year')
-                            ->label('Year')
-                            ->content(fn (Get $get) => static::periodYear($get('issued_at'))),
-                        Forms\Components\Placeholder::make('period_month')
-                            ->label('Month (1–12)')
-                            ->content(fn (Get $get) => static::periodMonth($get('issued_at'))),
-                        Forms\Components\Placeholder::make('last_csn_no')
-                            ->label('Last CSN No.')
-                            ->content(fn () => static::lastCsnDisplay()),
                         Forms\Components\Select::make('quotation_id')
                             ->label('Quotation')
                             ->options(fn (Get $get) => static::quotationOptions($get('customer_id')))
                             ->searchable()
                             ->live()
-                            ->columnSpan(3)
+                            ->columnSpan(6)
                             ->afterStateUpdated(fn (?string $state, Set $set) => static::fillFromQuotation($state, $set)),
                         Forms\Components\Select::make('quotation_destination_id')
                             ->label('Destination')
                             ->options(fn (Get $get) => static::destinationOptions($get('quotation_id')))
                             ->searchable()
                             ->live()
-                            ->columnSpan(3)
+                            ->columnSpan(6)
                             ->afterStateUpdated(fn (?string $state, Set $set, Get $get) => static::fillFromDestination(
                                 $get('quotation_id'),
                                 $state,
@@ -114,44 +104,7 @@ class ConsignmentNoteForm
                 static::rightColumn()->columnSpan(4),
             ]),
 
-            Forms\Components\Section::make('Assign lorry / driver')
-                ->collapsible()
-                ->collapsed()
-                ->description('Optional on create — you can also assign later from the CSN list.')
-                ->compact()
-                ->schema([
-                    Forms\Components\Grid::make(4)->schema([
-                        Forms\Components\Select::make('assign_lorry_id')
-                            ->label('Main lorry')
-                            ->options(fn () => ConsignmentNoteResource::lorryOptions())
-                            ->searchable()
-                            ->live()
-                            ->afterStateUpdated(function ($state, Set $set) {
-                                $lorry = Lorry::query()->find($state);
-                                $set('assign_driver_id', $lorry?->default_driver_id);
-                            })
-                            ->dehydrated(false),
-                        Forms\Components\Select::make('assign_driver_id')
-                            ->label('Driver')
-                            ->options(fn () => ConsignmentNoteResource::driverOptions())
-                            ->searchable()
-                            ->dehydrated(false),
-                        Forms\Components\Select::make('assign_sub_lorry_ids')
-                            ->label('Additional lorries')
-                            ->options(fn (Get $get) => ConsignmentNoteResource::lorryOptions(
-                                excludeIds: array_filter([(int) $get('assign_lorry_id')])
-                            ))
-                            ->multiple()
-                            ->searchable()
-                            ->dehydrated(false)
-                            ->columnSpan(2),
-                        Forms\Components\DatePicker::make('assign_operating_date')
-                            ->label('Operating date')
-                            ->default(now())
-                            ->dehydrated(false),
-                    ]),
-                ])
-                ->visibleOn('create'),
+            static::transportChargesSection(),
 
             Forms\Components\Section::make('Document preview')
                 ->collapsible()
@@ -182,14 +135,21 @@ class ConsignmentNoteForm
                     ->required()
                     ->live(),
                 Forms\Components\TextInput::make('do_number')
-                    ->label('D/O No.'),
+                    ->label('D/O No.')
+                    ->disabled()
+                    ->dehydrated()
+                    ->placeholder('Auto'),
                 Forms\Components\TextInput::make('customer_reference')
                     ->label('Reference No.'),
                 Forms\Components\Grid::make(2)->schema([
                     Forms\Components\TextInput::make('job_no')
-                        ->label('Job No.'),
+                        ->label('Job No.')
+                        ->disabled()
+                        ->dehydrated()
+                        ->placeholder('Auto'),
                     Forms\Components\DatePicker::make('job_date')
-                        ->label('Job date'),
+                        ->label('Job date')
+                        ->default(now()),
                 ]),
                 Forms\Components\Grid::make(2)->schema([
                     Forms\Components\Select::make('from_location_id')
@@ -197,7 +157,13 @@ class ConsignmentNoteForm
                         ->options(fn () => static::locationOptions())
                         ->searchable()
                         ->live()
-                        ->afterStateUpdated(fn ($state, Set $set) => static::syncLocationLabel($state, $set, 'from_location_label')),
+                        ->afterStateUpdated(function ($state, Set $set, Get $get) {
+                            static::syncLocationLabel($state, $set, 'from_location_label');
+
+                            if ($get('needs_additional_task')) {
+                                $set('additional_task_to_location_id', $state);
+                            }
+                        }),
                     Forms\Components\Placeholder::make('from_location_label')
                         ->label('')
                         ->content(fn (Get $get) => static::locationLabel($get('from_location_id')) ?: '—'),
@@ -237,54 +203,9 @@ class ConsignmentNoteForm
                     ->label('Telephone No.')
                     ->content(fn (Get $get) => $get('customer_phone') ?: '—'),
                 Forms\Components\Hidden::make('customer_phone'),
-                Forms\Components\Repeater::make('lines')
-                    ->relationship()
-                    ->label('')
-                    ->schema([
-                        Forms\Components\TextInput::make('quantity')
-                            ->label('Quantity')
-                            ->numeric()
-                            ->default(0)
-                            ->live(onBlur: true),
-                        Forms\Components\Select::make('uom')
-                            ->label('Unit measure')
-                            ->options(static::unitMeasureOptions())
-                            ->searchable(),
-                        Forms\Components\TextInput::make('item_name')
-                            ->label('Description')
-                            ->columnSpanFull(),
-                    ])
-                    ->columns(2)
-                    ->defaultItems(1)
-                    ->minItems(1)
-                    ->maxItems(1)
-                    ->addable(false)
-                    ->deletable(false)
-                    ->reorderable(false)
-                    ->columnSpanFull(),
                 Forms\Components\Textarea::make('remarks')
                     ->label('Remark')
                     ->rows(2),
-                Forms\Components\Grid::make(2)->schema([
-                    Forms\Components\TextInput::make('profit_sharing_period')
-                        ->label('PS period')
-                        ->placeholder('YYYY/MM')
-                        ->default(fn () => now()->format('Y/m')),
-                    Forms\Components\Grid::make(2)->schema([
-                        Forms\Components\TextInput::make('ps_job_no')
-                            ->label('PS job no.'),
-                        Forms\Components\DatePicker::make('ps_job_date')
-                            ->label('PS job date'),
-                    ]),
-                ]),
-                Forms\Components\Grid::make(2)->schema([
-                    Forms\Components\TextInput::make('gl_account')
-                        ->label('Account'),
-                    Forms\Components\Placeholder::make('gl_account_name_display')
-                        ->label('Account name')
-                        ->content(fn (Get $get) => $get('gl_account_name') ?: '—'),
-                ]),
-                Forms\Components\Hidden::make('gl_account_name'),
                 Forms\Components\Grid::make(2)->schema([
                     Forms\Components\TextInput::make('tax_code')
                         ->label('Tax code')
@@ -296,6 +217,210 @@ class ConsignmentNoteForm
                 Forms\Components\Hidden::make('tax_code_name')
                     ->default('Sales & Services Tax'),
             ]);
+    }
+
+    protected static function transportChargesSection(): Forms\Components\Section
+    {
+        return Forms\Components\Section::make('Transport charges')
+            ->collapsible()
+            ->compact()
+            ->description('Please find the transportation charges for the following:-')
+            ->schema([
+                Forms\Components\TagsInput::make('matrix_columns')
+                    ->label('Destinations')
+                    ->placeholder('Add destination')
+                    ->default(['Seremban', 'Melaka', 'Johor'])
+                    ->live()
+                    ->columnSpanFull(),
+                Forms\Components\Select::make('charge_column')
+                    ->label('Bill to destination')
+                    ->helperText('Prices from this column update transport charges and CSN lines.')
+                    ->options(fn (Get $get) => collect($get('matrix_columns') ?? [])
+                        ->filter()
+                        ->mapWithKeys(fn (string $column) => [$column => $column])
+                        ->all())
+                    ->default(fn (Get $get) => $get('delivery_city')
+                        ?: collect($get('matrix_columns') ?? [])->first())
+                    ->live()
+                    ->dehydrated(false)
+                    ->afterStateUpdated(fn (Set $set, Get $get) => static::syncTransportFromMatrix($set, $get)),
+                Forms\Components\Repeater::make('matrix_rows')
+                    ->label('Rates')
+                    ->schema(static::matrixRowSchema())
+                    ->defaultItems(1)
+                    ->reorderable()
+                    ->addActionLabel('Add row')
+                    ->live()
+                    ->dehydrated(false)
+                    ->afterStateUpdated(fn (Set $set, Get $get) => static::syncTransportFromMatrix($set, $get))
+                    ->columnSpanFull(),
+                Forms\Components\ViewField::make('transport_charges_preview')
+                    ->view('filament.forms.consignment-transport-preview')
+                    ->viewData(fn (Get $get) => [
+                        'rateMatrix' => app(CsnTransportMatrix::class)->preview(
+                            $get('matrix_columns') ?? ['Seremban', 'Melaka', 'Johor'],
+                            $get('matrix_rows') ?? [],
+                        ),
+                        'chargeColumn' => $get('charge_column'),
+                    ])
+                    ->columnSpanFull(),
+            ]);
+    }
+
+    /** @return list<Forms\Components\Component> */
+    protected static function matrixRowSchema(): array
+    {
+        return [
+            Forms\Components\Grid::make(12)->schema([
+                Forms\Components\Select::make('catalog_key')
+                    ->label('Master')
+                    ->options(fn () => app(QuotationPricingLookup::class)->catalogOptions())
+                    ->searchable()
+                    ->columnSpan(3)
+                    ->live()
+                    ->afterStateUpdated(function (?string $state, Set $set, Get $get): void {
+                        if (! $state) {
+                            return;
+                        }
+
+                        $lookup = app(QuotationPricingLookup::class);
+                        $name = $lookup->resolveCatalogName($state);
+
+                        if (! $name) {
+                            return;
+                        }
+
+                        $set('item_name', $name);
+
+                        $columns = $get('../../matrix_columns') ?? ['Seremban', 'Melaka', 'Johor'];
+                        $customerId = $get('../../customer_id') ? (int) $get('../../customer_id') : null;
+                        $prices = [];
+
+                        foreach ($columns as $column) {
+                            $resolved = $lookup->lookupForCustomer($customerId, $name, $column);
+                            $prices[$column] = $resolved['price'];
+                        }
+
+                        $set('prices', $prices);
+                    }),
+                Forms\Components\TextInput::make('item_name')
+                    ->label('Item / description')
+                    ->required()
+                    ->columnSpan(5),
+                Forms\Components\TextInput::make('quantity')
+                    ->label('Qty')
+                    ->numeric()
+                    ->default(1)
+                    ->columnSpan(2),
+                Forms\Components\Select::make('uom')
+                    ->label('UOM')
+                    ->options(static::unitMeasureOptions())
+                    ->searchable()
+                    ->columnSpan(2),
+            ]),
+            Forms\Components\Grid::make(3)
+                ->schema(fn (Get $get): array => static::priceFieldsForColumns(
+                    $get('../../matrix_columns') ?? ['Seremban', 'Melaka', 'Johor'],
+                )),
+        ];
+    }
+
+    /** @param  list<string>  $columns
+     * @return list<Forms\Components\TextInput>
+     */
+    protected static function priceFieldsForColumns(array $columns): array
+    {
+        $columns = collect($columns)->filter()->values()->all();
+
+        if ($columns === []) {
+            $columns = ['Seremban', 'Melaka', 'Johor'];
+        }
+
+        return collect($columns)->map(
+            fn (string $column) => Forms\Components\TextInput::make('prices.'.$column)
+                ->label($column)
+                ->numeric()
+                ->prefix('RM')
+                ->live(onBlur: true)
+                ->afterStateUpdated(fn (Set $set, Get $get) => static::syncTransportFromMatrix($set, $get, '../../'))
+        )->all();
+    }
+
+    public static function syncTransportFromMatrix(Set $set, Get $get, string $getPrefix = ''): void
+    {
+        $columns = $get($getPrefix.'matrix_columns') ?? [];
+        $rows = $get($getPrefix.'matrix_rows') ?? [];
+        $column = $get($getPrefix.'charge_column') ?: ($get($getPrefix.'delivery_city') ?: collect($columns)->first());
+
+        $transport = app(CsnTransportMatrix::class)->sumForColumn($columns, $rows, $column);
+
+        $set('transport_charges', $transport);
+        static::syncChargeTotals($set, $get);
+    }
+
+    public static function applyMatrixWithTotals(array $matrix, ?string $chargeColumn, Set $set): void
+    {
+        static::applyMatrixToForm($matrix, $set);
+
+        if ($chargeColumn) {
+            $set('charge_column', $chargeColumn);
+        }
+
+        $column = $chargeColumn ?: collect($matrix['matrix_columns'] ?? [])->first();
+        $transport = app(CsnTransportMatrix::class)->sumForColumn(
+            $matrix['matrix_columns'] ?? [],
+            $matrix['matrix_rows'] ?? [],
+            $column,
+        );
+
+        $set('transport_charges', $transport);
+
+        $totals = static::calculateTotals([
+            'transport_charges' => $transport,
+            'master_charges' => 0,
+            'profit_sharing_amount' => 0,
+            'expenses' => 0,
+            'discount' => 0,
+            'tax_rate' => 6,
+            'is_taxable' => true,
+        ]);
+
+        $set('subtotal', $totals['subtotal']);
+        $set('tax_amount', $totals['tax_amount']);
+        $set('total_amount', $totals['total_amount']);
+    }
+
+    protected static function applyMatrixToForm(array $matrix, Set $set): void
+    {
+        $set('matrix_columns', $matrix['matrix_columns'] ?? ['Seremban', 'Melaka', 'Johor']);
+        $set('matrix_rows', $matrix['matrix_rows'] ?? []);
+        $set('charge_column', $matrix['charge_column'] ?? collect($matrix['matrix_columns'] ?? [])->first());
+    }
+
+    /** @return array{matrix_columns: list<string>, matrix_rows: list<array<string, mixed>>, charge_column: ?string} */
+    public static function matrixFromFormData(array $data): array
+    {
+        return [
+            'matrix_columns' => $data['matrix_columns'] ?? ['Seremban', 'Melaka', 'Johor'],
+            'matrix_rows' => $data['matrix_rows'] ?? [],
+            'charge_column' => $data['charge_column'] ?? null,
+        ];
+    }
+
+    /** @param  list<array<string, mixed>>  $lines */
+    public static function matrixPayloadFromForm(array $data): array
+    {
+        $matrix = static::matrixFromFormData($data);
+        $matrixService = app(CsnTransportMatrix::class);
+
+        $column = $matrix['charge_column']
+            ?: ($data['delivery_city'] ?? null)
+            ?: collect($matrix['matrix_columns'])->first();
+
+        return [
+            'lines' => $matrixService->linesFromMatrix($matrix['matrix_columns'], $matrix['matrix_rows'], $column),
+            'transport_charges' => $matrixService->sumForColumn($matrix['matrix_columns'], $matrix['matrix_rows'], $column),
+        ];
     }
 
     protected static function middleColumn(): Forms\Components\Section
@@ -335,7 +460,14 @@ class ConsignmentNoteForm
                     Forms\Components\TextInput::make('delivery_postcode')
                         ->label('Postcode'),
                     Forms\Components\TextInput::make('delivery_city')
-                        ->label('City'),
+                        ->label('City')
+                        ->live(onBlur: true)
+                        ->afterStateUpdated(function (?string $state, Set $set, Get $get) {
+                            if ($state) {
+                                $set('charge_column', $state);
+                            }
+                            static::syncTransportFromMatrix($set, $get);
+                        }),
                     Forms\Components\TextInput::make('delivery_state')
                         ->label('State'),
                 ]),
@@ -362,27 +494,14 @@ class ConsignmentNoteForm
                     ->prefix('RM')
                     ->live(onBlur: true)
                     ->afterStateUpdated(fn (Set $set, Get $get) => static::syncChargeTotals($set, $get)),
-                Forms\Components\TextInput::make('master_charges')
-                    ->label('Master charges')
-                    ->numeric()
-                    ->default(0)
-                    ->prefix('RM')
-                    ->live(onBlur: true)
-                    ->afterStateUpdated(fn (Set $set, Get $get) => static::syncChargeTotals($set, $get)),
-                Forms\Components\TextInput::make('profit_sharing_amount')
-                    ->label('Profit sharing')
-                    ->numeric()
-                    ->default(0)
-                    ->prefix('RM')
-                    ->live(onBlur: true)
-                    ->afterStateUpdated(fn (Set $set, Get $get) => static::syncChargeTotals($set, $get)),
-                Forms\Components\TextInput::make('expenses')
-                    ->label('Expenses')
-                    ->numeric()
-                    ->default(0)
-                    ->prefix('RM')
-                    ->live(onBlur: true)
-                    ->afterStateUpdated(fn (Set $set, Get $get) => static::syncChargeTotals($set, $get)),
+                Forms\Components\Hidden::make('master_charges')->default(0)->dehydrated(),
+                Forms\Components\Hidden::make('profit_sharing_amount')->default(0)->dehydrated(),
+                Forms\Components\Hidden::make('expenses')->default(0)->dehydrated(),
+                Forms\Components\Section::make('Additional pickup task')
+                    ->collapsible()
+                    ->compact()
+                    ->schema(ConsignmentNoteResource::additionalTaskFormFields())
+                    ->columnSpanFull(),
                 Forms\Components\Placeholder::make('subtotal_display')
                     ->label('Sub total')
                     ->content(fn (Get $get) => 'RM '.number_format(static::chargeSubtotal($get), 2)),
@@ -403,8 +522,6 @@ class ConsignmentNoteForm
                     ->suffix('%')
                     ->live(onBlur: true)
                     ->afterStateUpdated(fn (Set $set, Get $get) => static::syncChargeTotals($set, $get)),
-                Forms\Components\TextInput::make('cost_center')
-                    ->label('Cost center'),
                 Forms\Components\ToggleButtons::make('is_taxable')
                     ->label('Tax')
                     ->boolean()
@@ -423,40 +540,6 @@ class ConsignmentNoteForm
                     ->inline()
                     ->default(true),
             ]);
-    }
-
-    public static function periodYear(mixed $issuedAt): string
-    {
-        return $issuedAt
-            ? Carbon::parse($issuedAt)->format('Y')
-            : now()->format('Y');
-    }
-
-    public static function periodMonth(mixed $issuedAt): string
-    {
-        return $issuedAt
-            ? Carbon::parse($issuedAt)->format('n')
-            : now()->format('n');
-    }
-
-    public static function lastCsnDisplay(): string
-    {
-        $branchId = CurrentCompany::branchId();
-
-        if (! $branchId) {
-            return '—';
-        }
-
-        $branch = Branch::query()->find($branchId);
-        $period = now()->format('Ym');
-
-        $last = DocumentNumberSequence::query()
-            ->where('branch_id', $branchId)
-            ->where('document_type', DocumentType::Csn->value)
-            ->where('period', $period)
-            ->value('last_number') ?? 0;
-
-        return trim(($branch?->code ?? '').' '.$last);
     }
 
     /** @return array<int, string> */
@@ -576,8 +659,6 @@ class ConsignmentNoteForm
         $set('consignor_name', $customer->company_name);
         $set('consignor_address', $customer->address);
         $set('consignor_phone', $customer->phone);
-        $set('gl_account', $customer->control_account);
-        $set('gl_account_name', $customer->control_account ? 'INCOME — INVOICE' : null);
         $set('tax_code', $customer->tax_type ?: 'SST');
         $set('tax_code_name', 'Sales & Services Tax');
 
@@ -629,7 +710,7 @@ class ConsignmentNoteForm
             return;
         }
 
-        $quotation = Quotation::query()->with(['customer', 'destinations'])->find($quotationId);
+        $quotation = Quotation::query()->with(['customer', 'destinations', 'lines'])->find($quotationId);
 
         if (! $quotation) {
             return;
@@ -637,6 +718,11 @@ class ConsignmentNoteForm
 
         $set('customer_id', (string) $quotation->customer_id);
         static::fillFromCustomer((string) $quotation->customer_id, $set);
+        static::applyMatrixWithTotals(
+            app(CsnTransportMatrix::class)->fromQuotation($quotation),
+            null,
+            $set,
+        );
 
         $destination = $quotation->destinations->sortBy('sequence')->first();
 
@@ -682,25 +768,11 @@ class ConsignmentNoteForm
             }
         }
 
-        $lines = $quotation->lines
-            ->where('quotation_destination_id', (int) $destinationId)
-            ->values();
+        $matrix = app(QuotationMatrix::class)->toFormState($quotation);
+        $chargeColumn = $destination->city
+            ?: collect($matrix['matrix_columns'])->first();
 
-        $firstLine = $lines->first();
-
-        if ($firstLine) {
-            $set('lines', [[
-                'item_name' => $firstLine->item_name,
-                'uom' => $firstLine->uom,
-                'quantity' => $firstLine->quantity,
-            ]]);
-
-            $transport = round((float) $lines->sum('line_total'), 2);
-            $set('transport_charges', $transport);
-            $set('subtotal', $transport);
-            $set('tax_amount', 0);
-            $set('total_amount', $transport);
-        }
+        static::applyMatrixWithTotals($matrix, $chargeColumn, $set);
     }
 
     public static function fillFromCustomerAddress(?string $addressId, Set $set): void
@@ -787,7 +859,11 @@ class ConsignmentNoteForm
     /** @return array<string, mixed> */
     public static function previewData(Get $get): array
     {
-        $lines = $get('lines') ?? [];
+        $matrix = app(CsnTransportMatrix::class);
+        $columns = $get('matrix_columns') ?? ['Seremban', 'Melaka', 'Johor'];
+        $rows = $get('matrix_rows') ?? [];
+        $chargeColumn = $get('charge_column') ?: $get('delivery_city');
+        $lines = $matrix->linesFromMatrix($columns, $rows, $chargeColumn);
 
         return [
             'number' => $get('number') ?: 'AUTO',

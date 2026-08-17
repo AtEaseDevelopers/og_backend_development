@@ -29,7 +29,7 @@ class GenerateProformaInvoice
         return DB::transaction(function () use ($csn) {
             $csn->loadMissing('sourceBranch');
 
-            if ($csn->billing_type === CsnBillingType::Cod && $csn->payment_status === PaymentStatus::Unpaid->value) {
+            if ($csn->billing_type === CsnBillingType::Cod && $csn->payment_status === PaymentStatus::Unpaid) {
                 $csn->update(['payment_status' => PaymentStatus::CodPending->value]);
             }
 

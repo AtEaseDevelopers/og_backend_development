@@ -54,6 +54,7 @@ class ConsignmentNote extends Model
         return [
             'billing_type' => CsnBillingType::class,
             'status' => CsnStatus::class,
+            'payment_status' => PaymentStatus::class,
             'issued_at' => 'date',
             'job_date' => 'date',
             'ps_job_date' => 'date',
@@ -175,7 +176,7 @@ class ConsignmentNote extends Model
     public function isCashBillFullyPaid(): bool
     {
         return $this->billing_type === CsnBillingType::CashBill
-            && $this->payment_status === PaymentStatus::Paid->value;
+            && $this->payment_status === PaymentStatus::Paid;
     }
 
     public function canAssignToLorry(): bool

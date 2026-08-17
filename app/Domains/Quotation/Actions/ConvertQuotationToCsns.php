@@ -8,11 +8,10 @@ use App\Domains\Quotation\Models\Quotation;
 use App\Domains\Quotation\Models\QuotationStatusLog;
 use App\Enums\CsnBillingType;
 use App\Enums\CsnStatus;
-use App\Enums\DocumentType;
 use App\Enums\PaymentStatus;
 use App\Enums\QuotationStatus;
 use App\Models\User;
-use App\Services\DocumentNumberingService;
+use App\Support\CsnDocumentNumbers;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -21,8 +20,8 @@ use InvalidArgumentException;
 class ConvertQuotationToCsns
 {
     public function __construct(
-        private DocumentNumberingService $numbering,
         private GenerateProformaInvoice $proforma,
+        private CsnDocumentNumbers $documentNumbers,
     ) {}
 
     /** @return Collection<int, ConsignmentNote> */
@@ -50,8 +49,7 @@ class ConvertQuotationToCsns
 
                 $subtotal = $destinationLines->sum('line_total');
 
-                $csn = ConsignmentNote::query()->create([
-                    'number' => $this->numbering->next($quotation->branch, DocumentType::Csn),
+                $csnData = $this->documentNumbers->assign([
                     'company_id' => $quotation->company_id,
                     'source_branch_id' => $quotation->branch_id,
                     'quotation_id' => $quotation->id,
@@ -80,7 +78,9 @@ class ConvertQuotationToCsns
                     'qr_token' => (string) Str::uuid(),
                     'tracking_token' => Str::random(40),
                     'created_by' => $actor->id,
-                ]);
+                ], $quotation->branch);
+
+                $csn = ConsignmentNote::query()->create($csnData);
 
                 foreach ($destinationLines as $line) {
                     $csn->lines()->create([

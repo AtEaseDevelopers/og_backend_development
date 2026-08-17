@@ -8,18 +8,17 @@ use App\Domains\MasterData\Models\Branch;
 use App\Domains\MasterData\Models\Customer;
 use App\Enums\CsnBillingType;
 use App\Enums\CsnStatus;
-use App\Enums\DocumentType;
 use App\Enums\PaymentStatus;
 use App\Models\User;
-use App\Services\DocumentNumberingService;
+use App\Support\CsnDocumentNumbers;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class CreateCsn
 {
     public function __construct(
-        private DocumentNumberingService $numbering,
         private GenerateProformaInvoice $proforma,
+        private CsnDocumentNumbers $documentNumbers,
     ) {}
 
     public function execute(array $data, User $actor): ConsignmentNote
@@ -33,10 +32,11 @@ class CreateCsn
             $billingType = $data['billing_type'] ?? CsnBillingType::CashBill->value;
             $subtotal = collect($lines)->sum(fn ($line) => (float) ($line['line_total'] ?? 0));
 
+            $data = $this->documentNumbers->assign($data, $branch);
+
             $csn = ConsignmentNote::query()->create([
                 ...$data,
                 'billing_type' => $billingType,
-                'number' => $this->numbering->next($branch, DocumentType::Csn),
                 'status' => $data['status'] ?? CsnStatus::Confirmed->value,
                 'payment_status' => $data['payment_status'] ?? match ($billingType) {
                     CsnBillingType::Term->value => PaymentStatus::Credit->value,

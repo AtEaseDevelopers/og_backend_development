@@ -63,7 +63,7 @@ class CreditApprovalRequestResource extends Resource
                 Tables\Columns\TextColumn::make('reason')->limit(40),
                 Tables\Columns\TextColumn::make('status')->badge()
                     ->color(fn (string $state) => match ($state) {
-                        'pending' => 'warning',
+                        'pending' => 'gray',
                         'approved' => 'success',
                         'rejected' => 'danger',
                         default => 'gray',

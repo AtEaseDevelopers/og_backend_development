@@ -76,7 +76,7 @@ class RecordPayment
                 $this->refreshInvoiceStatus((int) $data['invoice_id']);
             }
 
-            if ($csn && $csn->billing_type === CsnBillingType::CashBill && $csn->fresh()->payment_status === PaymentStatus::Paid->value) {
+            if ($csn && $csn->billing_type === CsnBillingType::CashBill && $csn->fresh()->payment_status === PaymentStatus::Paid) {
                 $invoice = $this->generateInvoice->execute($csn->fresh(), $actor);
                 $payment->update(['invoice_id' => $invoice->id]);
             }

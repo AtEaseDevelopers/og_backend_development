@@ -16,6 +16,7 @@ use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
 use Filament\Support\Enums\MaxWidth;
+use Filament\View\PanelsRenderHook;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -38,7 +39,8 @@ class AdminPanelProvider extends PanelProvider
             ->tenantMenu(false)
             ->homeUrl(fn (): string => route('filament.admin.select-branch'))
             ->colors([
-                'primary' => Color::Amber,
+                'primary' => Color::hex('#0f172a'),
+                'gray' => Color::Slate,
             ])
             ->sidebarWidth('18rem')
             ->sidebarCollapsibleOnDesktop()
@@ -76,6 +78,18 @@ class AdminPanelProvider extends PanelProvider
                     ->url(fn (): string => route('filament.admin.select-branch'))
                     ->sort(-1),
             ])
+            ->renderHook(
+                PanelsRenderHook::TOPBAR_START,
+                fn (): \Illuminate\Contracts\View\View => view('filament.hooks.branch-switcher'),
+            )
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): \Illuminate\Contracts\View\View => view('filament.hooks.sidebar-hover-expand'),
+            )
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): \Illuminate\Contracts\View\View => view('filament.hooks.quotation-theme'),
+            )
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,

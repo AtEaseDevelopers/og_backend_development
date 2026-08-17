@@ -130,7 +130,68 @@ class CustomerQuotationPriceHistory
     }
 
     /** @return list<array<string, mixed>> */
-    private function previousPrices(int $customerId): array
+    public function previousPrices(?int $customerId): array
+    {
+        if (! $customerId) {
+            return [];
+        }
+
+        return $this->previousPricesQuery($customerId)->all();
+    }
+
+    /**
+     * @return list<array{date: ?string, measurement: string, destination: string, qty: float, price: float, quotation_id: int, quote: string, view_url: ?string}>
+     */
+    public function previousQuotationPrices(
+        ?int $customerId,
+        ?string $search = null,
+        ?string $measurement = null,
+        ?string $destination = null,
+        ?string $tenantSlug = null,
+    ): array {
+        if (! $customerId) {
+            return [];
+        }
+
+        return collect($this->previousPricesQuery($customerId))
+            ->filter(function (array $row) use ($search, $measurement, $destination) {
+                if ($destination && stripos($row['destination'], $destination) === false) {
+                    return false;
+                }
+
+                if ($measurement && stripos($row['measurement'], $measurement) === false) {
+                    return false;
+                }
+
+                if ($search) {
+                    $haystack = strtolower(implode(' ', [
+                        $row['measurement'],
+                        $row['quote'],
+                        $row['destination'],
+                    ]));
+
+                    return str_contains($haystack, strtolower($search));
+                }
+
+                return true;
+            })
+            ->take(30)
+            ->map(function (array $row) use ($tenantSlug) {
+                $row['view_url'] = $tenantSlug && isset($row['quotation_id'])
+                    ? route('filament.admin.resources.quotations.view', [
+                        'tenant' => $tenantSlug,
+                        'record' => $row['quotation_id'],
+                    ])
+                    : null;
+
+                return $row;
+            })
+            ->values()
+            ->all();
+    }
+
+    /** @return \Illuminate\Support\Collection<int, array{date: ?string, measurement: string, destination: string, qty: float, price: float, quotation_id: int, quote: string}> */
+    private function previousPricesQuery(int $customerId): \Illuminate\Support\Collection
     {
         return QuotationLine::query()
             ->whereHas('quotation', fn ($query) => $query->where('customer_id', $customerId))
@@ -139,23 +200,23 @@ class CustomerQuotationPriceHistory
                 'destination:id,city,consignee_name',
             ])
             ->latest('id')
-            ->limit(40)
+            ->limit(100)
             ->get()
             ->unique(fn (QuotationLine $line) => implode('|', [
                 $line->item_name,
                 $line->destination?->city ?: $line->destination?->consignee_name,
             ]))
-            ->take(25)
             ->map(fn (QuotationLine $line) => [
-                'item' => $line->item_name,
+                'date' => optional($line->quotation?->quoted_at ?? $line->quotation?->created_at)?->format('d/m/Y'),
+                'measurement' => $line->item_name,
                 'destination' => $line->destination?->city
                     ?: $line->destination?->consignee_name
                     ?: '—',
+                'qty' => (float) $line->quantity,
                 'price' => (float) $line->unit_price,
-                'quote' => $line->quotation?->number,
-                'date' => optional($line->quotation?->quoted_at ?? $line->quotation?->created_at)?->format('d/m/Y'),
+                'quotation_id' => (int) $line->quotation_id,
+                'quote' => $line->quotation?->number ?? '—',
             ])
-            ->values()
-            ->all();
+            ->values();
     }
 }

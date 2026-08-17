@@ -8,6 +8,7 @@ use App\Domains\Consignment\Models\ConsignmentNote;
 use App\Domains\Dispatch\Actions\AssignCsnToLorry;
 use App\Domains\Dispatch\Actions\CreateSubsheet;
 use App\Domains\MasterData\Models\Driver;
+use App\Domains\MasterData\Models\Location;
 use App\Domains\MasterData\Models\Lorry;
 use App\Domains\MasterData\Models\TransferCode;
 use App\Enums\CsnBillingType;
@@ -50,7 +51,6 @@ class ConsignmentNoteResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('number')->searchable()->sortable(),
-                Tables\Columns\TextColumn::make('sourceBranch.name')->label('Branch'),
                 Tables\Columns\TextColumn::make('customer_name')->searchable(),
                 Tables\Columns\TextColumn::make('billing_type')->badge()->formatStateUsing(
                     fn ($state) => $state instanceof CsnBillingType ? $state->label() : $state
@@ -65,10 +65,9 @@ class ConsignmentNoteResource extends Resource
                     ->label('Subsheets'),
             ])
             ->filters([
-                Tables\Filters\SelectFilter::make('source_branch_id')->relationship('sourceBranch', 'name'),
                 Tables\Filters\SelectFilter::make('status')
                     ->options(collect(CsnStatus::cases())->mapWithKeys(
-                        fn ($c) => [$c->value => ucfirst(str_replace('_', ' ', $c->value))]
+                        fn (CsnStatus $c) => [$c->value => $c->getLabel()]
                     )),
             ])
             ->actions([
@@ -79,7 +78,7 @@ class ConsignmentNoteResource extends Resource
                     ->icon('heroicon-o-banknotes')
                     ->color('success')
                     ->visible(fn (ConsignmentNote $record) => $record->billing_type === CsnBillingType::CashBill
-                        && $record->payment_status !== PaymentStatus::Paid->value
+                        && $record->payment_status !== PaymentStatus::Paid
                         && $record->status !== CsnStatus::Cancelled)
                     ->form([
                         Forms\Components\TextInput::make('amount')
@@ -158,7 +157,7 @@ class ConsignmentNoteResource extends Resource
                             $created = static::createSubsheetsForLorries(
                                 $record,
                                 collect($data['sub_lorry_ids'] ?? []),
-                                $data
+                                static::additionalTaskPayload($data),
                             );
 
                             Notification::make()
@@ -258,6 +257,153 @@ class ConsignmentNoteResource extends Resource
         ];
     }
 
+    /**
+     * @return array<int, Forms\Components\Component>
+     */
+    public static function additionalTaskFormFields(bool $dehydrated = false): array
+    {
+        return [
+            Forms\Components\Toggle::make('needs_additional_task')
+                ->label('Requires pickup before main delivery')
+                ->helperText('Assign a lorry to collect goods and deliver them to the hub before the main CSN delivery.')
+                ->live()
+                ->afterStateUpdated(function ($state, Forms\Set $set, Forms\Get $get): void {
+                    if ($state && $get('from_location_id')) {
+                        $set('additional_task_to_location_id', $get('from_location_id'));
+                    }
+                })
+                ->dehydrated($dehydrated)
+                ->columnSpanFull(),
+            Forms\Components\Group::make([
+                Forms\Components\Placeholder::make('main_route_hint')
+                    ->label('Main CSN route')
+                    ->content(function (Forms\Get $get): string {
+                        $from = static::locationLabel($get('from_location_id'));
+                        $to = static::locationLabel($get('to_location_id'));
+
+                        if (! $from && ! $to) {
+                            return 'Set the CSN From/To area first.';
+                        }
+
+                        return trim(($from ?: '?').' → '.($to ?: '?'));
+                    })
+                    ->columnSpanFull(),
+                Forms\Components\Select::make('additional_task_from_location_id')
+                    ->label('Pickup from')
+                    ->helperText('Where the assisting lorry collects the goods.')
+                    ->options(fn () => static::locationOptions())
+                    ->searchable()
+                    ->live()
+                    ->dehydrated($dehydrated),
+                Forms\Components\Select::make('additional_task_to_location_id')
+                    ->label('Deliver to hub')
+                    ->helperText('Where goods are handed over before the main leg — usually the CSN From area.')
+                    ->options(fn () => static::locationOptions())
+                    ->default(fn (Forms\Get $get) => $get('from_location_id'))
+                    ->searchable()
+                    ->dehydrated($dehydrated),
+                Forms\Components\Select::make('sub_lorry_ids')
+                    ->label('Assisting lorry')
+                    ->helperText('Lorry assigned for the pickup leg. Subsheet is created after the main lorry is assigned.')
+                    ->options(fn () => static::lorryOptions())
+                    ->multiple()
+                    ->searchable()
+                    ->dehydrated($dehydrated)
+                    ->columnSpanFull(),
+                Forms\Components\Select::make('additional_task_type')
+                    ->label('Task type')
+                    ->options([
+                        'incoming_psi' => 'Incoming pickup (bring goods to hub)',
+                        'transfer' => 'Transfer / handover leg',
+                    ])
+                    ->default('incoming_psi')
+                    ->required()
+                    ->live()
+                    ->dehydrated($dehydrated),
+                Forms\Components\Select::make('transfer_code')
+                    ->label('Transfer code')
+                    ->options(function (Forms\Get $get) {
+                        $query = TransferCode::query()->where('is_active', true);
+
+                        if (($get('additional_task_type') ?? 'incoming_psi') === 'incoming_psi') {
+                            $query->where('type', 'incoming');
+                        }
+
+                        return $query->pluck('name', 'code');
+                    })
+                    ->searchable()
+                    ->nullable()
+                    ->dehydrated($dehydrated),
+                Forms\Components\TextInput::make('psi_amount')
+                    ->label('PSI amount')
+                    ->numeric()
+                    ->default(0)
+                    ->prefix('RM')
+                    ->dehydrated($dehydrated),
+                Forms\Components\TextInput::make('pso_amount')
+                    ->label('PSO amount')
+                    ->numeric()
+                    ->default(0)
+                    ->prefix('RM')
+                    ->dehydrated($dehydrated),
+                Forms\Components\Textarea::make('additional_task_notes')
+                    ->label('Task notes')
+                    ->rows(2)
+                    ->dehydrated($dehydrated)
+                    ->columnSpanFull(),
+            ])
+                ->visible(fn (Forms\Get $get): bool => (bool) $get('needs_additional_task'))
+                ->columns(2)
+                ->columnSpanFull(),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public static function additionalTaskPayload(array $data): array
+    {
+        $from = static::locationLabel($data['additional_task_from_location_id'] ?? null);
+        $to = static::locationLabel($data['additional_task_to_location_id'] ?? null);
+        $segmentRoute = $data['additional_task_segment_route'] ?? null;
+
+        if (! $segmentRoute && $from && $to) {
+            $segmentRoute = "{$from} → {$to}";
+        }
+
+        return [
+            'needs_additional_task' => (bool) ($data['needs_additional_task'] ?? false),
+            'transfer_code' => $data['transfer_code'] ?? null,
+            'task_type' => $data['additional_task_type'] ?? $data['task_type'] ?? 'incoming_psi',
+            'segment_route' => $segmentRoute,
+            'psi_amount' => $data['psi_amount'] ?? 0,
+            'pso_amount' => $data['pso_amount'] ?? 0,
+            'notes' => $data['additional_task_notes'] ?? $data['notes'] ?? null,
+        ];
+    }
+
+    /** @return array<int, string> */
+    public static function locationOptions(): array
+    {
+        return Location::query()
+            ->where('is_active', true)
+            ->orderBy('code')
+            ->get()
+            ->mapWithKeys(fn (Location $location) => [
+                $location->id => trim($location->code.' — '.$location->name),
+            ])
+            ->all();
+    }
+
+    public static function locationLabel(?string $locationId): ?string
+    {
+        if (! $locationId) {
+            return null;
+        }
+
+        $location = Location::query()->find($locationId);
+
+        return $location ? strtoupper($location->name) : null;
+    }
+
     public static function runAssignAndSubsheets(ConsignmentNote $record, array $data): void
     {
         $do = app(AssignCsnToLorry::class)->execute(
@@ -270,7 +416,7 @@ class ConsignmentNoteResource extends Resource
         $created = static::createSubsheetsForLorries(
             $record->fresh(['deliveryOrder']),
             collect($data['sub_lorry_ids'] ?? []),
-            $data
+            static::additionalTaskPayload($data)
         );
 
         Notification::make()
@@ -294,21 +440,21 @@ class ConsignmentNoteResource extends Resource
                 ->searchable()
                 ->nullable(),
             Forms\Components\Select::make('task_type')
+                ->label('Task type')
                 ->options([
-                    'transfer' => 'Transfer / multi-driver',
-                    'incoming_psi' => 'Incoming PSI',
+                    'incoming_psi' => 'Incoming pickup (bring goods to hub)',
+                    'transfer' => 'Transfer / handover leg',
                 ])
-                ->default('transfer')
+                ->default('incoming_psi')
                 ->required(),
+            Forms\Components\TextInput::make('segment_route')
+                ->label('Pickup route')
+                ->maxLength(120),
             Forms\Components\TextInput::make('psi_amount')->numeric()->default(0)->prefix('RM'),
             Forms\Components\TextInput::make('pso_amount')->numeric()->default(0)->prefix('RM'),
             Forms\Components\Textarea::make('notes')->rows(2),
         ];
     }
-
-    /**
-     * @param  Collection<int, int|string>  $lorryIds
-     */
     public static function createSubsheetsForLorries(ConsignmentNote $record, Collection $lorryIds, array $data): int
     {
         $do = $record->deliveryOrder;
@@ -337,15 +483,13 @@ class ConsignmentNoteResource extends Resource
                 continue;
             }
 
-            $action->execute($do, [
-                'sub_lorry_id' => $lorry->id,
-                'sub_driver_id' => $lorry->default_driver_id,
-                'transfer_code' => $data['transfer_code'] ?? null,
-                'task_type' => $data['task_type'] ?? 'transfer',
-                'psi_amount' => $data['psi_amount'] ?? 0,
-                'pso_amount' => $data['pso_amount'] ?? 0,
-                'notes' => $data['notes'] ?? null,
-            ]);
+            $action->execute($do, array_merge(
+                [
+                    'sub_lorry_id' => $lorry->id,
+                    'sub_driver_id' => $lorry->default_driver_id,
+                ],
+                static::additionalTaskPayload($data),
+            ));
             $created++;
         }
 

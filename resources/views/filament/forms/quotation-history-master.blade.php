@@ -1,33 +1,43 @@
+@php
+    $destinationCount = count($destinations);
+    $columns = 'minmax(0, 1fr) 2.5rem'.str_repeat(' 5.5rem', $destinationCount);
+@endphp
+
 <div class="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
     <div class="mb-2 font-semibold text-gray-950 dark:text-white">
-        Price from this consignor to all consignees
+        Default Price for All Measurement
     </div>
-    <div class="max-h-44 overflow-auto">
-        <table class="w-full text-left text-xs">
-            <thead>
-                <tr class="border-b border-gray-200 dark:border-gray-700">
-                    <th class="py-1.5 pr-2 font-medium">Measurement</th>
-                    <th class="py-1.5 pr-2 font-medium">Qty</th>
-                    <th class="py-1.5 font-medium text-right">Price</th>
-                </tr>
-            </thead>
-            <tbody>
-                @forelse($rows as $row)
-                    <tr class="border-b border-gray-100 dark:border-gray-800">
-                        <td class="py-1.5 pr-2">{{ $row['measurement'] }}</td>
-                        <td class="py-1.5 pr-2">{{ number_format($row['qty'], 0) }}</td>
-                        <td class="py-1.5 text-right">
-                            @if($row['price'] !== null)
-                                RM {{ number_format($row['price'], 2) }}
-                            @else
-                                —
-                            @endif
-                        </td>
-                    </tr>
-                @empty
-                    <tr><td colspan="3" class="py-3 text-gray-500">No master prices for current destinations.</td></tr>
-                @endforelse
-            </tbody>
-        </table>
+    <div
+        class="rounded-md border border-gray-100 dark:border-gray-800"
+        style="max-height: 8rem; overflow-y: auto; font-size: 0.75rem; line-height: 1.5;"
+    >
+        <div
+            style="display: grid; grid-template-columns: {{ $columns }}; position: sticky; top: 0; z-index: 2; border-bottom: 1px solid #e5e7eb; background-color: #ffffff; font-weight: 500;"
+        >
+            <div style="padding: 0.5rem;">Measurement</div>
+            <div style="padding: 0.5rem;">Qty</div>
+            @foreach ($destinations as $destination)
+                <div style="padding: 0.5rem; text-align: right;">{{ $destination }}</div>
+            @endforeach
+        </div>
+
+        @forelse($rows as $row)
+            <div style="display: grid; grid-template-columns: {{ $columns }}; border-bottom: 1px solid #f3f4f6;">
+                <div style="padding: 0.5rem; word-break: break-word;">{{ $row['measurement'] }}</div>
+                <div style="padding: 0.5rem;">{{ number_format($row['qty'], 0) }}</div>
+                @foreach ($destinations as $destination)
+                    <div style="padding: 0.5rem; text-align: right; white-space: nowrap;">
+                        @php $price = $row['prices'][$destination] ?? null @endphp
+                        @if($price !== null)
+                            RM {{ number_format($price, 2) }}
+                        @else
+                            —
+                        @endif
+                    </div>
+                @endforeach
+            </div>
+        @empty
+            <div style="padding: 0.75rem 0.5rem; color: #6b7280;">No default master prices found.</div>
+        @endforelse
     </div>
 </div>

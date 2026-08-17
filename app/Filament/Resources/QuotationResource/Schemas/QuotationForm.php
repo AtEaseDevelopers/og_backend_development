@@ -17,7 +17,6 @@ use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
 use Filament\Forms\Set;
-use Filament\Notifications\Notification;
 
 class QuotationForm
 {
@@ -58,88 +57,142 @@ class QuotationForm
             ->collapsible()
             ->compact()
             ->schema([
-                Forms\Components\Grid::make(3)->schema([
-                    Forms\Components\Group::make([
-                        Forms\Components\DatePicker::make('expected_delivery_date')
-                            ->label('Expected Delivery Date'),
-                        Forms\Components\TextInput::make('myr_to_sgd_rate')
-                            ->label('MYR to SGD Rate')
-                            ->numeric()
-                            ->default(0.320718)
-                            ->suffixIcon('heroicon-m-pencil-square'),
-                        Forms\Components\TextInput::make('sgd_to_myr_rate')
-                            ->label('SGD to MYR Rate')
-                            ->numeric()
-                            ->default(3.247000)
-                            ->suffixIcon('heroicon-m-pencil-square'),
+                Forms\Components\Fieldset::make('Quotation info')
+                    ->schema([
+                        Forms\Components\Grid::make(12)->schema([
+                            Forms\Components\DatePicker::make('quoted_at')
+                                ->label('Quotation date')
+                                ->default(now())
+                                ->required()
+                                ->columnSpan(['default' => 12, 'md' => 3, 'xl' => 2]),
+                            Forms\Components\TextInput::make('number')
+                                ->label('Ref No.')
+                                ->disabled()
+                                ->dehydrated()
+                                ->placeholder('Auto')
+                                ->columnSpan(['default' => 12, 'md' => 3, 'xl' => 2]),
+                            Forms\Components\DatePicker::make('valid_until')
+                                ->label('Valid until')
+                                ->columnSpan(['default' => 12, 'md' => 3, 'xl' => 2]),
+                            Forms\Components\DatePicker::make('expected_delivery_date')
+                                ->label('Expected delivery')
+                                ->columnSpan(['default' => 12, 'md' => 3, 'xl' => 2]),
+                            Forms\Components\Toggle::make('is_active')
+                                ->label('Active')
+                                ->default(true)
+                                ->inline(false)
+                                ->columnSpan(['default' => 12, 'md' => 3, 'xl' => 2]),
+                            Forms\Components\Select::make('salesperson_id')
+                                ->relationship('salesperson', 'name')
+                                ->searchable()
+                                ->label('Salesperson')
+                                ->columnSpan(['default' => 12, 'md' => 6, 'xl' => 2]),
+                        ]),
+                        Forms\Components\Grid::make(12)->schema([
+                            Forms\Components\TextInput::make('title')
+                                ->label('Title')
+                                ->default('Quotation Of Transport Charges')
+                                ->columnSpan(['default' => 12, 'lg' => 6]),
+                            Forms\Components\TextInput::make('terms_of_payment')
+                                ->label('Terms')
+                                ->columnSpan(['default' => 12, 'md' => 6, 'lg' => 3]),
+                            Forms\Components\TextInput::make('issued_by_name')
+                                ->label('Issued by')
+                                ->default(fn () => auth()->user()?->name)
+                                ->columnSpan(['default' => 12, 'md' => 6, 'lg' => 3]),
+                        ]),
+                        Forms\Components\Grid::make(12)->schema([
+                            Forms\Components\TextInput::make('attention')
+                                ->label('Attn')
+                                ->columnSpan(['default' => 12, 'md' => 4]),
+                            Forms\Components\TextInput::make('customer_phone_alt')
+                                ->label('Tel (alt)')
+                                ->columnSpan(['default' => 12, 'md' => 4]),
+                            Forms\Components\TextInput::make('customer_fax')
+                                ->label('Fax')
+                                ->columnSpan(['default' => 12, 'md' => 4]),
+                        ]),
                     ]),
-                    Forms\Components\Group::make([
-                        Forms\Components\Select::make('customer_id')
-                            ->label('Consignor')
-                            ->relationship('customer', 'company_name')
-                            ->getOptionLabelFromRecordUsing(fn (Customer $record) => trim(($record->code ? $record->code.' — ' : '').$record->company_name))
-                            ->searchable()
-                            ->preload()
-                            ->required()
-                            ->live()
-                            ->placeholder('Please input the company name')
-                            ->afterStateUpdated(fn (?string $state, Set $set) => static::fillConsignorFields($state, $set)),
-                        Forms\Components\Select::make('from_location_id')
-                            ->label('FROM')
-                            ->options(fn () => static::locationOptions())
-                            ->searchable(),
-                        Forms\Components\TextInput::make('consignor_brn')
-                            ->label('Company Number')
-                            ->placeholder('Input to update the company number'),
-                        Forms\Components\Textarea::make('customer_address')
-                            ->label('Billing Address')
-                            ->rows(4),
-                        Forms\Components\Select::make('pickup_location_preset')
-                            ->label('Pickup Location')
-                            ->placeholder('Please select the branch of consignor or add new')
-                            ->options(fn (Get $get) => static::customerAddressOptions($get('customer_id')))
-                            ->searchable()
-                            ->dehydrated(false)
-                            ->live()
-                            ->afterStateUpdated(fn (?string $state, Set $set) => static::fillPickupLocation($state, $set)),
-                        Forms\Components\Textarea::make('pickup_location')
-                            ->label('Pickup location detail')
-                            ->rows(2)
-                            ->hiddenLabel(),
+                Forms\Components\Fieldset::make('Consignor & consignee')
+                    ->columns(['default' => 1, 'lg' => 2])
+                    ->schema([
+                        Forms\Components\Group::make(static::consignorFields())->columnSpan(1),
+                        Forms\Components\Group::make(static::consigneeFields())->columnSpan(1),
                     ]),
-                    Forms\Components\Group::make([
-                        Forms\Components\TextInput::make('consignee_name')
-                            ->label('Consignee')
-                            ->placeholder('Please input the company name')
-                            ->live(onBlur: true)
-                            ->afterStateUpdated(fn (?string $state, Set $set, Get $get) => static::syncConsigneeDestination($state, $set, $get)),
-                        Forms\Components\Select::make('to_location_id')
-                            ->label('TO')
-                            ->options(fn () => static::locationOptions())
-                            ->searchable()
-                            ->live()
-                        ->afterStateUpdated(fn (?string $state, Set $set, Get $get) => static::syncToDestination($state, $set, $get)),
-                        Forms\Components\TextInput::make('consignee_brn')
-                            ->label('Company Number')
-                            ->placeholder('Input to update the company number'),
-                        Forms\Components\Textarea::make('consignee_address')
-                            ->label('Billing Address')
-                            ->rows(4),
-                        Forms\Components\Select::make('drop_off_location_preset')
-                            ->label('Drop Off Location')
-                            ->placeholder('Please select the branch of consignee or add new')
-                            ->options(fn (Get $get) => static::customerAddressOptions($get('customer_id')))
-                            ->searchable()
-                            ->dehydrated(false)
-                            ->live()
-                            ->afterStateUpdated(fn (?string $state, Set $set) => static::fillDropOffLocation($state, $set)),
-                        Forms\Components\Textarea::make('drop_off_location')
-                            ->label('Drop off location detail')
-                            ->rows(2)
-                            ->hiddenLabel(),
-                    ]),
-                ]),
             ]);
+    }
+
+    /** @return list<Forms\Components\Component> */
+    private static function consignorFields(): array
+    {
+        return [
+            Forms\Components\Select::make('customer_id')
+                ->label('Consignor')
+                ->relationship('customer', 'company_name')
+                ->getOptionLabelFromRecordUsing(fn (Customer $record) => trim(($record->code ? $record->code.' — ' : '').$record->company_name))
+                ->searchable()
+                ->preload()
+                ->required()
+                ->live()
+                ->placeholder('Please input the company name')
+                ->afterStateUpdated(fn (?string $state, Set $set) => static::fillConsignorFields($state, $set)),
+            Forms\Components\Select::make('from_location_id')
+                ->label('FROM')
+                ->options(fn () => static::locationOptions())
+                ->searchable(),
+            Forms\Components\TextInput::make('consignor_brn')
+                ->label('Company Number')
+                ->placeholder('Input to update the company number'),
+            Forms\Components\Textarea::make('customer_address')
+                ->label('Billing Address')
+                ->rows(4),
+            Forms\Components\Select::make('pickup_location_preset')
+                ->label('Pickup Location')
+                ->placeholder('Please select the branch of consignor or add new')
+                ->options(fn (Get $get) => static::customerAddressOptions($get('customer_id')))
+                ->searchable()
+                ->dehydrated(false)
+                ->live()
+                ->afterStateUpdated(fn (?string $state, Set $set) => static::fillPickupLocation($state, $set)),
+            Forms\Components\Textarea::make('pickup_location')
+                ->label('Pickup location detail')
+                ->rows(2),
+        ];
+    }
+
+    /** @return list<Forms\Components\Component> */
+    private static function consigneeFields(): array
+    {
+        return [
+            Forms\Components\TextInput::make('consignee_name')
+                ->label('Consignee')
+                ->placeholder('Please input the company name')
+                ->live(onBlur: true)
+                ->afterStateUpdated(fn (?string $state, Set $set, Get $get) => static::syncConsigneeDestination($state, $set, $get)),
+            Forms\Components\Select::make('to_location_id')
+                ->label('TO')
+                ->options(fn () => static::locationOptions())
+                ->searchable()
+                ->live()
+                ->afterStateUpdated(fn (?string $state, Set $set, Get $get) => static::syncToDestination($state, $set, $get)),
+            Forms\Components\TextInput::make('consignee_brn')
+                ->label('Company Number')
+                ->placeholder('Input to update the company number'),
+            Forms\Components\Textarea::make('consignee_address')
+                ->label('Billing Address')
+                ->rows(4),
+            Forms\Components\Select::make('drop_off_location_preset')
+                ->label('Drop Off Location')
+                ->placeholder('Please select the branch of consignee or add new')
+                ->options(fn (Get $get) => static::customerAddressOptions($get('customer_id')))
+                ->searchable()
+                ->dehydrated(false)
+                ->live()
+                ->afterStateUpdated(fn (?string $state, Set $set) => static::fillDropOffLocation($state, $set)),
+            Forms\Components\Textarea::make('drop_off_location')
+                ->label('Drop off location detail')
+                ->rows(2),
+        ];
     }
 
     protected static function quotationHistorySection(): Forms\Components\Section
@@ -149,36 +202,10 @@ class QuotationForm
             ->collapsed(false)
             ->compact()
             ->schema([
-                Forms\Components\Grid::make(2)->schema([
-                    Forms\Components\Group::make([
-                        Forms\Components\ViewField::make('history_master_panel')
-                            ->hiddenLabel()
-                            ->view('filament.forms.quotation-history-master')
-                            ->viewData(fn (Get $get) => static::masterHistoryData($get)),
-                        Forms\Components\Actions::make([
-                            Forms\Components\Actions\Action::make('applyMasterPrices')
-                                ->label('Update Master Data Price')
-                                ->color('gray')
-                                ->action(fn (Get $get, Set $set) => static::applyMasterPrices($get, $set)),
-                        ])->alignment(\Filament\Support\Enums\Alignment::End),
-                    ]),
-                    Forms\Components\Group::make([
-                        Forms\Components\ViewField::make('history_route_panel')
-                            ->hiddenLabel()
-                            ->view('filament.forms.quotation-history-route')
-                            ->viewData(fn (Get $get) => static::routeHistoryData($get)),
-                        Forms\Components\Actions::make([
-                            Forms\Components\Actions\Action::make('applyRoutePrices')
-                                ->label('Update Master Data Price')
-                                ->color('gray')
-                                ->action(fn (Get $get, Set $set) => static::applyRoutePrices($get, $set)),
-                        ])->alignment(\Filament\Support\Enums\Alignment::End),
-                    ]),
-                ]),
                 Forms\Components\Grid::make(12)->schema([
                     Forms\Components\TextInput::make('history_search')
                         ->label('Search')
-                        ->placeholder('Search non-default prices…')
+                        ->placeholder('Search pricing history…')
                         ->prefixIcon('heroicon-m-magnifying-glass')
                         ->live(debounce: 400)
                         ->dehydrated(false)
@@ -206,15 +233,20 @@ class QuotationForm
                         ->dehydrated(false)
                         ->columnSpan(3),
                 ]),
-                Forms\Components\ViewField::make('history_other_panel')
-                    ->hiddenLabel()
-                    ->view('filament.forms.quotation-history-other')
-                    ->viewData(fn (Get $get) => static::otherHistoryData($get)),
-                Forms\Components\ViewField::make('history_special_panel')
-                    ->hiddenLabel()
-                    ->view('filament.forms.quotation-history-special')
-                    ->viewData(fn (Get $get) => static::specialHistoryData($get))
-                    ->visible(fn (Get $get) => filled($get('customer_id'))),
+                Forms\Components\Grid::make(1)->schema([
+                    Forms\Components\ViewField::make('history_previous_panel')
+                        ->hiddenLabel()
+                        ->view('filament.forms.quotation-history-other')
+                        ->viewData(fn (Get $get) => static::previousHistoryData($get)),
+                    Forms\Components\ViewField::make('history_special_panel')
+                        ->hiddenLabel()
+                        ->view('filament.forms.quotation-history-special')
+                        ->viewData(fn (Get $get) => static::specialHistoryData($get)),
+                    Forms\Components\ViewField::make('history_master_panel')
+                        ->hiddenLabel()
+                        ->view('filament.forms.quotation-history-master')
+                        ->viewData(fn (Get $get) => static::masterHistoryData($get)),
+                ]),
             ])
             ->visible(fn (Get $get) => filled($get('customer_id')));
     }
@@ -226,51 +258,6 @@ class QuotationForm
             ->collapsed()
             ->compact()
             ->schema([
-                Forms\Components\Grid::make(12)->schema([
-                    Forms\Components\DatePicker::make('quoted_at')
-                        ->label('Quotation date')
-                        ->default(now())
-                        ->required()
-                        ->columnSpan(2),
-                    Forms\Components\TextInput::make('number')
-                        ->label('Ref No.')
-                        ->disabled()
-                        ->dehydrated()
-                        ->placeholder('Auto')
-                        ->columnSpan(2),
-                    Forms\Components\TextInput::make('title')
-                        ->label('Title')
-                        ->default('Quotation Of Transport Charges')
-                        ->columnSpan(4),
-                    Forms\Components\TextInput::make('terms_of_payment')
-                        ->label('Terms')
-                        ->columnSpan(2),
-                    Forms\Components\DatePicker::make('valid_until')
-                        ->label('Valid until')
-                        ->columnSpan(2),
-                    Forms\Components\Toggle::make('is_active')
-                        ->label('Active')
-                        ->default(true)
-                        ->columnSpan(2),
-                    Forms\Components\Select::make('salesperson_id')
-                        ->relationship('salesperson', 'name')
-                        ->searchable()
-                        ->label('Salesperson')
-                        ->columnSpan(3),
-                    Forms\Components\TextInput::make('issued_by_name')
-                        ->label('Issued by')
-                        ->default(fn () => auth()->user()?->name)
-                        ->columnSpan(3),
-                    Forms\Components\TextInput::make('attention')
-                        ->label('Attn')
-                        ->columnSpan(2),
-                    Forms\Components\TextInput::make('customer_phone_alt')
-                        ->label('Tel (alt)')
-                        ->columnSpan(2),
-                    Forms\Components\TextInput::make('customer_fax')
-                        ->label('Fax')
-                        ->columnSpan(2),
-                ]),
                 Forms\Components\TagsInput::make('matrix_columns')
                     ->label('Destinations')
                     ->placeholder('Add destination')
@@ -320,40 +307,24 @@ class QuotationForm
     private static function masterHistoryData(Get $get): array
     {
         $destinations = $get('matrix_columns') ?? ['Seremban', 'Melaka', 'Johor'];
-        $seedItems = collect($get('matrix_rows') ?? [])->pluck('item_name')->filter()->values()->all();
 
         return [
-            'consignorName' => static::consignorLabel($get),
-            'rows' => app(QuotationHistoryPanel::class)->masterToAllConsignees($destinations, $seedItems),
+            'destinations' => $destinations,
+            'rows' => app(QuotationHistoryPanel::class)->defaultPricesForAllMeasurements($destinations),
         ];
     }
 
     /** @return array<string, mixed> */
-    private static function routeHistoryData(Get $get): array
-    {
-        $customerId = $get('customer_id') ? (int) $get('customer_id') : null;
-        $destinations = $get('matrix_columns') ?? ['Seremban', 'Melaka', 'Johor'];
-        $destination = $get('history_destination') ?: $get('consignee_name') ?: ($destinations[0] ?? null);
-        $myrToSgd = (float) ($get('myr_to_sgd_rate') ?: 0.320718);
-
-        return [
-            'consignorName' => static::consignorLabel($get),
-            'consigneeName' => $get('consignee_name') ?: $destination ?: 'Consignee',
-            'myrToSgd' => $myrToSgd,
-            'rows' => app(QuotationHistoryPanel::class)->customerToConsignee($customerId, $destination, $destinations),
-        ];
-    }
-
-    /** @return array<string, mixed> */
-    private static function otherHistoryData(Get $get): array
+    private static function previousHistoryData(Get $get): array
     {
         $customerId = $get('customer_id') ? (int) $get('customer_id') : null;
 
         return [
-            'rows' => app(QuotationHistoryPanel::class)->otherNonDefault(
+            'rows' => app(\App\Support\CustomerQuotationPriceHistory::class)->previousQuotationPrices(
                 $customerId,
                 $get('history_search'),
                 $get('history_measurement'),
+                $get('history_destination') ?: $get('consignee_name'),
                 Filament::getTenant()?->code,
             ),
         ];
@@ -546,40 +517,6 @@ class QuotationForm
         if ($location) {
             $set('from_location_id', (string) $location->id);
         }
-    }
-
-    private static function applyMasterPrices(Get $get, Set $set): void
-    {
-        $destinations = $get('matrix_columns') ?? ['Seremban', 'Melaka', 'Johor'];
-        $seedItems = collect($get('matrix_rows') ?? [])->pluck('item_name')->filter()->values()->all();
-        $rows = app(QuotationHistoryPanel::class)->masterToAllConsignees($destinations, $seedItems);
-
-        $set('matrix_rows', app(QuotationHistoryPanel::class)->toMatrixRows($rows));
-        $set('pricing_source', 'default');
-
-        Notification::make()->title('Master data prices applied')->success()->send();
-    }
-
-    private static function applyRoutePrices(Get $get, Set $set): void
-    {
-        $customerId = $get('customer_id') ? (int) $get('customer_id') : null;
-        $destinations = $get('matrix_columns') ?? ['Seremban', 'Melaka', 'Johor'];
-        $rows = app(QuotationHistoryPanel::class)->customerToConsignee(
-            $customerId,
-            $get('history_destination') ?: $get('consignee_name'),
-            $destinations,
-        );
-
-        if ($rows === []) {
-            Notification::make()->title('No route prices available')->warning()->send();
-
-            return;
-        }
-
-        $set('matrix_rows', app(QuotationHistoryPanel::class)->toMatrixRows($rows));
-        $set('pricing_source', 'previous');
-
-        Notification::make()->title('Route prices applied')->success()->send();
     }
 
     /** @return list<Forms\Components\Component> */

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Domains\MasterData\Models\CharteredLorry;
 use App\Domains\MasterData\Models\Lorry;
 use App\Filament\Resources\FleetVehicleResource\Pages;
 use Filament\Forms;
@@ -36,7 +37,15 @@ class FleetVehicleResource extends Resource
             Forms\Components\Placeholder::make('branch_label')->label('Company / branch')
                 ->content(fn () => \App\Support\CurrentBranch::get()?->getFilamentName() ?? '—'),
             Forms\Components\TextInput::make('registration_no')->required()->unique(ignoreRecord: true),
-            Forms\Components\TextInput::make('type'),
+            Forms\Components\Select::make('type')
+                ->label('Type')
+                ->options(fn () => CharteredLorry::query()
+                    ->where('is_active', true)
+                    ->orderBy('name')
+                    ->pluck('name', 'name')
+                    ->all())
+                ->searchable()
+                ->preload(),
             Forms\Components\TextInput::make('capacity')->numeric(),
             Forms\Components\Select::make('default_driver_id')->relationship('defaultDriver', 'name')->searchable(),
             Forms\Components\Select::make('status')->options([

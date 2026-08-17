@@ -3,7 +3,7 @@
 namespace App\Filament\Pages;
 
 use App\Domains\MasterData\Models\Branch;
-use App\Support\SelectedBranch;
+use App\Support\SwitchBranch;
 use Filament\Facades\Filament;
 use Filament\Pages\SimplePage;
 use Filament\Panel;
@@ -63,14 +63,7 @@ class SelectBranch extends SimplePage
 
         abort_unless($branch instanceof Branch && $user->canAccessBranch($branch), 403);
 
-        SelectedBranch::set($branch);
-
-        $company = $branch->defaultCompany();
-        abort_unless($company instanceof \App\Domains\MasterData\Models\Company, 404);
-        abort_unless($user->canAccessTenant($company), 403);
-
-        $panel = Filament::getCurrentPanel() ?? Filament::getPanel('admin');
-        $this->redirect($panel->getUrl($company));
+        $this->redirect(SwitchBranch::enter($user, $branch));
     }
 
     public static function getUrl(array $parameters = [], bool $isAbsolute = true, ?string $panel = null, ?\Illuminate\Database\Eloquent\Model $tenant = null): string

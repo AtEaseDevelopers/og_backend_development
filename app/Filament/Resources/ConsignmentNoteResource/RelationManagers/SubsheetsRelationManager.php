@@ -47,6 +47,6 @@ class SubsheetsRelationManager extends RelationManager
                     }),
             ])
             ->emptyStateHeading('No subsheets yet')
-            ->emptyStateDescription('Use “Assign to Lorry” or “Add Subsheets” on this CSN to select assisting lorries.');
+            ->emptyStateDescription('Enable “Additional pickup task” on the CSN, assign a main lorry, then save to create subsheets for assisting lorries.');
     }
 }
