@@ -643,6 +643,8 @@ class ConsignmentNoteForm
     public static function fillFromCustomer(?string $customerId, Set $set): void
     {
         if (! $customerId) {
+            static::clearCustomerFields($set);
+
             return;
         }
 
@@ -707,6 +709,8 @@ class ConsignmentNoteForm
     public static function fillFromQuotation(?string $quotationId, Set $set): void
     {
         if (! $quotationId) {
+            static::clearQuotationFields($set);
+
             return;
         }
 
@@ -735,6 +739,8 @@ class ConsignmentNoteForm
     public static function fillFromDestination(?string $quotationId, ?string $destinationId, Set $set): void
     {
         if (! $quotationId || ! $destinationId) {
+            static::clearDestinationFields($set);
+
             return;
         }
 
@@ -778,6 +784,8 @@ class ConsignmentNoteForm
     public static function fillFromCustomerAddress(?string $addressId, Set $set): void
     {
         if (! $addressId) {
+            static::clearCustomerAddressFields($set);
+
             return;
         }
 
@@ -795,6 +803,55 @@ class ConsignmentNoteForm
         $set('delivery_postcode', $address->postcode);
         $set('delivery_state', $address->state);
         $set('delivery_city', $address->city);
+    }
+
+    private static function clearCustomerFields(Set $set): void
+    {
+        $set('customer_name', null);
+        $set('customer_brn', null);
+        $set('customer_tin', null);
+        $set('customer_phone', null);
+        $set('consignor_name', null);
+        $set('consignor_address', null);
+        $set('consignor_phone', null);
+        $set('tax_code', 'SST');
+        $set('tax_code_name', 'Sales & Services Tax');
+        $set('billing_type', CsnBillingType::CashBill->value);
+        $set('delivery_address_preset', null);
+        $set('from_location_id', null);
+        static::clearCustomerAddressFields($set);
+    }
+
+    private static function clearCustomerAddressFields(Set $set): void
+    {
+        $set('consignee_name', null);
+        $set('delivery_address', null);
+        $set('delivery_postcode', null);
+        $set('delivery_state', null);
+        $set('delivery_city', null);
+    }
+
+    private static function clearDestinationFields(Set $set): void
+    {
+        $set('consignee_name', null);
+        $set('consignee_pic', null);
+        $set('consignee_phone', null);
+        $set('delivery_address', null);
+        $set('delivery_postcode', null);
+        $set('delivery_city', null);
+        $set('delivery_state', null);
+        $set('to_location_id', null);
+    }
+
+    private static function clearQuotationFields(Set $set): void
+    {
+        $set('quotation_destination_id', null);
+        static::clearDestinationFields($set);
+        static::applyMatrixWithTotals([
+            'matrix_columns' => ['Seremban', 'Melaka', 'Johor'],
+            'matrix_rows' => [],
+            'charge_column' => null,
+        ], null, $set);
     }
 
     /** @return array<int, string> */

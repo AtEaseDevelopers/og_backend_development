@@ -26,11 +26,14 @@ class QuotationMatrix
             $destination = $destinations->firstWhere('id', $line->quotation_destination_id);
             $column = $destination ? $this->columnLabel($destination) : $columns[0] ?? 'Rate';
             $rowKey = $line->item_name;
+            $lookup = app(QuotationPricingLookup::class);
+            $catalogKey = $lookup->resolveCatalogKey($line->item_name);
 
             if (! isset($rows[$rowKey])) {
                 $rows[$rowKey] = [
+                    'line_type' => $lookup->inferLineType($catalogKey, $line->item_name),
                     'item_name' => $line->item_name,
-                    'catalog_key' => null,
+                    'catalog_key' => $catalogKey,
                     'prices' => array_fill_keys($columns, null),
                 ];
             }

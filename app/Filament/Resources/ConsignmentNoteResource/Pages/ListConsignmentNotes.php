@@ -10,6 +10,13 @@ class ListConsignmentNotes extends ListRecords
 {
     protected static string $resource = ConsignmentNoteResource::class;
 
+    protected function getTableQuery(): \Illuminate\Database\Eloquent\Builder
+    {
+        return parent::getTableQuery()
+            ->withCount('deliveryOrders')
+            ->with(['deliveryOrder.lorry']);
+    }
+
     protected function getHeaderActions(): array
     {
         return [Actions\CreateAction::make()];

@@ -19,6 +19,7 @@ class SubsheetsRelationManager extends RelationManager
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('number')->searchable(),
+                Tables\Columns\TextColumn::make('deliveryOrder.number')->label('DO'),
                 Tables\Columns\TextColumn::make('subLorry.registration_no')->label('Sub lorry'),
                 Tables\Columns\TextColumn::make('subDriver.name')->label('Sub driver'),
                 Tables\Columns\TextColumn::make('task_type')->badge(),

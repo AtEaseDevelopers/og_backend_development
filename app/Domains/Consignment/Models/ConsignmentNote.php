@@ -117,12 +117,17 @@ class ConsignmentNote extends Model
 
     public function deliveryOrder(): HasOne
     {
-        return $this->hasOne(DeliveryOrder::class)->latestOfMany();
+        return $this->hasOne(DeliveryOrder::class)->whereNull('parent_do_id');
     }
 
     public function deliveryOrders(): HasMany
     {
         return $this->hasMany(DeliveryOrder::class);
+    }
+
+    public function subsheetDeliveryOrders(): HasMany
+    {
+        return $this->hasMany(DeliveryOrder::class)->whereNotNull('parent_do_id');
     }
 
     public function subsheets(): HasMany

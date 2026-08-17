@@ -6,7 +6,9 @@ use App\Domains\Billing\Actions\GenerateProformaInvoice;
 use App\Domains\Billing\Actions\RecordPayment;
 use App\Domains\Consignment\Models\ConsignmentNote;
 use App\Domains\Dispatch\Actions\AssignCsnToLorry;
+use App\Domains\Dispatch\Actions\AssignDeliveryOrderToLorry;
 use App\Domains\Dispatch\Actions\CreateSubsheet;
+use App\Domains\Dispatch\Models\DeliveryOrder;
 use App\Domains\MasterData\Models\Driver;
 use App\Domains\MasterData\Models\Location;
 use App\Domains\MasterData\Models\Lorry;
@@ -22,6 +24,7 @@ use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
+use Filament\Support\Enums\MaxWidth;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Support\Collection;
@@ -58,7 +61,29 @@ class ConsignmentNoteResource extends Resource
                 Tables\Columns\TextColumn::make('status')->badge(),
                 Tables\Columns\TextColumn::make('payment_status')->badge(),
                 Tables\Columns\TextColumn::make('total_amount')->money('MYR'),
-                Tables\Columns\TextColumn::make('deliveryOrder.number')->label('DO'),
+                Tables\Columns\TextColumn::make('delivery_orders_count')
+                    ->counts('deliveryOrders')
+                    ->label('DO')
+                    ->formatStateUsing(fn ($state) => (string) ($state ?? 0))
+                    ->badge()
+                    ->color(fn ($state) => ($state ?? 0) > 0 ? 'primary' : 'gray')
+                    ->tooltip('View delivery orders')
+                    ->action(
+                        Tables\Actions\Action::make('manageDeliveryOrders')
+                            ->modalHeading(fn (ConsignmentNote $record) => 'Delivery orders — '.$record->number)
+                            ->modalDescription(fn (ConsignmentNote $record) => $record->deliveryOrders()->count() === 0
+                                ? 'No delivery orders yet. Assign a lorry to create the first DO.'
+                                : 'Select a DO, then assign or change the lorry.')
+                            ->modalWidth(MaxWidth::TwoExtraLarge)
+                            ->form(fn (ConsignmentNote $record) => static::deliveryOrdersModalForm($record))
+                            ->action(fn (ConsignmentNote $record, array $data) => static::handleDeliveryOrderModalSubmit($record, $data))
+                            ->modalSubmitActionLabel(fn (ConsignmentNote $record) => $record->deliveryOrders()->count() === 0
+                                ? 'Create DO & assign'
+                                : 'Assign lorry')
+                            ->modalSubmitAction(fn ($action, ConsignmentNote $record) => $record->status === CsnStatus::Cancelled
+                                ? false
+                                : $action)
+                    ),
                 Tables\Columns\TextColumn::make('deliveryOrder.lorry.registration_no')->label('Main lorry'),
                 Tables\Columns\TextColumn::make('subsheets_count')
                     ->counts('subsheets')
@@ -455,6 +480,157 @@ class ConsignmentNoteResource extends Resource
             Forms\Components\Textarea::make('notes')->rows(2),
         ];
     }
+
+    /**
+     * @return array<int, Forms\Components\Component>
+     */
+    public static function deliveryOrdersModalForm(ConsignmentNote $record): array
+    {
+        $hasDos = $record->deliveryOrders()->exists();
+        $readOnly = $record->status === CsnStatus::Cancelled;
+
+        $fields = [];
+
+        if ($hasDos) {
+            $fields[] = Forms\Components\Radio::make('delivery_order_id')
+                ->label('Delivery orders')
+                ->options(fn () => static::deliveryOrderRadioOptions($record))
+                ->descriptions(fn () => static::deliveryOrderRadioDescriptions($record))
+                ->required()
+                ->live()
+                ->disabled($readOnly)
+                ->afterStateUpdated(function (?string $state, Forms\Set $set): void {
+                    if (! $state) {
+                        return;
+                    }
+
+                    $do = DeliveryOrder::query()->with('jobSheet')->find($state);
+                    if (! $do) {
+                        return;
+                    }
+
+                    $set('lorry_id', $do->lorry_id);
+                    $set('driver_id', $do->driver_id);
+                    $set('operating_date', $do->jobSheet?->operating_date ?? now());
+                })
+                ->columnSpanFull();
+        }
+
+        $fields[] = Forms\Components\Group::make(static::doAssignLorryFields())
+            ->visible(fn (Forms\Get $get) => ! $hasDos || filled($get('delivery_order_id')))
+            ->disabled($readOnly)
+            ->columns(2);
+
+        return $fields;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function deliveryOrderRadioOptions(ConsignmentNote $record): array
+    {
+        return static::deliveryOrdersForModal($record)
+            ->mapWithKeys(fn (DeliveryOrder $do) => [
+                (string) $do->id => $do->number,
+            ])
+            ->all();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function deliveryOrderRadioDescriptions(ConsignmentNote $record): array
+    {
+        return static::deliveryOrdersForModal($record)
+            ->mapWithKeys(function (DeliveryOrder $do) {
+                $type = $do->parent_do_id ? 'Subsheet' : 'Main';
+                $lorry = $do->lorry?->registration_no ?? 'No lorry assigned';
+                $driver = $do->driver?->name ?? 'No driver';
+                $status = $do->status instanceof \App\Enums\DeliveryOrderStatus
+                    ? ucfirst(str_replace('_', ' ', $do->status->value))
+                    : (string) $do->status;
+
+                return [
+                    (string) $do->id => "{$type} · {$lorry} · {$driver} · {$status}",
+                ];
+            })
+            ->all();
+    }
+
+    /** @return Collection<int, DeliveryOrder> */
+    public static function deliveryOrdersForModal(ConsignmentNote $record): Collection
+    {
+        return $record->deliveryOrders()
+            ->with(['lorry', 'driver'])
+            ->orderByRaw('parent_do_id is null desc')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * @return array<int, Forms\Components\Component>
+     */
+    public static function doAssignLorryFields(): array
+    {
+        return [
+            Forms\Components\Select::make('lorry_id')
+                ->label('Lorry')
+                ->options(fn () => static::lorryOptions())
+                ->required()
+                ->searchable()
+                ->live()
+                ->afterStateUpdated(function ($state, Forms\Set $set) {
+                    $lorry = Lorry::query()->find($state);
+                    $set('driver_id', $lorry?->default_driver_id);
+                }),
+            Forms\Components\Select::make('driver_id')
+                ->label('Driver')
+                ->options(fn () => static::driverOptions())
+                ->searchable()
+                ->required(),
+            Forms\Components\DatePicker::make('operating_date')->default(now()),
+        ];
+    }
+
+    public static function handleDeliveryOrderModalSubmit(ConsignmentNote $record, array $data): void
+    {
+        try {
+            if ($record->deliveryOrders()->exists()) {
+                $do = DeliveryOrder::query()
+                    ->where('consignment_note_id', $record->id)
+                    ->findOrFail($data['delivery_order_id']);
+
+                $do = app(AssignDeliveryOrderToLorry::class)->execute(
+                    $do,
+                    Lorry::findOrFail($data['lorry_id']),
+                    $data['operating_date'] ?? null,
+                    isset($data['driver_id']) ? (int) $data['driver_id'] : null,
+                );
+
+                Notification::make()
+                    ->title('Lorry assigned — '.$do->number)
+                    ->success()
+                    ->send();
+
+                return;
+            }
+
+            $do = app(AssignCsnToLorry::class)->execute(
+                $record,
+                Lorry::findOrFail($data['lorry_id']),
+                $data['operating_date'] ?? null,
+                isset($data['driver_id']) ? (int) $data['driver_id'] : null,
+            );
+
+            Notification::make()
+                ->title('DO created — '.$do->number)
+                ->success()
+                ->send();
+        } catch (Throwable $e) {
+            Notification::make()->title($e->getMessage())->danger()->send();
+        }
+    }
+
     public static function createSubsheetsForLorries(ConsignmentNote $record, Collection $lorryIds, array $data): int
     {
         $do = $record->deliveryOrder;
@@ -475,7 +651,7 @@ class ConsignmentNoteResource extends Resource
                 continue;
             }
 
-            $already = $do->subsheets()
+            $already = $record->subsheets()
                 ->where('sub_lorry_id', $lorry->id)
                 ->exists();
 

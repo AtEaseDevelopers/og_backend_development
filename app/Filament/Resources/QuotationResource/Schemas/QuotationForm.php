@@ -139,7 +139,17 @@ class QuotationForm
             Forms\Components\Select::make('from_location_id')
                 ->label('FROM')
                 ->options(fn () => static::locationOptions())
-                ->searchable(),
+                ->searchable()
+                ->live()
+                ->afterStateUpdated(function (?string $state, Set $set, Get $get): void {
+                    if ($state) {
+                        return;
+                    }
+
+                    if ($get('needs_additional_task')) {
+                        $set('additional_task_to_location_id', null);
+                    }
+                }),
             Forms\Components\TextInput::make('consignor_brn')
                 ->label('Company Number')
                 ->placeholder('Input to update the company number'),
@@ -168,13 +178,29 @@ class QuotationForm
                 ->label('Consignee')
                 ->placeholder('Please input the company name')
                 ->live(onBlur: true)
-                ->afterStateUpdated(fn (?string $state, Set $set, Get $get) => static::syncConsigneeDestination($state, $set, $get)),
+                ->afterStateUpdated(function (?string $state, Set $set, Get $get): void {
+                    if ($state) {
+                        static::syncConsigneeDestination($state, $set, $get);
+
+                        return;
+                    }
+
+                    $set('history_destination', null);
+                }),
             Forms\Components\Select::make('to_location_id')
                 ->label('TO')
                 ->options(fn () => static::locationOptions())
                 ->searchable()
                 ->live()
-                ->afterStateUpdated(fn (?string $state, Set $set, Get $get) => static::syncToDestination($state, $set, $get)),
+                ->afterStateUpdated(function (?string $state, Set $set, Get $get): void {
+                    if ($state) {
+                        static::syncToDestination($state, $set, $get);
+
+                        return;
+                    }
+
+                    $set('history_destination', null);
+                }),
             Forms\Components\TextInput::make('consignee_brn')
                 ->label('Company Number')
                 ->placeholder('Input to update the company number'),
@@ -255,7 +281,7 @@ class QuotationForm
     {
         return Forms\Components\Section::make('Quotation Details')
             ->collapsible()
-            ->collapsed()
+            ->collapsed(false)
             ->compact()
             ->schema([
                 Forms\Components\TagsInput::make('matrix_columns')
@@ -266,13 +292,17 @@ class QuotationForm
                     ->columnSpanFull(),
                 Forms\Components\Repeater::make('matrix_rows')
                     ->label('Transport charges')
-                    ->helperText('Please find the transportation charges for the following:-')
+                    ->helperText('Select a lorry type or transport item — amounts fill in per destination from master pricing.')
                     ->schema(static::matrixRowSchema())
                     ->defaultItems(1)
                     ->reorderable()
                     ->addActionLabel('Add row')
                     ->columnSpanFull()
                     ->live(),
+                Forms\Components\Placeholder::make('matrix_total_display')
+                    ->label('Quotation amount')
+                    ->content(fn (Get $get): string => 'RM '.number_format(static::matrixTotal($get('matrix_rows') ?? []), 2))
+                    ->columnSpanFull(),
                 Forms\Components\Textarea::make('notes')
                     ->label('Footnotes')
                     ->placeholder("*Minimum charge per point / DO RM 20\n*Minimum charges per pick up RM 60")
@@ -385,6 +415,8 @@ class QuotationForm
     public static function fillConsignorFields(?string $customerId, Set $set): void
     {
         if (! $customerId) {
+            static::clearConsignorFields($set);
+
             return;
         }
 
@@ -417,6 +449,8 @@ class QuotationForm
     public static function fillPickupLocation(?string $addressId, Set $set): void
     {
         if (! $addressId) {
+            $set('pickup_location', null);
+
             return;
         }
 
@@ -436,6 +470,8 @@ class QuotationForm
     public static function fillDropOffLocation(?string $addressId, Set $set): void
     {
         if (! $addressId) {
+            static::clearDropOffLocationFields($set);
+
             return;
         }
 
@@ -454,6 +490,24 @@ class QuotationForm
                 $address->state,
             ])->filter()->implode(', ')));
         }
+    }
+
+    private static function clearConsignorFields(Set $set): void
+    {
+        $set('customer_address', null);
+        $set('consignor_brn', null);
+        $set('attention', null);
+        $set('terms_of_payment', null);
+        $set('from_location_id', null);
+        $set('pickup_location_preset', null);
+        $set('pickup_location', null);
+    }
+
+    private static function clearDropOffLocationFields(Set $set): void
+    {
+        $set('consignee_name', null);
+        $set('consignee_address', null);
+        $set('drop_off_location', null);
     }
 
     public static function syncConsigneeDestination(?string $consigneeName, Set $set, Get $get): void
@@ -524,63 +578,125 @@ class QuotationForm
     {
         return [
             Forms\Components\Grid::make(12)->schema([
+                Forms\Components\Select::make('line_type')
+                    ->label('Type')
+                    ->options([
+                        'lorry' => 'Lorry type',
+                        'item' => 'Transport item',
+                        'uom' => 'UOM',
+                    ])
+                    ->default('lorry')
+                    ->live()
+                    ->columnSpan(['default' => 12, 'md' => 2])
+                    ->afterStateUpdated(function (?string $state, Set $set): void {
+                        $set('catalog_key', null);
+                        $set('item_name', null);
+                        $set('prices', []);
+                    }),
                 Forms\Components\Select::make('catalog_key')
-                    ->label('Master')
-                    ->options(fn () => app(QuotationPricingLookup::class)->catalogOptions())
+                    ->label(fn (Get $get): string => match ($get('line_type')) {
+                        'lorry' => 'Lorry type',
+                        'uom' => 'UOM',
+                        default => 'Transport item',
+                    })
+                    ->options(fn (Get $get) => app(QuotationPricingLookup::class)
+                        ->catalogOptionsForType($get('line_type') ?: 'item'))
                     ->searchable()
-                    ->columnSpan(3)
+                    ->columnSpan(['default' => 12, 'md' => 4])
                     ->live()
                     ->afterStateUpdated(function (?string $state, Set $set, Get $get): void {
-                        if (! $state) {
-                            return;
-                        }
-
-                        $lookup = app(QuotationPricingLookup::class);
-                        $name = $lookup->resolveCatalogName($state);
-
-                        if (! $name) {
-                            return;
-                        }
-
-                        $set('item_name', $name);
-
-                        $columns = $get('../../matrix_columns') ?? ['Seremban', 'Melaka', 'Johor'];
-                        $customerId = $get('../../customer_id') ? (int) $get('../../customer_id') : null;
-                        $prices = [];
-                        $pricingSource = 'default';
-
-                        foreach ($columns as $column) {
-                            $resolved = $lookup->lookupForCustomer($customerId, $name, $column);
-                            $prices[$column] = $resolved['price'];
-
-                            if ($resolved['source'] === 'special') {
-                                $pricingSource = 'special';
-                            } elseif ($resolved['source'] === 'previous' && $pricingSource !== 'special') {
-                                $pricingSource = 'previous';
-                            }
-                        }
-
-                        $set('prices', $prices);
-                        $set('../../pricing_source', collect($prices)->filter(fn ($price) => $price !== null)->isNotEmpty()
-                            ? $pricingSource
-                            : 'manual');
+                        static::applyCatalogSelection($state, $set, $get);
                     }),
                 Forms\Components\TextInput::make('item_name')
-                    ->label('Item')
+                    ->label('Description')
                     ->required()
-                    ->columnSpan(9),
+                    ->columnSpan(['default' => 12, 'md' => 4]),
+                Forms\Components\Placeholder::make('row_amount_display')
+                    ->label('Amount')
+                    ->content(fn (Get $get): string => static::formatRowAmountSummary($get('prices') ?? []))
+                    ->columnSpan(['default' => 12, 'md' => 2]),
             ]),
             Forms\Components\Grid::make(3)
                 ->schema(fn (Get $get): array => static::priceFieldsForColumns(
                     $get('../../matrix_columns') ?? ['Seremban', 'Melaka', 'Johor'],
+                    ($get('line_type') ?? 'item') === 'lorry',
                 )),
         ];
     }
 
+    private static function applyCatalogSelection(?string $state, Set $set, Get $get): void
+    {
+        if (! $state) {
+            $set('item_name', null);
+            $set('prices', []);
+            $set('../../pricing_source', 'default');
+
+            return;
+        }
+
+        $lookup = app(QuotationPricingLookup::class);
+        $name = $lookup->resolveCatalogName($state);
+
+        if (! $name) {
+            return;
+        }
+
+        $set('item_name', $name);
+
+        $columns = $get('../../matrix_columns') ?? ['Seremban', 'Melaka', 'Johor'];
+        $customerId = $get('../../customer_id') ? (int) $get('../../customer_id') : null;
+        $prices = [];
+        $pricingSource = 'default';
+
+        foreach ($columns as $column) {
+            $resolved = $lookup->lookupForCustomer($customerId, $name, $column);
+            $prices[$column] = $resolved['price'];
+
+            if ($resolved['source'] === 'special') {
+                $pricingSource = 'special';
+            } elseif ($resolved['source'] === 'previous' && $pricingSource !== 'special') {
+                $pricingSource = 'previous';
+            }
+        }
+
+        $set('prices', $prices);
+        $set('../../pricing_source', collect($prices)->filter(fn ($price) => $price !== null)->isNotEmpty()
+            ? $pricingSource
+            : 'manual');
+    }
+
+    /** @param  array<string, mixed>  $prices */
+    private static function formatRowAmountSummary(array $prices): string
+    {
+        $filled = collect($prices)->filter(fn ($price) => $price !== null && $price !== '');
+
+        if ($filled->isEmpty()) {
+            return '—';
+        }
+
+        if ($filled->count() === 1) {
+            return 'RM '.number_format((float) $filled->first(), 2);
+        }
+
+        return $filled
+            ->map(fn ($price, $column) => $column.': RM '.number_format((float) $price, 2))
+            ->implode(' · ');
+    }
+
+    /** @param  list<array<string, mixed>>  $rows */
+    private static function matrixTotal(array $rows): float
+    {
+        return round(collect($rows)->sum(function (array $row): float {
+            return collect($row['prices'] ?? [])
+                ->filter(fn ($price) => $price !== null && $price !== '')
+                ->sum(fn ($price) => (float) $price);
+        }), 2);
+    }
+
     /** @param  list<string>  $columns
-     * @return list<Forms\Components\TextInput>
+     * @return list<Forms\Components\Component>
      */
-    private static function priceFieldsForColumns(array $columns): array
+    private static function priceFieldsForColumns(array $columns, bool $readOnlyAmounts = false): array
     {
         $columns = collect($columns)->filter()->values()->all();
 
@@ -589,10 +705,18 @@ class QuotationForm
         }
 
         return collect($columns)->map(
-            fn (string $column) => Forms\Components\TextInput::make('prices.'.$column)
-                ->label($column)
-                ->numeric()
-                ->prefix('RM')
+            function (string $column) use ($readOnlyAmounts) {
+                $field = Forms\Components\TextInput::make('prices.'.$column)
+                    ->label($column)
+                    ->numeric()
+                    ->prefix('RM');
+
+                if ($readOnlyAmounts) {
+                    $field->disabled()->dehydrated();
+                }
+
+                return $field;
+            },
         )->all();
     }
 }

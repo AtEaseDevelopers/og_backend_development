@@ -98,6 +98,85 @@ class QuotationPricingLookup
         return $options;
     }
 
+    /** @return array<string, string> */
+    public function catalogOptionsForType(string $type): array
+    {
+        return match ($type) {
+            'lorry' => CharteredLorry::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get()
+                ->mapWithKeys(fn (CharteredLorry $lorry) => [
+                    'chartered:'.$lorry->id => $lorry->name,
+                ])
+                ->all(),
+            'uom' => Uom::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get()
+                ->mapWithKeys(fn (Uom $uom) => [
+                    'uom:'.$uom->id => $uom->name,
+                ])
+                ->all(),
+            default => Item::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get()
+                ->mapWithKeys(fn (Item $item) => [
+                    'item:'.$item->id => $item->name,
+                ])
+                ->all(),
+        };
+    }
+
+    public function inferLineType(?string $catalogKey, ?string $itemName): string
+    {
+        if ($catalogKey) {
+            return match (explode(':', $catalogKey, 2)[0] ?? '') {
+                'chartered' => 'lorry',
+                'uom' => 'uom',
+                default => 'item',
+            };
+        }
+
+        if ($itemName && CharteredLorry::query()->where('name', $itemName)->exists()) {
+            return 'lorry';
+        }
+
+        if ($itemName && Uom::query()->where('name', $itemName)->exists()) {
+            return 'uom';
+        }
+
+        return 'item';
+    }
+
+    public function resolveCatalogKey(?string $itemName): ?string
+    {
+        if (! $itemName) {
+            return null;
+        }
+
+        $chartered = CharteredLorry::query()->where('name', $itemName)->first();
+
+        if ($chartered) {
+            return 'chartered:'.$chartered->id;
+        }
+
+        $uom = Uom::query()->where('name', $itemName)->first();
+
+        if ($uom) {
+            return 'uom:'.$uom->id;
+        }
+
+        $item = Item::query()->where('name', $itemName)->first();
+
+        if ($item) {
+            return 'item:'.$item->id;
+        }
+
+        return null;
+    }
+
     public function resolveCatalogName(?string $catalogKey): ?string
     {
         if (! $catalogKey) {
