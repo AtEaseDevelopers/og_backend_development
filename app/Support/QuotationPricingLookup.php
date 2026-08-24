@@ -13,6 +13,15 @@ class QuotationPricingLookup
 {
     public function lookupForCustomer(?int $customerId, string $itemName, string $locationName, float $quantity = 1): array
     {
+        if (Uom::query()->where('name', $itemName)->exists()) {
+            $masterPrice = $this->lookup($itemName, $locationName, $quantity);
+
+            return [
+                'price' => $masterPrice,
+                'source' => $masterPrice !== null ? 'master' : null,
+            ];
+        }
+
         $history = app(CustomerQuotationPriceHistory::class);
 
         $specialPrice = $history->resolveSpecialPrice($customerId, $itemName, $locationName);
@@ -191,5 +200,122 @@ class QuotationPricingLookup
             'chartered' => CharteredLorry::query()->find($id)?->name,
             default => null,
         };
+    }
+
+    public function resolveUomCode(?string $catalogKey, ?string $itemName = null): ?string
+    {
+        if ($catalogKey && str_starts_with($catalogKey, 'uom:')) {
+            return Uom::query()->find(explode(':', $catalogKey, 2)[1])?->code;
+        }
+
+        if ($itemName) {
+            return Uom::query()->where('name', $itemName)->value('code');
+        }
+
+        return null;
+    }
+
+    public function matchedUomTier(string $itemName, string $locationName, float $quantity): ?UomRateTier
+    {
+        $locationId = Location::query()->where('name', $locationName)->value('id');
+        $uom = Uom::query()->where('name', $itemName)->first();
+
+        if (! $locationId || ! $uom) {
+            return null;
+        }
+
+        return UomRateTier::query()
+            ->where('uom_id', $uom->id)
+            ->where('location_id', $locationId)
+            ->where('min_qty', '<=', $quantity)
+            ->where(function ($query) use ($quantity) {
+                $query->whereNull('max_qty')->orWhere('max_qty', '>=', $quantity);
+            })
+            ->orderByDesc('min_qty')
+            ->first();
+    }
+
+    public function formatUomTier(UomRateTier $tier, float $quantity): string
+    {
+        $range = $tier->max_qty
+            ? number_format((float) $tier->min_qty, 0).'–'.number_format((float) $tier->max_qty, 0)
+            : number_format((float) $tier->min_qty, 0).'+';
+
+        return "Qty {$range} @ RM ".number_format((float) $tier->price, 2).' each (entered: '.number_format($quantity, 0).')';
+    }
+
+    /** @return list<array{range: string, price: float}> */
+    public function uomTierBreakdown(string $itemName, string $locationName): array
+    {
+        $locationId = Location::query()->where('name', $locationName)->value('id');
+        $uom = Uom::query()->where('name', $itemName)->first();
+
+        if (! $locationId || ! $uom) {
+            return [];
+        }
+
+        return UomRateTier::query()
+            ->where('uom_id', $uom->id)
+            ->where('location_id', $locationId)
+            ->orderBy('min_qty')
+            ->get()
+            ->map(fn (UomRateTier $tier) => [
+                'range' => $tier->max_qty
+                    ? number_format((float) $tier->min_qty, 0).'–'.number_format((float) $tier->max_qty, 0)
+                    : number_format((float) $tier->min_qty, 0).'+',
+                'price' => (float) $tier->price,
+            ])
+            ->all();
+    }
+
+    /**
+     * @param  list<string>  $destinations
+     * @return array{quantity: float, destinations: list<array{name: string, unit_price: ?float, active_range: ?string, line_total: ?float, tiers: list<array{range: string, price: float, active: bool}>}>}
+     */
+    public function uomTierSummary(string $itemName, array $destinations, float $quantity): array
+    {
+        $quantity = max(0.01, $quantity);
+
+        return [
+            'quantity' => $quantity,
+            'destinations' => collect($destinations)
+                ->filter()
+                ->values()
+                ->map(function (string $destination) use ($itemName, $quantity) {
+                    $matched = $this->matchedUomTier($itemName, $destination, $quantity);
+                    $locationId = Location::query()->where('name', $destination)->value('id');
+                    $uom = Uom::query()->where('name', $itemName)->first();
+
+                    $tiers = [];
+
+                    if ($locationId && $uom) {
+                        $tiers = UomRateTier::query()
+                            ->where('uom_id', $uom->id)
+                            ->where('location_id', $locationId)
+                            ->orderBy('min_qty')
+                            ->get()
+                            ->map(fn (UomRateTier $tier) => [
+                                'range' => $tier->max_qty
+                                    ? number_format((float) $tier->min_qty, 0).'–'.number_format((float) $tier->max_qty, 0)
+                                    : number_format((float) $tier->min_qty, 0).'+',
+                                'price' => (float) $tier->price,
+                                'active' => $matched?->id === $tier->id,
+                            ])
+                            ->all();
+                    }
+
+                    $unitPrice = $matched ? (float) $matched->price : null;
+                    $activeRange = collect($tiers)->firstWhere('active', true)['range'] ?? null;
+
+                    return [
+                        'name' => $destination,
+                        'unit_price' => $unitPrice,
+                        'active_range' => $activeRange,
+                        'line_total' => $unitPrice !== null ? round($quantity * $unitPrice, 2) : null,
+                        'tiers' => $tiers,
+                    ];
+                })
+                ->all(),
+        ];
     }
 }

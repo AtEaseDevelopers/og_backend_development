@@ -49,33 +49,38 @@ class QuotationResource extends Resource
                     ->label('Quote ID')
                     ->searchable()
                     ->sortable()
-                    ->weight('medium'),
+                    ->weight('medium')
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('customer.company_name')
                     ->label('Customer Name')
                     ->searchable()
-                    ->sortable(),
+                    ->sortable()
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('salesperson.name')
                     ->label('Salesperson')
                     ->searchable()
                     ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
-                    ->sortable(),
+                    ->sortable()
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('pricing_source')
                     ->label('Pricing')
                     ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('total_amount')
                     ->label('Total Amount (MYR)')
                     ->money('MYR')
-                    ->sortable(),
+                    ->sortable()
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Date')
                     ->date()
-                    ->sortable(),
+                    ->sortable()
+                    ->toggleable(),
             ])
             ->defaultSort('created_at', 'desc')
             ->striped()
-            ->searchPlaceholder('Search ID or customer…')
+            ->searchPlaceholder('Search ID or customer')
             ->filters([
                 Tables\Filters\SelectFilter::make('customer_id')
                     ->label('Customer')
@@ -159,7 +164,14 @@ class QuotationResource extends Resource
                     }),
             ])
             ->filtersFormColumns(3)
-            ->filtersLayout(FiltersLayout::AboveContentCollapsible)
+            ->filtersLayout(FiltersLayout::Dropdown)
+            ->filtersTriggerAction(
+                fn (Tables\Actions\Action $action) => $action
+                    ->icon('heroicon-o-funnel')
+                    ->iconButton()
+                    ->label('')
+                    ->color('gray')
+            )
             ->persistFiltersInSession()
             ->actions([
                 Tables\Actions\ViewAction::make(),
@@ -199,6 +211,7 @@ class QuotationResource extends Resource
                         Notification::make()->title('Quotation confirmed')->success()->send();
                     }),
                 Tables\Actions\Action::make('convert')
+                    ->label('Convert')
                     ->icon('heroicon-o-arrow-path')
                     ->color('warning')
                     ->visible(fn (Quotation $record) => in_array($record->status, [

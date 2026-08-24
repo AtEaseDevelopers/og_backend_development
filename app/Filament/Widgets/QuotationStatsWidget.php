@@ -6,6 +6,7 @@ use App\Domains\Quotation\Models\Quotation;
 use App\Enums\QuotationStatus;
 use App\Support\CurrentCompany;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
+use Filament\Support\Enums\IconPosition;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -14,6 +15,11 @@ class QuotationStatsWidget extends BaseWidget
     protected static ?int $sort = 0;
 
     protected int | string | array $columnSpan = 'full';
+
+    protected function getColumns(): int
+    {
+        return 3;
+    }
 
     protected function getStats(): array
     {
@@ -47,17 +53,17 @@ class QuotationStatsWidget extends BaseWidget
         return [
             Stat::make('Total quotes', (string) number_format($total))
                 ->description('All quotations in the system')
-                ->descriptionIcon('heroicon-m-document-text')
-                ->color('primary'),
+                ->descriptionIcon('heroicon-m-document-text', IconPosition::After)
+                ->color('gray'),
 
             Stat::make('Pending approval', (string) number_format($pendingApproval))
                 ->description('Awaiting branch manager review')
-                ->descriptionIcon('heroicon-m-clock')
+                ->descriptionIcon('heroicon-m-clock', IconPosition::After)
                 ->color('warning'),
 
             Stat::make('Approved this month', (string) number_format($approvedThisMonth))
                 ->description(now()->format('F Y'))
-                ->descriptionIcon('heroicon-m-check-badge')
+                ->descriptionIcon('heroicon-m-check-badge', IconPosition::After)
                 ->color('success'),
         ];
     }

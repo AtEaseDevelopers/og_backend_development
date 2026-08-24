@@ -55,14 +55,26 @@ class ConsignmentNoteResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('number')->searchable()->sortable(),
-                Tables\Columns\TextColumn::make('customer_name')->searchable(),
-                Tables\Columns\TextColumn::make('billing_type')->badge()->formatStateUsing(
-                    fn ($state) => $state instanceof CsnBillingType ? $state->label() : $state
-                ),
-                Tables\Columns\TextColumn::make('status')->badge(),
-                Tables\Columns\TextColumn::make('payment_status')->badge(),
-                Tables\Columns\TextColumn::make('total_amount')->money('MYR'),
+                Tables\Columns\TextColumn::make('number')
+                    ->searchable()
+                    ->sortable()
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('customer_name')
+                    ->searchable()
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('billing_type')
+                    ->badge()
+                    ->formatStateUsing(fn ($state) => $state instanceof CsnBillingType ? $state->label() : $state)
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('status')
+                    ->badge()
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('payment_status')
+                    ->badge()
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('total_amount')
+                    ->money('MYR')
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('delivery_orders_count')
                     ->counts('deliveryOrders')
                     ->label('DO')
@@ -70,6 +82,7 @@ class ConsignmentNoteResource extends Resource
                     ->badge()
                     ->color(fn ($state) => ($state ?? 0) > 0 ? 'primary' : 'gray')
                     ->tooltip('View delivery orders')
+                    ->toggleable()
                     ->action(
                         Tables\Actions\Action::make('manageDeliveryOrders')
                             ->modalHeading(fn (ConsignmentNote $record) => 'Delivery orders — '.$record->number)
@@ -86,14 +99,17 @@ class ConsignmentNoteResource extends Resource
                                 ? false
                                 : $action)
                     ),
-                Tables\Columns\TextColumn::make('deliveryOrder.lorry.registration_no')->label('Main lorry'),
+                Tables\Columns\TextColumn::make('deliveryOrder.lorry.registration_no')
+                    ->label('Main lorry')
+                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('subsheets_count')
                     ->counts('subsheets')
-                    ->label('Subsheets'),
+                    ->label('Subsheets')
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->defaultSort('created_at', 'desc')
             ->striped()
-            ->searchPlaceholder('Search CSN no. or customer…')
+            ->searchPlaceholder('Search CSN no. or customer')
             ->filters([
                 Tables\Filters\SelectFilter::make('customer_id')
                     ->label('Customer')
@@ -225,7 +241,14 @@ class ConsignmentNoteResource extends Resource
                     }),
             ])
             ->filtersFormColumns(3)
-            ->filtersLayout(FiltersLayout::AboveContentCollapsible)
+            ->filtersLayout(FiltersLayout::Dropdown)
+            ->filtersTriggerAction(
+                fn (Tables\Actions\Action $action) => $action
+                    ->icon('heroicon-o-funnel')
+                    ->iconButton()
+                    ->label('')
+                    ->color('gray')
+            )
             ->persistFiltersInSession()
             ->actions([
                 Tables\Actions\ViewAction::make(),
@@ -283,6 +306,9 @@ class ConsignmentNoteResource extends Resource
                     ->visible(fn (ConsignmentNote $record) => ! $record->deliveryOrder()->exists()
                         && $record->status !== CsnStatus::Cancelled
                         && $record->canAssignToLorry())
+                    ->modalHeading('Assign to Lorry')
+                    ->modalSubmitActionLabel('Submit')
+                    ->modalCancelActionLabel('Cancel')
                     ->form(fn () => static::assignLorryFormSchema())
                     ->action(function (ConsignmentNote $record, array $data) {
                         try {
@@ -386,31 +412,63 @@ class ConsignmentNoteResource extends Resource
     public static function assignLorryFormSchema(): array
     {
         return [
-            Forms\Components\Select::make('lorry_id')
-                ->label('Main lorry')
-                ->options(fn () => static::lorryOptions())
-                ->required()
-                ->searchable()
-                ->live()
-                ->afterStateUpdated(function ($state, Forms\Set $set) {
-                    $lorry = Lorry::query()->find($state);
-                    $set('driver_id', $lorry?->default_driver_id);
-                }),
-            Forms\Components\Select::make('driver_id')
-                ->label('Driver')
-                ->options(fn () => static::driverOptions())
-                ->searchable()
-                ->required(),
-            Forms\Components\Select::make('sub_lorry_ids')
-                ->label('Additional lorries (subsheets)')
-                ->helperText('Optional. Each selected lorry creates a subsheet under this CSN.')
-                ->options(fn (Forms\Get $get) => static::lorryOptions(
-                    excludeIds: array_filter([(int) $get('lorry_id')])
-                ))
-                ->multiple()
-                ->searchable(),
-            Forms\Components\DatePicker::make('operating_date')->default(now()),
-            ...static::subsheetOptionFields(),
+            Forms\Components\Group::make([
+                Forms\Components\Select::make('lorry_id')
+                    ->label('Main lorry')
+                    ->placeholder('Select Main lorry')
+                    ->options(fn () => static::lorryOptions())
+                    ->required()
+                    ->searchable()
+                    ->live()
+                    ->afterStateUpdated(function ($state, Forms\Set $set) {
+                        $lorry = Lorry::query()->find($state);
+                        $set('driver_id', $lorry?->default_driver_id);
+                    }),
+                Forms\Components\Select::make('driver_id')
+                    ->label('Driver')
+                    ->placeholder('Select Driver')
+                    ->options(fn () => static::driverOptions())
+                    ->searchable()
+                    ->required(),
+                Forms\Components\Select::make('sub_lorry_ids')
+                    ->label('Additional lorries (subsheets)')
+                    ->placeholder('Select Additional lorries')
+                    ->helperText('Optional. Each selected lorry creates a subsheet under this CSN.')
+                    ->options(fn (Forms\Get $get) => static::lorryOptions(
+                        excludeIds: array_filter([(int) $get('lorry_id')])
+                    ))
+                    ->multiple()
+                    ->searchable()
+                    ->columnSpanFull(),
+                Forms\Components\DatePicker::make('operating_date')
+                    ->label('Operating date')
+                    ->default(now()),
+                Forms\Components\Select::make('transfer_code')
+                    ->label('Transfer code')
+                    ->placeholder('Select Transfer code')
+                    ->options(fn () => TransferCode::query()
+                        ->where('is_active', true)
+                        ->pluck('name', 'code'))
+                    ->searchable()
+                    ->nullable(),
+                Forms\Components\Select::make('task_type')
+                    ->label('Task type')
+                    ->options([
+                        'incoming_psi' => 'Incoming pickup (bring goods to hub)',
+                        'transfer' => 'Transfer / handover leg',
+                    ])
+                    ->default('incoming_psi')
+                    ->required(),
+                Forms\Components\TextInput::make('segment_route')
+                    ->label('Pickup route')
+                    ->placeholder('Enter Pickup route')
+                    ->maxLength(120),
+                Forms\Components\Textarea::make('notes')
+                    ->label('Notes')
+                    ->placeholder('Enter any additional notes...')
+                    ->rows(3)
+                    ->columnSpanFull(),
+            ])->columns(2),
         ];
     }
 
@@ -586,9 +644,9 @@ class ConsignmentNoteResource extends Resource
     /**
      * @return array<int, Forms\Components\Component>
      */
-    public static function subsheetOptionFields(): array
+    public static function subsheetOptionFields(bool $includeAmounts = false): array
     {
-        return [
+        $fields = [
             Forms\Components\Select::make('transfer_code')
                 ->label('Transfer code')
                 ->options(fn () => TransferCode::query()
@@ -607,10 +665,16 @@ class ConsignmentNoteResource extends Resource
             Forms\Components\TextInput::make('segment_route')
                 ->label('Pickup route')
                 ->maxLength(120),
-            Forms\Components\TextInput::make('psi_amount')->numeric()->default(0)->prefix('RM'),
-            Forms\Components\TextInput::make('pso_amount')->numeric()->default(0)->prefix('RM'),
-            Forms\Components\Textarea::make('notes')->rows(2),
         ];
+
+        if ($includeAmounts) {
+            $fields[] = Forms\Components\TextInput::make('psi_amount')->numeric()->default(0)->prefix('RM');
+            $fields[] = Forms\Components\TextInput::make('pso_amount')->numeric()->default(0)->prefix('RM');
+        }
+
+        $fields[] = Forms\Components\Textarea::make('notes')->rows(2);
+
+        return $fields;
     }
 
     /**

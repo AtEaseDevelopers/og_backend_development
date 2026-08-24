@@ -4,8 +4,11 @@ namespace App\Filament\Resources\QuotationResource\Pages;
 
 use App\Domains\Quotation\Models\Quotation;
 use App\Filament\Resources\QuotationResource;
+use App\Support\QuotationViewData;
 use Filament\Actions;
 use Filament\Facades\Filament;
+use Filament\Infolists;
+use Filament\Infolists\Infolist;
 use Filament\Resources\Pages\ViewRecord;
 
 class ViewQuotation extends ViewRecord
@@ -28,5 +31,17 @@ class ViewQuotation extends ViewRecord
                 ->openUrlInNewTab(),
             Actions\EditAction::make(),
         ];
+    }
+
+    public function infolist(Infolist $infolist): Infolist
+    {
+        return $infolist
+            ->schema([
+                Infolists\Components\ViewEntry::make('quotation_view')
+                    ->hiddenLabel()
+                    ->view('filament.infolists.quotation-view')
+                    ->viewData(fn (Quotation $record): array => app(QuotationViewData::class)->for($record)),
+            ])
+            ->columns(1);
     }
 }

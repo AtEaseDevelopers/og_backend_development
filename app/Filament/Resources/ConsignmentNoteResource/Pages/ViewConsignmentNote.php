@@ -5,7 +5,10 @@ namespace App\Filament\Resources\ConsignmentNoteResource\Pages;
 use App\Domains\Consignment\Models\ConsignmentNote;
 use App\Enums\CsnStatus;
 use App\Filament\Resources\ConsignmentNoteResource;
+use App\Support\CsnViewData;
 use Filament\Actions;
+use Filament\Infolists;
+use Filament\Infolists\Infolist;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
 use Throwable;
@@ -13,6 +16,11 @@ use Throwable;
 class ViewConsignmentNote extends ViewRecord
 {
     protected static string $resource = ConsignmentNoteResource::class;
+
+    public function getRelationManagers(): array
+    {
+        return [];
+    }
 
     protected function getHeaderActions(): array
     {
@@ -24,6 +32,9 @@ class ViewConsignmentNote extends ViewRecord
             Actions\Action::make('assignLorry')
                 ->label('Assign to Lorry')
                 ->icon('heroicon-o-truck')
+                ->modalHeading('Assign to Lorry')
+                ->modalSubmitActionLabel('Submit')
+                ->modalCancelActionLabel('Cancel')
                 ->visible(fn () => ! $record->deliveryOrder()->exists()
                     && $record->status !== CsnStatus::Cancelled
                     && $record->canAssignToLorry())
@@ -69,5 +80,17 @@ class ViewConsignmentNote extends ViewRecord
                     }
                 }),
         ];
+    }
+
+    public function infolist(Infolist $infolist): Infolist
+    {
+        return $infolist
+            ->schema([
+                Infolists\Components\ViewEntry::make('consignment_note_view')
+                    ->hiddenLabel()
+                    ->view('filament.infolists.consignment-note-view')
+                    ->viewData(fn (ConsignmentNote $record): array => app(CsnViewData::class)->for($record)),
+            ])
+            ->columns(1);
     }
 }

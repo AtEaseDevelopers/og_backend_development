@@ -7,7 +7,7 @@ use App\Domains\Quotation\Models\Quotation;
 class QuotationMatrix
 {
     /**
-     * @return array{matrix_columns: list<string>, matrix_rows: list<array{item_name: string, catalog_key: ?string, prices: array<string, float|null>}>}
+     * @return array{matrix_columns: list<string>, matrix_rows: list<array{item_name: string, catalog_key: ?string, line_type: string, quantity: float, prices: array<string, float|null>}>}
      */
     public function toFormState(Quotation $quotation): array
     {
@@ -28,12 +28,14 @@ class QuotationMatrix
             $rowKey = $line->item_name;
             $lookup = app(QuotationPricingLookup::class);
             $catalogKey = $lookup->resolveCatalogKey($line->item_name);
+            $lineType = $lookup->inferLineType($catalogKey, $line->item_name);
 
             if (! isset($rows[$rowKey])) {
                 $rows[$rowKey] = [
-                    'line_type' => $lookup->inferLineType($catalogKey, $line->item_name),
+                    'line_type' => $lineType,
                     'item_name' => $line->item_name,
                     'catalog_key' => $catalogKey,
+                    'quantity' => (float) ($line->quantity ?: 1),
                     'prices' => array_fill_keys($columns, null),
                 ];
             }
@@ -51,7 +53,7 @@ class QuotationMatrix
 
     /**
      * @param  list<string>  $columns
-     * @param  list<array{item_name: string, prices: array<string, mixed>}>  $rows
+     * @param  list<array{item_name: string, line_type?: string, quantity?: mixed, prices: array<string, mixed>}>  $rows
      */
     public function sync(Quotation $quotation, array $columns, array $rows): void
     {
@@ -76,6 +78,7 @@ class QuotationMatrix
             ]);
         }
 
+        $lookup = app(QuotationPricingLookup::class);
         $subtotal = 0;
 
         foreach ($rows as $row) {
@@ -85,6 +88,14 @@ class QuotationMatrix
                 continue;
             }
 
+            $lineType = $row['line_type'] ?? $lookup->inferLineType($row['catalog_key'] ?? null, $itemName);
+            $quantity = $lineType === 'uom'
+                ? max(0.01, (float) ($row['quantity'] ?? 1))
+                : 1.0;
+            $uom = $lineType === 'uom'
+                ? $lookup->resolveUomCode($row['catalog_key'] ?? null, $itemName)
+                : null;
+
             foreach ($columns as $column) {
                 $price = $row['prices'][$column] ?? null;
 
@@ -92,15 +103,17 @@ class QuotationMatrix
                     continue;
                 }
 
-                $price = round((float) $price, 2);
-                $subtotal += $price;
+                $unitPrice = round((float) $price, 2);
+                $lineTotal = round($quantity * $unitPrice, 2);
+                $subtotal += $lineTotal;
 
                 $quotation->lines()->create([
                     'quotation_destination_id' => $destinations[$column]->id,
                     'item_name' => $itemName,
-                    'quantity' => 1,
-                    'unit_price' => $price,
-                    'line_total' => $price,
+                    'uom' => $uom,
+                    'quantity' => $quantity,
+                    'unit_price' => $unitPrice,
+                    'line_total' => $lineTotal,
                 ]);
             }
         }
@@ -113,7 +126,7 @@ class QuotationMatrix
 
     /**
      * @param  list<string>  $columns
-     * @param  list<array{item_name: string, prices: array<string, mixed>}>  $rows
+     * @param  list<array{item_name: string, line_type?: string, quantity?: mixed, prices: array<string, mixed>}>  $rows
      * @return array{destinations: list<string>, rows: list<array{label: string, sub: ?string, prices: list<mixed>}>}
      */
     public function preview(array $columns, array $rows): array
@@ -133,15 +146,33 @@ class QuotationMatrix
                 continue;
             }
 
+            $lineType = $row['line_type'] ?? 'item';
+            $quantity = $lineType === 'uom' ? max(0.01, (float) ($row['quantity'] ?? 1)) : 1.0;
             $prices = [];
 
             foreach ($columns as $column) {
-                $prices[] = filled($row['prices'][$column] ?? null) ? $row['prices'][$column] : null;
+                $unitPrice = $row['prices'][$column] ?? null;
+
+                if (! filled($unitPrice)) {
+                    $prices[] = null;
+
+                    continue;
+                }
+
+                $prices[] = $lineType === 'uom' && $quantity !== 1.0
+                    ? round((float) $unitPrice * $quantity, 2)
+                    : $unitPrice;
+            }
+
+            $sub = null;
+
+            if ($lineType === 'uom' && $quantity !== 1.0) {
+                $sub = 'Qty '.number_format($quantity, 0).' @ range tier rate';
             }
 
             $matrixRows[] = [
                 'label' => $label,
-                'sub' => null,
+                'sub' => $sub,
                 'prices' => $prices,
             ];
         }

@@ -91,6 +91,14 @@ class AdminPanelProvider extends PanelProvider
                 PanelsRenderHook::HEAD_END,
                 fn (): \Illuminate\Contracts\View\View => view('filament.hooks.quotation-theme'),
             )
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): \Illuminate\Contracts\View\View => view('filament.hooks.consignment-note-theme'),
+            )
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): \Illuminate\Contracts\View\View => view('filament.hooks.job-sheet-theme'),
+            )
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,

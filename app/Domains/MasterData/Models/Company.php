@@ -2,6 +2,8 @@
 
 namespace App\Domains\MasterData\Models;
 
+use App\Domains\Consignment\Models\ConsignmentNote;
+use App\Domains\Dispatch\Models\JobSheet;
 use App\Domains\Quotation\Models\Quotation;
 use App\Models\User;
 use Filament\Models\Contracts\HasName;
@@ -63,5 +65,15 @@ class Company extends Model implements HasName
     public function quotations(): HasMany
     {
         return $this->hasMany(Quotation::class);
+    }
+
+    public function consignmentNotes(): HasMany
+    {
+        return $this->hasMany(ConsignmentNote::class);
+    }
+
+    public function jobSheets(): HasMany
+    {
+        return $this->hasMany(JobSheet::class);
     }
 }

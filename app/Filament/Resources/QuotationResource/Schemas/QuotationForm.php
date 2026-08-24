@@ -292,7 +292,7 @@ class QuotationForm
                     ->columnSpanFull(),
                 Forms\Components\Repeater::make('matrix_rows')
                     ->label('Transport charges')
-                    ->helperText('Select a lorry type or transport item — amounts fill in per destination from master pricing.')
+                    ->helperText('Select lorry, item, or UOM — UOM rows use qty-based range tiers from master pricing (e.g. 1, 2–9, 10–19, 20+).')
                     ->schema(static::matrixRowSchema())
                     ->defaultItems(1)
                     ->reorderable()
@@ -591,6 +591,7 @@ class QuotationForm
                     ->afterStateUpdated(function (?string $state, Set $set): void {
                         $set('catalog_key', null);
                         $set('item_name', null);
+                        $set('quantity', 1);
                         $set('prices', []);
                     }),
                 Forms\Components\Select::make('catalog_key')
@@ -602,24 +603,49 @@ class QuotationForm
                     ->options(fn (Get $get) => app(QuotationPricingLookup::class)
                         ->catalogOptionsForType($get('line_type') ?: 'item'))
                     ->searchable()
-                    ->columnSpan(['default' => 12, 'md' => 4])
+                    ->columnSpan(['default' => 12, 'md' => fn (Get $get): int => ($get('line_type') ?? '') === 'uom' ? 3 : 4])
                     ->live()
                     ->afterStateUpdated(function (?string $state, Set $set, Get $get): void {
                         static::applyCatalogSelection($state, $set, $get);
                     }),
+                Forms\Components\TextInput::make('quantity')
+                    ->label('Qty')
+                    ->numeric()
+                    ->minValue(0.01)
+                    ->default(1)
+                    ->live(debounce: 400)
+                    ->visible(fn (Get $get): bool => ($get('line_type') ?? '') === 'uom')
+                    ->helperText('Unit rate changes by qty tier (e.g. 1–9 vs 10+).')
+                    ->columnSpan(['default' => 12, 'md' => 2])
+                    ->afterStateUpdated(function ($state, Set $set, Get $get): void {
+                        static::refreshUomRowPrices($set, $get, max(0.01, (float) ($state ?? 1)));
+                    }),
                 Forms\Components\TextInput::make('item_name')
                     ->label('Description')
                     ->required()
-                    ->columnSpan(['default' => 12, 'md' => 4]),
+                    ->columnSpan(['default' => 12, 'md' => fn (Get $get): int => ($get('line_type') ?? '') === 'uom' ? 3 : 4]),
                 Forms\Components\Placeholder::make('row_amount_display')
-                    ->label('Amount')
-                    ->content(fn (Get $get): string => static::formatRowAmountSummary($get('prices') ?? []))
+                    ->label('Line total')
+                    ->content(fn (Get $get): string => static::formatRowAmountSummary(
+                        $get('prices') ?? [],
+                        ($get('line_type') ?? '') === 'uom' ? (float) ($get('quantity') ?? 1) : 1.0,
+                        ($get('line_type') ?? '') === 'uom',
+                    ))
                     ->columnSpan(['default' => 12, 'md' => 2]),
             ]),
+            Forms\Components\ViewField::make('uom_tier_hint')
+                ->hiddenLabel()
+                ->view('filament.forms.quotation-uom-tier-hint')
+                ->viewData(fn (Get $get): array => [
+                    'summary' => static::uomTierHintData($get),
+                ])
+                ->visible(fn (Get $get): bool => ($get('line_type') ?? '') === 'uom' && filled($get('catalog_key')))
+                ->columnSpanFull(),
             Forms\Components\Grid::make(3)
                 ->schema(fn (Get $get): array => static::priceFieldsForColumns(
                     $get('../../matrix_columns') ?? ['Seremban', 'Melaka', 'Johor'],
                     ($get('line_type') ?? 'item') === 'lorry',
+                    ($get('line_type') ?? 'item') === 'uom',
                 )),
         ];
     }
@@ -628,6 +654,7 @@ class QuotationForm
     {
         if (! $state) {
             $set('item_name', null);
+            $set('quantity', 1);
             $set('prices', []);
             $set('../../pricing_source', 'default');
 
@@ -643,13 +670,41 @@ class QuotationForm
 
         $set('item_name', $name);
 
+        if (($get('line_type') ?? '') !== 'uom') {
+            $set('quantity', 1);
+        }
+
+        static::refreshRowPrices($set, $get, $name);
+    }
+
+    private static function refreshUomRowPrices(Set $set, Get $get, ?float $quantityOverride = null): void
+    {
+        if (($get('line_type') ?? '') !== 'uom') {
+            return;
+        }
+
+        $name = $get('item_name');
+
+        if (! $name) {
+            return;
+        }
+
+        static::refreshRowPrices($set, $get, $name, $quantityOverride);
+    }
+
+    private static function refreshRowPrices(Set $set, Get $get, string $name, ?float $quantityOverride = null): void
+    {
+        $lookup = app(QuotationPricingLookup::class);
         $columns = $get('../../matrix_columns') ?? ['Seremban', 'Melaka', 'Johor'];
         $customerId = $get('../../customer_id') ? (int) $get('../../customer_id') : null;
+        $quantity = ($get('line_type') ?? '') === 'uom'
+            ? ($quantityOverride ?? max(0.01, (float) ($get('quantity') ?? 1)))
+            : 1.0;
         $prices = [];
         $pricingSource = 'default';
 
         foreach ($columns as $column) {
-            $resolved = $lookup->lookupForCustomer($customerId, $name, $column);
+            $resolved = $lookup->lookupForCustomer($customerId, $name, $column, $quantity);
             $prices[$column] = $resolved['price'];
 
             if ($resolved['source'] === 'special') {
@@ -665,8 +720,23 @@ class QuotationForm
             : 'manual');
     }
 
+    /** @return array{quantity: float, destinations: list<array<string, mixed>>} */
+    private static function uomTierHintData(Get $get): array
+    {
+        $name = $get('item_name');
+
+        if (! $name) {
+            return ['quantity' => 1, 'destinations' => []];
+        }
+
+        $columns = $get('../../matrix_columns') ?? ['Seremban', 'Melaka', 'Johor'];
+        $quantity = max(0.01, (float) ($get('quantity') ?? 1));
+
+        return app(QuotationPricingLookup::class)->uomTierSummary($name, $columns, $quantity);
+    }
+
     /** @param  array<string, mixed>  $prices */
-    private static function formatRowAmountSummary(array $prices): string
+    private static function formatRowAmountSummary(array $prices, float $quantity = 1, bool $isUom = false): string
     {
         $filled = collect($prices)->filter(fn ($price) => $price !== null && $price !== '');
 
@@ -674,12 +744,25 @@ class QuotationForm
             return '—';
         }
 
-        if ($filled->count() === 1) {
-            return 'RM '.number_format((float) $filled->first(), 2);
+        $totals = $filled->map(fn ($price) => round((float) $price * ($isUom ? $quantity : 1), 2));
+
+        if ($totals->count() === 1) {
+            $total = $totals->first();
+            $unit = (float) $filled->first();
+
+            if ($isUom && $quantity !== 1.0) {
+                return 'RM '.number_format((float) $total, 2).' ('.number_format($quantity, 0).' × RM '.number_format($unit, 2).')';
+            }
+
+            return 'RM '.number_format((float) $total, 2);
         }
 
         return $filled
-            ->map(fn ($price, $column) => $column.': RM '.number_format((float) $price, 2))
+            ->map(function ($price, $column) use ($quantity, $isUom) {
+                $total = round((float) $price * ($isUom ? $quantity : 1), 2);
+
+                return $column.': RM '.number_format($total, 2);
+            })
             ->implode(' · ');
     }
 
@@ -687,16 +770,19 @@ class QuotationForm
     private static function matrixTotal(array $rows): float
     {
         return round(collect($rows)->sum(function (array $row): float {
+            $isUom = ($row['line_type'] ?? '') === 'uom';
+            $quantity = $isUom ? max(0.01, (float) ($row['quantity'] ?? 1)) : 1.0;
+
             return collect($row['prices'] ?? [])
                 ->filter(fn ($price) => $price !== null && $price !== '')
-                ->sum(fn ($price) => (float) $price);
+                ->sum(fn ($price) => round((float) $price * $quantity, 2));
         }), 2);
     }
 
     /** @param  list<string>  $columns
      * @return list<Forms\Components\Component>
      */
-    private static function priceFieldsForColumns(array $columns, bool $readOnlyAmounts = false): array
+    private static function priceFieldsForColumns(array $columns, bool $readOnlyAmounts = false, bool $isUom = false): array
     {
         $columns = collect($columns)->filter()->values()->all();
 
@@ -705,13 +791,13 @@ class QuotationForm
         }
 
         return collect($columns)->map(
-            function (string $column) use ($readOnlyAmounts) {
+            function (string $column) use ($readOnlyAmounts, $isUom) {
                 $field = Forms\Components\TextInput::make('prices.'.$column)
-                    ->label($column)
+                    ->label($isUom ? "{$column} (unit)" : $column)
                     ->numeric()
                     ->prefix('RM');
 
-                if ($readOnlyAmounts) {
+                if ($readOnlyAmounts || $isUom) {
                     $field->disabled()->dehydrated();
                 }
 

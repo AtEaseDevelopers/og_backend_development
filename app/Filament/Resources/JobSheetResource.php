@@ -9,6 +9,7 @@ use App\Domains\MasterData\Models\Lorry;
 use App\Enums\DeliveryOrderStatus;
 use App\Enums\JobSheetStatus;
 use App\Filament\Resources\JobSheetResource\Pages;
+use App\Filament\Resources\JobSheetResource\Pages\ListJobSheets;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Infolists;
@@ -17,6 +18,7 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Livewire\Livewire;
 use Throwable;
 
 class JobSheetResource extends Resource
@@ -31,6 +33,12 @@ class JobSheetResource extends Resource
     protected static ?string $navigationGroup = 'Operations';
 
     protected static ?int $navigationSort = 4;
+
+    protected static ?string $navigationLabel = 'Job Sheet Management';
+
+    protected static ?string $modelLabel = 'Job Sheet';
+
+    protected static ?string $pluralModelLabel = 'Job Sheets';
 
     public static function form(Form $form): Form
     {
@@ -76,19 +84,47 @@ class JobSheetResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('number')->searchable()->sortable(),
-                Tables\Columns\TextColumn::make('operating_date')->date()->sortable(),
-                Tables\Columns\TextColumn::make('operatingBranch.name')->label('Branch'),
-                Tables\Columns\TextColumn::make('lorry.registration_no')->label('Lorry'),
-                Tables\Columns\TextColumn::make('driver.name'),
-                Tables\Columns\TextColumn::make('status')->badge(),
-                Tables\Columns\IconColumn::make('is_shared_dispatch')->boolean()->label('Shared'),
-                Tables\Columns\TextColumn::make('deliveryOrders_count')->counts('deliveryOrders')->label('Tasks'),
+                Tables\Columns\TextColumn::make('number')
+                    ->label('Job Sheet Number')
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('operating_date')
+                    ->label('Operating Date')
+                    ->date('d/m/Y')
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('operatingBranch.name')
+                    ->label('Operating Branch'),
+                Tables\Columns\TextColumn::make('lorry.registration_no')
+                    ->label('Lorry'),
+                Tables\Columns\TextColumn::make('driver.name')
+                    ->label('Driver'),
+                Tables\Columns\TextColumn::make('deliveryOrders_count')
+                    ->counts('deliveryOrders')
+                    ->label('Task Count'),
+                Tables\Columns\TextColumn::make('status')
+                    ->label('Status')
+                    ->badge(),
             ])
             ->actions([
-                Tables\Actions\ViewAction::make(),
+                Tables\Actions\Action::make('viewDetails')
+                    ->label('View Details')
+                    ->visible(fn (): bool => ! Livewire::current() instanceof ListJobSheets)
+                    ->action(function (JobSheet $record): void {
+                        $livewire = Livewire::current();
+
+                        if ($livewire instanceof ListJobSheets) {
+                            $livewire->selectJobSheet($record->id);
+
+                            return;
+                        }
+
+                        redirect(static::getUrl('view', ['record' => $record]));
+                    }),
                 Tables\Actions\EditAction::make()
                     ->visible(fn (JobSheet $record) => $record->status === JobSheetStatus::Draft),
+                Tables\Actions\Action::make('viewLog')
+                    ->label('View Log')
+                    ->icon('heroicon-o-clipboard-document-list')
+                    ->url(fn (JobSheet $record): string => static::getUrl('audit-log', ['record' => $record])),
                 Tables\Actions\Action::make('transfer_task')
                     ->label('Transfer task')
                     ->icon('heroicon-o-arrows-right-left')
@@ -189,6 +225,7 @@ class JobSheetResource extends Resource
         return [
             'index' => Pages\ListJobSheets::route('/'),
             'view' => Pages\ViewJobSheet::route('/{record}'),
+            'audit-log' => Pages\ViewJobSheetAuditLog::route('/{record}/audit-log'),
             'edit' => Pages\EditJobSheet::route('/{record}/edit'),
         ];
     }
