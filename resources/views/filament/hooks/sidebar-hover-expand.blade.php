@@ -12,6 +12,8 @@
             overflow: hidden !important;
             flex-shrink: 0 !important;
             z-index: 20 !important;
+            display: flex !important;
+            flex-direction: column !important;
         }
 
         body.fi-panel-admin .fi-main-ctn {
@@ -20,32 +22,29 @@
             min-width: 0 !important;
         }
 
-        body.fi-panel-admin .fi-main-sidebar > div,
-        body.fi-panel-admin .fi-main-sidebar .fi-sidebar-nav {
+        body.fi-panel-admin .fi-main-sidebar > div:first-child {
+            flex-shrink: 0;
             overflow: hidden !important;
         }
 
-        /* Collapsed: hide all text regardless of Alpine / fi-sidebar-open state. */
+        body.fi-panel-admin .fi-main-sidebar .fi-sidebar-nav {
+            flex: 1 1 auto !important;
+            min-height: 0 !important;
+            overflow-x: hidden !important;
+            overflow-y: auto !important;
+        }
+
+        /* Collapsed: hide nav text, keep logo visible. */
         body.fi-panel-admin .fi-main-sidebar:not(.sidebar-hover-expanded) .fi-sidebar-item-label,
         body.fi-panel-admin .fi-main-sidebar:not(.sidebar-hover-expanded) .fi-sidebar-group-label,
         body.fi-panel-admin .fi-main-sidebar:not(.sidebar-hover-expanded) .fi-sidebar-group-button,
         body.fi-panel-admin .fi-main-sidebar:not(.sidebar-hover-expanded) .fi-sidebar-group-collapse-button,
-        body.fi-panel-admin .fi-main-sidebar:not(.sidebar-hover-expanded) .fi-sidebar-header > div:first-child,
         body.fi-panel-admin .fi-main-sidebar:not(.sidebar-hover-expanded) .fi-sidebar-item-button .fi-badge {
             display: none !important;
         }
 
-        body.fi-panel-admin .fi-main-sidebar:not(.sidebar-hover-expanded) .fi-sidebar-header {
-            justify-content: center;
-            padding-inline: 0.5rem;
-        }
-
         body.fi-panel-admin .fi-main-sidebar:not(.sidebar-hover-expanded) .fi-sidebar-nav {
             padding-inline: 0.75rem;
-        }
-
-        body.fi-panel-admin .fi-sidebar-header .fi-icon-btn {
-            display: none !important;
         }
 
         /* Expanded on hover: grow within flex layout and push main content. */
@@ -68,7 +67,11 @@
                 4px 0 12px -2px rgb(0 0 0 / 0.35);
         }
 
-        body.fi-panel-admin .fi-main-sidebar.sidebar-hover-expanded > div,
+        body.fi-panel-admin .fi-main-sidebar.sidebar-hover-expanded > div:first-child {
+            flex-shrink: 0;
+            overflow: hidden !important;
+        }
+
         body.fi-panel-admin .fi-main-sidebar.sidebar-hover-expanded .fi-sidebar-nav {
             overflow-x: hidden !important;
             overflow-y: auto !important;
@@ -82,8 +85,7 @@
             display: flex !important;
         }
 
-        body.fi-panel-admin .fi-main-sidebar.sidebar-hover-expanded .fi-sidebar-group-collapse-button,
-        body.fi-panel-admin .fi-main-sidebar.sidebar-hover-expanded .fi-sidebar-header > div:first-child {
+        body.fi-panel-admin .fi-main-sidebar.sidebar-hover-expanded .fi-sidebar-group-collapse-button {
             display: inline-flex !important;
         }
 
@@ -104,9 +106,9 @@
             return window.matchMedia('(min-width: 1024px)').matches
         }
 
-        function collapseAlpineSidebar() {
+        function keepSidebarOpenOnDesktop() {
             if (window.Alpine && isDesktop()) {
-                window.Alpine.store('sidebar').close()
+                window.Alpine.store('sidebar').open()
             }
         }
 
@@ -132,21 +134,21 @@
                 sidebar.classList.remove('sidebar-hover-expanded')
 
                 if (isDesktop()) {
-                    window.Alpine?.store('sidebar').close()
+                    keepSidebarOpenOnDesktop()
                 }
             })
 
-            collapseAlpineSidebar()
+            keepSidebarOpenOnDesktop()
         }
 
         document.addEventListener('alpine:initialized', () => {
-            collapseAlpineSidebar()
+            keepSidebarOpenOnDesktop()
             bindSidebarHover()
         })
 
         document.addEventListener('livewire:navigated', () => {
             bindSidebarHover()
-            collapseAlpineSidebar()
+            keepSidebarOpenOnDesktop()
         })
 
         if (document.readyState !== 'loading') {
@@ -164,7 +166,7 @@
 
             if (event.matches) {
                 sidebar.classList.remove('sidebar-hover-expanded')
-                collapseAlpineSidebar()
+                keepSidebarOpenOnDesktop()
             } else {
                 window.Alpine?.store('sidebar').open()
             }

@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>@yield('title', 'Customer Portal') — O&G Transport</title>
+    <link rel="icon" href="{{ asset('images/logo-og-circle.png') }}" type="image/png">
     <style>
         :root {
             --ink: #1c1917;
@@ -15,8 +16,10 @@
         body { margin: 0; font-family: "Segoe UI", "Helvetica Neue", sans-serif; background: linear-gradient(160deg, #fff7ed 0%, #fafaf9 45%, #e7e5e4 100%); color: var(--ink); min-height: 100vh; }
         .wrap { max-width: 960px; margin: 0 auto; padding: 1.5rem; }
         header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
-        .brand { font-size: 1.4rem; font-weight: 700; letter-spacing: .02em; }
-        .brand span { color: var(--accent); }
+        .brand { display: flex; align-items: center; gap: .75rem; }
+        .brand img { height: 2.75rem; width: auto; object-fit: contain; }
+        .brand-text { font-size: 1.15rem; font-weight: 700; letter-spacing: .02em; line-height: 1.1; }
+        .brand-text span { color: var(--accent); }
         nav a, .btn { text-decoration: none; color: var(--ink); margin-left: 1rem; font-size: .95rem; }
         .btn, button { background: var(--accent); color: white; border: 0; padding: .65rem 1rem; border-radius: .35rem; cursor: pointer; font-weight: 600; }
         .btn.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
@@ -34,7 +37,10 @@
 <body>
 <div class="wrap">
     <header>
-        <div class="brand">O<span>&</span>G Transport Portal</div>
+        <div class="brand">
+            <img src="{{ asset('images/logo-og-circle.png') }}" alt="O&G Transport">
+            <div class="brand-text">O<span>&</span>G Transport Portal</div>
+        </div>
         <nav>
             @auth
                 @if ($branch = \App\Support\PortalSelection::branch())

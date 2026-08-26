@@ -35,6 +35,9 @@ class AdminPanelProvider extends PanelProvider
             ->path('admin')
             ->login(Login::class)
             ->brandName('O&G Transport')
+            ->brandLogo(asset('images/logo-og-circle.png'))
+            ->brandLogoHeight('2.5rem')
+            ->favicon(asset('images/logo-og-circle.png'))
             ->tenant(Company::class, slugAttribute: 'code')
             ->tenantMenu(false)
             ->homeUrl(fn (): string => route('filament.admin.select-branch'))
@@ -86,6 +89,10 @@ class AdminPanelProvider extends PanelProvider
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
                 fn (): \Illuminate\Contracts\View\View => view('filament.hooks.sidebar-hover-expand'),
+            )
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): \Illuminate\Contracts\View\View => view('filament.hooks.brand-logo-theme'),
             )
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
