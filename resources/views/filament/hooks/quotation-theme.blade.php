@@ -587,4 +587,151 @@
     .fi-resource-quotations.fi-resource-view-record-page .fi-in-entry-wrp {
         max-width: none !important;
     }
+
+    /* Create / edit — customer pricing reference */
+    .fi-resource-quotations.fi-resource-create-record-page .qp-ref-empty,
+    .fi-resource-quotations.fi-resource-edit-record-page .qp-ref-empty {
+        border: 1px dashed rgb(229 231 235);
+        border-radius: 0.5rem;
+        background: rgb(249 250 251);
+        padding: 1rem 1.125rem;
+        font-size: 0.875rem;
+        color: rgb(107 114 128);
+        line-height: 1.5;
+    }
+
+    .fi-resource-quotations.fi-resource-create-record-page .qp-ref-meta,
+    .fi-resource-quotations.fi-resource-edit-record-page .qp-ref-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem 1.5rem;
+        margin-bottom: 0.875rem;
+        font-size: 0.8125rem;
+        color: rgb(75 85 99);
+    }
+
+    .fi-resource-quotations.fi-resource-create-record-page .qp-ref-grid,
+    .fi-resource-quotations.fi-resource-edit-record-page .qp-ref-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.875rem;
+        align-items: start;
+    }
+
+    .fi-resource-quotations.fi-resource-create-record-page .qp-ref-card,
+    .fi-resource-quotations.fi-resource-edit-record-page .qp-ref-card,
+    .fi-resource-quotations.fi-resource-view-record-page .qp-ref-card {
+        border-radius: 0.5rem;
+        padding: 0.75rem;
+        border: 1px solid rgb(229 231 235);
+        background: white;
+    }
+
+    .fi-resource-quotations.fi-resource-create-record-page .qp-ref-card--history,
+    .fi-resource-quotations.fi-resource-edit-record-page .qp-ref-card--history,
+    .fi-resource-quotations.fi-resource-view-record-page .qp-ref-card--history {
+        border-color: rgb(191 219 254);
+        background: rgb(239 246 255 / 0.5);
+    }
+
+    .fi-resource-quotations.fi-resource-create-record-page .qp-ref-card--special,
+    .fi-resource-quotations.fi-resource-edit-record-page .qp-ref-card--special,
+    .fi-resource-quotations.fi-resource-view-record-page .qp-ref-card--special {
+        border-color: rgb(253 230 138);
+        background: rgb(255 251 235 / 0.5);
+    }
+
+    .fi-resource-quotations.fi-resource-create-record-page .qp-ref-card-title,
+    .fi-resource-quotations.fi-resource-edit-record-page .qp-ref-card-title,
+    .fi-resource-quotations.fi-resource-view-record-page .qp-ref-card-title {
+        margin-bottom: 0.5rem;
+        font-size: 0.8125rem;
+        font-weight: 700;
+        color: rgb(17 24 39);
+    }
+
+    .fi-resource-quotations.fi-resource-create-record-page .qp-ref-table-wrap,
+    .fi-resource-quotations.fi-resource-edit-record-page .qp-ref-table-wrap,
+    .fi-resource-quotations.fi-resource-view-record-page .qp-ref-table-wrap {
+        overflow-x: auto;
+        max-height: 11rem;
+        overflow-y: auto;
+        border: 1px solid rgb(243 244 246);
+        border-radius: 0.375rem;
+        background: white;
+    }
+
+    .fi-resource-quotations.fi-resource-create-record-page .qp-ref-table,
+    .fi-resource-quotations.fi-resource-edit-record-page .qp-ref-table,
+    .fi-resource-quotations.fi-resource-view-record-page .qp-ref-table {
+        width: 100%;
+        min-width: 36rem;
+        border-collapse: collapse;
+        font-size: 0.75rem;
+        line-height: 1.45;
+    }
+
+    .fi-resource-quotations.fi-resource-create-record-page .qp-ref-table th,
+    .fi-resource-quotations.fi-resource-edit-record-page .qp-ref-table th,
+    .fi-resource-quotations.fi-resource-view-record-page .qp-ref-table th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        padding: 0.5rem 0.625rem;
+        text-align: left;
+        font-weight: 600;
+        white-space: nowrap;
+        background: rgb(249 250 251);
+        border-bottom: 1px solid rgb(229 231 235);
+    }
+
+    .fi-resource-quotations.fi-resource-create-record-page .qp-ref-table td,
+    .fi-resource-quotations.fi-resource-edit-record-page .qp-ref-table td,
+    .fi-resource-quotations.fi-resource-view-record-page .qp-ref-table td {
+        padding: 0.5rem 0.625rem;
+        vertical-align: top;
+        border-bottom: 1px solid rgb(243 244 246);
+    }
+
+    .fi-resource-quotations.fi-resource-create-record-page .qp-ref-table th:first-child,
+    .fi-resource-quotations.fi-resource-edit-record-page .qp-ref-table th:first-child,
+    .fi-resource-quotations.fi-resource-view-record-page .qp-ref-table th:first-child,
+    .fi-resource-quotations.fi-resource-create-record-page .qp-ref-table td:first-child,
+    .fi-resource-quotations.fi-resource-edit-record-page .qp-ref-table td:first-child,
+    .fi-resource-quotations.fi-resource-view-record-page .qp-ref-table td:first-child {
+        min-width: 7rem;
+    }
+
+    .fi-resource-quotations.fi-resource-create-record-page .qp-ref-num,
+    .fi-resource-quotations.fi-resource-edit-record-page .qp-ref-num,
+    .fi-resource-quotations.fi-resource-view-record-page .qp-ref-num {
+        text-align: right;
+        white-space: nowrap;
+    }
+
+    .fi-resource-quotations.fi-resource-create-record-page .qp-ref-nowrap,
+    .fi-resource-quotations.fi-resource-edit-record-page .qp-ref-nowrap,
+    .fi-resource-quotations.fi-resource-view-record-page .qp-ref-nowrap {
+        white-space: nowrap;
+    }
+
+    .fi-resource-quotations.fi-resource-create-record-page .qp-ref-empty-cell,
+    .fi-resource-quotations.fi-resource-edit-record-page .qp-ref-empty-cell,
+    .fi-resource-quotations.fi-resource-view-record-page .qp-ref-empty-cell {
+        color: rgb(107 114 128);
+        font-style: italic;
+    }
+
+    .fi-resource-quotations.fi-resource-create-record-page .qp-ref-link,
+    .fi-resource-quotations.fi-resource-edit-record-page .qp-ref-link,
+    .fi-resource-quotations.fi-resource-view-record-page .qp-ref-link {
+        color: rgb(217 119 6);
+        font-weight: 600;
+        text-decoration: none;
+    }
+
+    .fi-resource-quotations.fi-resource-create-record-page .qp-ref-panel,
+    .fi-resource-quotations.fi-resource-edit-record-page .qp-ref-panel {
+        min-width: 0;
+    }
 </style>

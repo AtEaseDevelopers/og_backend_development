@@ -6,9 +6,9 @@ use App\Domains\MasterData\Models\Branch;
 use App\Domains\MasterData\Models\Customer;
 use App\Domains\MasterData\Models\CustomerAddress;
 use App\Domains\MasterData\Models\Location;
-use App\Domains\Quotation\Models\Quotation;
 use App\Enums\QuotationStatus;
 use App\Support\CurrentCompany;
+use App\Support\CustomerQuotationPriceHistory;
 use App\Support\QuotationHistoryPanel;
 use App\Support\QuotationMatrix;
 use App\Support\QuotationPricingLookup;
@@ -223,7 +223,8 @@ class QuotationForm
 
     protected static function quotationHistorySection(): Forms\Components\Section
     {
-        return Forms\Components\Section::make('Quotation History')
+        return Forms\Components\Section::make('Customer Pricing Reference')
+            ->description('Review customer history, special pricing, and system default rates before entering quotation details below.')
             ->collapsible()
             ->collapsed(false)
             ->compact()
@@ -235,6 +236,7 @@ class QuotationForm
                         ->prefixIcon('heroicon-m-magnifying-glass')
                         ->live(debounce: 400)
                         ->dehydrated(false)
+                        ->visible(fn (Get $get) => filled($get('customer_id')))
                         ->columnSpan(5),
                     Forms\Components\Select::make('history_measurement')
                         ->label('Measurement')
@@ -247,6 +249,7 @@ class QuotationForm
                         ->searchable()
                         ->live()
                         ->dehydrated(false)
+                        ->visible(fn (Get $get) => filled($get('customer_id')))
                         ->columnSpan(4),
                     Forms\Components\Select::make('history_destination')
                         ->label('Consignee route')
@@ -257,24 +260,44 @@ class QuotationForm
                         ->default(fn (Get $get) => $get('consignee_name') ?: collect($get('matrix_columns') ?? [])->first())
                         ->live()
                         ->dehydrated(false)
+                        ->visible(fn (Get $get) => filled($get('customer_id')))
                         ->columnSpan(3),
                 ]),
-                Forms\Components\Grid::make(1)->schema([
-                    Forms\Components\ViewField::make('history_previous_panel')
-                        ->hiddenLabel()
-                        ->view('filament.forms.quotation-history-other')
-                        ->viewData(fn (Get $get) => static::previousHistoryData($get)),
-                    Forms\Components\ViewField::make('history_special_panel')
-                        ->hiddenLabel()
-                        ->view('filament.forms.quotation-history-special')
-                        ->viewData(fn (Get $get) => static::specialHistoryData($get)),
-                    Forms\Components\ViewField::make('history_master_panel')
-                        ->hiddenLabel()
-                        ->view('filament.forms.quotation-history-master')
-                        ->viewData(fn (Get $get) => static::masterHistoryData($get)),
-                ]),
-            ])
-            ->visible(fn (Get $get) => filled($get('customer_id')));
+                Forms\Components\ViewField::make('pricing_reference_panel')
+                    ->hiddenLabel()
+                    ->view('filament.forms.quotation-pricing-reference')
+                    ->viewData(fn (Get $get) => static::pricingReferenceData($get))
+                    ->key(fn (Get $get) => implode('|', [
+                        $get('customer_id') ?? '',
+                        $get('history_destination') ?? '',
+                        $get('history_search') ?? '',
+                        $get('history_measurement') ?? '',
+                        $get('consignee_name') ?? '',
+                        implode(',', $get('matrix_columns') ?? []),
+                    ])),
+            ]);
+    }
+
+    /** @return array<string, mixed> */
+    private static function pricingReferenceData(Get $get): array
+    {
+        $customerId = $get('customer_id') ? (int) $get('customer_id') : null;
+        $destinations = collect($get('matrix_columns') ?? [])->filter()->values()->all();
+
+        if ($destinations === []) {
+            $destinations = ['Seremban', 'Melaka', 'Johor'];
+        }
+
+        return [
+            'customerName' => $customerId
+                ? Customer::query()->find($customerId)?->company_name
+                : null,
+            'destination' => $get('history_destination') ?: $get('consignee_name'),
+            'historyRows' => static::previousHistoryData($get)['rows'],
+            'specialRows' => static::specialHistoryData($get)['rows'],
+            'defaultRows' => static::masterHistoryData($get)['rows'],
+            'destinations' => $destinations,
+        ];
     }
 
     protected static function quotationDetailsSection(): Forms\Components\Section
@@ -350,7 +373,7 @@ class QuotationForm
         $customerId = $get('customer_id') ? (int) $get('customer_id') : null;
 
         return [
-            'rows' => app(\App\Support\CustomerQuotationPriceHistory::class)->previousQuotationPrices(
+            'rows' => app(CustomerQuotationPriceHistory::class)->previousQuotationPrices(
                 $customerId,
                 $get('history_search'),
                 $get('history_measurement'),
