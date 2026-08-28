@@ -4,19 +4,25 @@ namespace App\Providers\Filament;
 
 use App\Domains\MasterData\Models\Company;
 use App\Filament\Pages\Auth\Login;
+use App\Filament\Pages\Dashboard;
 use App\Filament\Pages\SelectBranch;
+use App\Http\Controllers\Admin\ConsignmentNotePdfController;
+use App\Http\Controllers\Admin\DeliveryOrderPdfController;
+use App\Http\Controllers\Admin\InvoicePdfController;
+use App\Http\Controllers\Admin\OcrUploadDocumentController;
 use App\Http\Controllers\Admin\QuotationPdfController;
+use App\Http\Middleware\SyncSelectedBranchFromTenant;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\Navigation\MenuItem;
-use App\Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
 use Filament\Support\Enums\MaxWidth;
 use Filament\View\PanelsRenderHook;
+use Illuminate\Contracts\View\View;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -74,6 +80,14 @@ class AdminPanelProvider extends PanelProvider
             ->authenticatedTenantRoutes(function (): void {
                 Route::get('/quotations/{quotation}/pdf', QuotationPdfController::class)
                     ->name('quotations.pdf');
+                Route::get('/consignment-notes/{consignmentNote}/pdf', ConsignmentNotePdfController::class)
+                    ->name('consignment-notes.pdf');
+                Route::get('/invoices/{invoice}/pdf', InvoicePdfController::class)
+                    ->name('invoices.pdf');
+                Route::get('/delivery-orders/{deliveryOrder}/pdf', DeliveryOrderPdfController::class)
+                    ->name('delivery-orders.pdf');
+                Route::get('/ocr-uploads/{ocrUpload}/document', OcrUploadDocumentController::class)
+                    ->name('ocr-uploads.document');
             })
             ->userMenuItems([
                 'change-branch' => MenuItem::make()
@@ -84,27 +98,67 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->renderHook(
                 PanelsRenderHook::TOPBAR_START,
-                fn (): \Illuminate\Contracts\View\View => view('filament.hooks.branch-switcher'),
+                fn (): View => view('filament.hooks.branch-switcher'),
             )
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
-                fn (): \Illuminate\Contracts\View\View => view('filament.hooks.sidebar-hover-expand'),
+                fn (): View => view('filament.hooks.sidebar-hover-expand'),
             )
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
-                fn (): \Illuminate\Contracts\View\View => view('filament.hooks.brand-logo-theme'),
+                fn (): View => view('filament.hooks.brand-logo-theme'),
             )
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
-                fn (): \Illuminate\Contracts\View\View => view('filament.hooks.quotation-theme'),
+                fn (): View => view('filament.hooks.quotation-theme'),
             )
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
-                fn (): \Illuminate\Contracts\View\View => view('filament.hooks.consignment-note-theme'),
+                fn (): View => view('filament.hooks.consignment-note-theme'),
             )
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
-                fn (): \Illuminate\Contracts\View\View => view('filament.hooks.job-sheet-theme'),
+                fn (): View => view('filament.hooks.job-sheet-theme'),
+            )
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): View => view('filament.hooks.break-bulk-theme'),
+            )
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): View => view('filament.hooks.delivery-monitoring-theme'),
+            )
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): View => view('filament.hooks.delivery-task-theme'),
+            )
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): View => view('filament.hooks.failed-delivery-theme'),
+            )
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): View => view('filament.hooks.returned-csn-theme'),
+            )
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): View => view('filament.hooks.missing-csn-theme'),
+            )
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): View => view('filament.hooks.cash-bill-theme'),
+            )
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): View => view('filament.hooks.payment-listing-theme'),
+            )
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): View => view('filament.hooks.cod-listing-theme'),
+            )
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): View => view('filament.hooks.ocr-quotation-theme'),
             )
             ->middleware([
                 EncryptCookies::class,
@@ -116,7 +170,7 @@ class AdminPanelProvider extends PanelProvider
                 SubstituteBindings::class,
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
-                \App\Http\Middleware\SyncSelectedBranchFromTenant::class,
+                SyncSelectedBranchFromTenant::class,
             ])
             ->authMiddleware([
                 Authenticate::class,

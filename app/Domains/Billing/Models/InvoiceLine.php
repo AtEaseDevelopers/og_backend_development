@@ -2,6 +2,7 @@
 
 namespace App\Domains\Billing\Models;
 
+use App\Domains\Consignment\Models\ConsignmentNote;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -19,5 +20,10 @@ class InvoiceLine extends Model
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(Invoice::class);
+    }
+
+    public function consignmentNote(): BelongsTo
+    {
+        return $this->belongsTo(ConsignmentNote::class);
     }
 }

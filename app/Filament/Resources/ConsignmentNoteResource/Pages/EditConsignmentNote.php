@@ -23,7 +23,13 @@ class EditConsignmentNote extends EditRecord
 
     protected function getHeaderActions(): array
     {
-        return [Actions\ViewAction::make(), Actions\DeleteAction::make()];
+        return [
+            Actions\Action::make('previewPdf')
+                ->label('Preview PDF')
+                ->icon('heroicon-o-document-arrow-down')
+                ->url(fn (): string => ConsignmentNoteResource::pdfUrl($this->getRecord()))
+                ->openUrlInNewTab(),
+            Actions\ViewAction::make(), Actions\DeleteAction::make()];
     }
 
     protected function mutateFormDataBeforeFill(array $data): array

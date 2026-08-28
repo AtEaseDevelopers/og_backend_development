@@ -46,6 +46,7 @@ class FlagMissingCsns
 
                 if ($existing) {
                     $existing->update([
+                        'company_id' => $csn->company_id ?? $do?->company_id,
                         'status' => 'missing',
                         'source_branch_id' => $csn->source_branch_id,
                         'delivery_order_id' => $do?->id,
@@ -59,6 +60,7 @@ class FlagMissingCsns
 
                 return MissingCsnLog::query()->create([
                     'consignment_note_id' => $csn->id,
+                    'company_id' => $csn->company_id ?? $do?->company_id,
                     'source_branch_id' => $csn->source_branch_id,
                     'delivery_order_id' => $do?->id,
                     'status' => 'missing',
@@ -88,6 +90,7 @@ class FlagMissingCsns
                 'status' => 'pending_return',
             ],
             [
+                'company_id' => $csn->company_id ?? $do?->company_id,
                 'source_branch_id' => $csn->source_branch_id,
                 'delivery_order_id' => $do?->id,
                 'marked_missing_at' => null,

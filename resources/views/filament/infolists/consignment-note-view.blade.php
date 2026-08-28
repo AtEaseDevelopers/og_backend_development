@@ -107,7 +107,7 @@
         <div class="csn-card csn-card-compact">
             <div class="csn-card-title">Document Preview</div>
             <div class="csn-card-body">
-                @include('filament.forms.consignment-note-preview', $document)
+                @include('filament.forms.consignment-note-preview', ['document' => $document])
             </div>
         </div>
         <div class="csn-card csn-card-compact">

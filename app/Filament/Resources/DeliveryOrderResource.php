@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Domains\Dispatch\Models\DeliveryOrder;
 use App\Enums\DeliveryOrderStatus;
 use App\Filament\Resources\DeliveryOrderResource\Pages;
+use Filament\Facades\Filament;
 use Filament\Forms\Form;
 use Filament\Infolists;
 use Filament\Infolists\Infolist;
@@ -17,7 +18,6 @@ class DeliveryOrderResource extends Resource
     protected static ?string $model = DeliveryOrder::class;
 
     protected static ?string $tenantOwnershipRelationshipName = 'company';
-
 
     protected static ?string $navigationIcon = 'heroicon-o-map';
 
@@ -73,6 +73,12 @@ class DeliveryOrderResource extends Resource
             ])
             ->actions([
                 Tables\Actions\ViewAction::make(),
+                Tables\Actions\Action::make('previewPdf')
+                    ->label('PDF')
+                    ->icon('heroicon-o-document-arrow-down')
+                    ->url(fn (DeliveryOrder $record): string => static::pdfUrl($record))
+                    ->openUrlInNewTab()
+                    ->visible(fn (DeliveryOrder $record): bool => $record->consignmentNote()->exists()),
             ]);
     }
 
@@ -81,6 +87,13 @@ class DeliveryOrderResource extends Resource
         return false;
     }
 
+    public static function pdfUrl(DeliveryOrder $record): string
+    {
+        return route('filament.admin.delivery-orders.pdf', [
+            'tenant' => Filament::getTenant(),
+            'deliveryOrder' => $record,
+        ]);
+    }
 
     public static function getPages(): array
     {

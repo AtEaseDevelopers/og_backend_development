@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Domains\Billing\Models\Invoice;
 use App\Enums\InvoiceStatus;
 use App\Filament\Resources\InvoiceResource\Pages;
+use Filament\Facades\Filament;
 use Filament\Forms\Form;
 use Filament\Infolists;
 use Filament\Infolists\Infolist;
@@ -17,7 +18,6 @@ class InvoiceResource extends Resource
     protected static ?string $model = Invoice::class;
 
     protected static ?string $tenantOwnershipRelationshipName = 'company';
-
 
     protected static ?string $navigationIcon = 'heroicon-o-document-currency-dollar';
 
@@ -85,6 +85,11 @@ class InvoiceResource extends Resource
             ])
             ->actions([
                 Tables\Actions\ViewAction::make(),
+                Tables\Actions\Action::make('previewPdf')
+                    ->label('PDF')
+                    ->icon('heroicon-o-document-arrow-down')
+                    ->url(fn (Invoice $record): string => static::pdfUrl($record))
+                    ->openUrlInNewTab(),
             ]);
     }
 
@@ -93,6 +98,13 @@ class InvoiceResource extends Resource
         return false;
     }
 
+    public static function pdfUrl(Invoice $record): string
+    {
+        return route('filament.admin.invoices.pdf', [
+            'tenant' => Filament::getTenant(),
+            'invoice' => $record,
+        ]);
+    }
 
     public static function getPages(): array
     {

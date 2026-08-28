@@ -15,7 +15,7 @@ class ApproveOcrQuotation
 
     public function execute(OcrUpload $upload, array $corrections, User $actor): OcrUpload
     {
-        if (! in_array($upload->status, ['pending_review', 'rejected'], true)) {
+        if (! in_array($upload->status, ['pending_review', 'draft', 'rejected'], true)) {
             throw new InvalidArgumentException('Only pending OCR uploads can be approved.');
         }
 
@@ -42,9 +42,7 @@ class ApproveOcrQuotation
                 $upload->update(['customer_id' => $customerId]);
             }
 
-            $qty = (float) ($data['quantity'] ?? 1);
-            $unit = (float) ($data['unit_price'] ?? 0);
-            $lineTotal = (float) ($data['line_total'] ?? ($qty * $unit));
+            $lines = $this->normalizeLines($data);
 
             $quotation = $this->createQuotation->execute([
                 'branch_id' => $branchId,
@@ -61,13 +59,7 @@ class ApproveOcrQuotation
                     'state' => $data['delivery_state'] ?? null,
                     'city' => $data['delivery_city'] ?? null,
                 ]],
-                'lines' => [[
-                    'item_name' => $data['item_name'] ?? 'General Goods',
-                    'uom' => $data['uom'] ?? 'UNIT',
-                    'quantity' => $qty,
-                    'unit_price' => $unit,
-                    'line_total' => $lineTotal,
-                ]],
+                'lines' => $lines,
             ], $actor);
 
             // Link first destination to line
@@ -99,5 +91,40 @@ class ApproveOcrQuotation
         ]);
 
         return $upload->fresh();
+    }
+
+    /** @param  array<string, mixed>  $data
+     * @return list<array<string, mixed>>
+     */
+    private function normalizeLines(array $data): array
+    {
+        if (! empty($data['lines']) && is_array($data['lines'])) {
+            return collect($data['lines'])
+                ->map(function (array $line): array {
+                    $qty = (float) ($line['quantity'] ?? 1);
+                    $unit = (float) ($line['unit_price'] ?? $line['rate'] ?? 0);
+
+                    return [
+                        'item_name' => $line['item_name'] ?? $line['description'] ?? 'General Goods',
+                        'uom' => $line['uom'] ?? 'UNIT',
+                        'quantity' => $qty,
+                        'unit_price' => $unit,
+                        'line_total' => (float) ($line['line_total'] ?? round($qty * $unit, 2)),
+                    ];
+                })
+                ->values()
+                ->all();
+        }
+
+        $qty = (float) ($data['quantity'] ?? 1);
+        $unit = (float) ($data['unit_price'] ?? 0);
+
+        return [[
+            'item_name' => $data['item_name'] ?? 'General Goods',
+            'uom' => $data['uom'] ?? 'UNIT',
+            'quantity' => $qty,
+            'unit_price' => $unit,
+            'line_total' => (float) ($data['line_total'] ?? round($qty * $unit, 2)),
+        ]];
     }
 }

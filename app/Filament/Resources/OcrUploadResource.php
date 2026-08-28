@@ -16,6 +16,7 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Throwable;
 
 class OcrUploadResource extends Resource
@@ -24,12 +25,13 @@ class OcrUploadResource extends Resource
 
     protected static ?string $tenantOwnershipRelationshipName = 'company';
 
-
     protected static ?string $navigationIcon = 'heroicon-o-document-magnifying-glass';
 
     protected static ?string $navigationGroup = 'Approvals';
 
-    protected static ?string $navigationLabel = 'OCR Quotations';
+    protected static ?string $navigationLabel = 'OCR Quotation Processing';
+
+    protected static ?string $pluralModelLabel = 'OCR Uploads';
 
     protected static ?int $navigationSort = 11;
 
@@ -120,7 +122,7 @@ class OcrUploadResource extends Resource
                     ])
                     ->action(function (array $data) {
                         try {
-                            /** @var \Livewire\Features\SupportFileUploads\TemporaryUploadedFile $file */
+                            /** @var TemporaryUploadedFile $file */
                             $file = $data['file'];
                             $upload = app(ProcessOcrUpload::class)->execute(
                                 $file,
@@ -129,8 +131,8 @@ class OcrUploadResource extends Resource
                                 $data['customer_id'] ?? null
                             );
                             Notification::make()
-                                ->title('OCR extracted — pending review')
-                                ->body('Upload #'.$upload->id)
+                                ->title('Document buffered')
+                                ->body('Upload #'.$upload->id.' is being extracted.')
                                 ->success()
                                 ->send();
                         } catch (Throwable $e) {

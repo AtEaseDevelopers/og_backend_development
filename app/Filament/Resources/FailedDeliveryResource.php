@@ -7,6 +7,7 @@ use App\Domains\Delivery\Models\FailedDelivery;
 use App\Domains\MasterData\Models\Driver;
 use App\Domains\MasterData\Models\Lorry;
 use App\Filament\Resources\FailedDeliveryResource\Pages;
+use App\Support\CurrentCompany;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Infolists;
@@ -15,6 +16,7 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Throwable;
 
 class FailedDeliveryResource extends Resource
@@ -23,12 +25,11 @@ class FailedDeliveryResource extends Resource
 
     protected static bool $isScopedToTenant = false;
 
-
     protected static ?string $navigationIcon = 'heroicon-o-exclamation-triangle';
 
     protected static ?string $navigationGroup = 'Dispatch';
 
-    protected static ?string $navigationLabel = 'Failed Deliveries';
+    protected static ?string $navigationLabel = 'Failed Delivery Review';
 
     protected static ?int $navigationSort = 55;
 
@@ -132,10 +133,10 @@ class FailedDeliveryResource extends Resource
         return false;
     }
 
-    public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
+    public static function getEloquentQuery(): Builder
     {
         $query = parent::getEloquentQuery();
-        $companyId = \App\Support\CurrentCompany::id();
+        $companyId = CurrentCompany::id();
         if ($companyId) {
             $query->whereHas('deliveryOrder', fn ($q) => $q->where('company_id', $companyId));
         }

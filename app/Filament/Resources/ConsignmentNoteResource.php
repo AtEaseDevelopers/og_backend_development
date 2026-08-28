@@ -9,17 +9,20 @@ use App\Domains\Dispatch\Actions\AssignCsnToLorry;
 use App\Domains\Dispatch\Actions\AssignDeliveryOrderToLorry;
 use App\Domains\Dispatch\Actions\CreateSubsheet;
 use App\Domains\Dispatch\Models\DeliveryOrder;
+use App\Domains\MasterData\Models\Customer;
 use App\Domains\MasterData\Models\Driver;
 use App\Domains\MasterData\Models\Location;
 use App\Domains\MasterData\Models\Lorry;
 use App\Domains\MasterData\Models\TransferCode;
 use App\Enums\CsnBillingType;
 use App\Enums\CsnStatus;
+use App\Enums\DeliveryOrderStatus;
 use App\Enums\PaymentStatus;
 use App\Filament\Resources\ConsignmentNoteResource\Pages;
 use App\Filament\Resources\ConsignmentNoteResource\RelationManagers;
 use App\Filament\Resources\ConsignmentNoteResource\Schemas\ConsignmentNoteForm;
 use App\Support\CurrentCompany;
+use Filament\Facades\Filament;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
@@ -253,6 +256,11 @@ class ConsignmentNoteResource extends Resource
             ->actions([
                 Tables\Actions\ViewAction::make(),
                 Tables\Actions\EditAction::make(),
+                Tables\Actions\Action::make('previewPdf')
+                    ->label('PDF')
+                    ->icon('heroicon-o-document-arrow-down')
+                    ->url(fn (ConsignmentNote $record): string => static::pdfUrl($record))
+                    ->openUrlInNewTab(),
                 Tables\Actions\Action::make('collectPayment')
                     ->label('Collect Payment')
                     ->icon('heroicon-o-banknotes')
@@ -359,7 +367,7 @@ class ConsignmentNoteResource extends Resource
      */
     public static function customerOptions(): array
     {
-        $query = \App\Domains\MasterData\Models\Customer::query()
+        $query = Customer::query()
             ->where('status', 'active')
             ->orderBy('company_name');
 
@@ -742,7 +750,7 @@ class ConsignmentNoteResource extends Resource
                 $type = $do->parent_do_id ? 'Subsheet' : 'Main';
                 $lorry = $do->lorry?->registration_no ?? 'No lorry assigned';
                 $driver = $do->driver?->name ?? 'No driver';
-                $status = $do->status instanceof \App\Enums\DeliveryOrderStatus
+                $status = $do->status instanceof DeliveryOrderStatus
                     ? ucfirst(str_replace('_', ' ', $do->status->value))
                     : (string) $do->status;
 
@@ -866,6 +874,14 @@ class ConsignmentNoteResource extends Resource
         }
 
         return $created;
+    }
+
+    public static function pdfUrl(ConsignmentNote $record): string
+    {
+        return route('filament.admin.consignment-notes.pdf', [
+            'tenant' => Filament::getTenant(),
+            'consignmentNote' => $record,
+        ]);
     }
 
     public static function getRelations(): array

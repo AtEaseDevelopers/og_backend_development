@@ -3,7 +3,6 @@
 namespace App\Support;
 
 use App\Domains\Consignment\Models\ConsignmentNote;
-use App\Enums\CsnBillingType;
 use App\Enums\CsnStatus;
 use App\Filament\Resources\ConsignmentNoteResource;
 use App\Filament\Resources\DeliveryOrderResource;
@@ -138,38 +137,7 @@ class CsnViewData
      */
     private function documentPreview(ConsignmentNote $csn, array $matrixState, ?string $chargeColumn): array
     {
-        $matrix = app(CsnTransportMatrix::class);
-        $columns = $matrixState['matrix_columns'] ?? [];
-        $rows = $matrixState['matrix_rows'] ?? [];
-
-        return [
-            'number' => $csn->number,
-            'issued_at' => $csn->issued_at,
-            'billing_type' => $csn->billing_type instanceof CsnBillingType
-                ? $csn->billing_type->value
-                : $csn->billing_type,
-            'customer_name' => $csn->customer_name,
-            'customer_brn' => $csn->customer_brn,
-            'consignor_name' => $csn->consignor_name,
-            'consignor_address' => $csn->consignor_address,
-            'consignee_name' => $csn->consignee_name,
-            'consignee_pic' => $csn->consignee_pic,
-            'consignee_phone' => $csn->consignee_phone,
-            'delivery_address' => $csn->delivery_address,
-            'delivery_city' => $csn->delivery_city,
-            'delivery_state' => $csn->delivery_state,
-            'delivery_postcode' => $csn->delivery_postcode,
-            'from_location' => $csn->fromLocation?->name,
-            'to_location' => $csn->toLocation?->name,
-            'lines' => $matrix->linesFromMatrix($columns, $rows, $chargeColumn),
-            'transport_charges' => (float) $csn->transport_charges,
-            'subtotal' => (float) $csn->subtotal,
-            'discount' => (float) $csn->discount,
-            'tax_amount' => (float) $csn->tax_amount,
-            'total_amount' => (float) $csn->total_amount,
-            'remarks' => $csn->remarks,
-            'marking' => $csn->marking,
-        ];
+        return app(CsnDocumentData::class)->fromConsignmentNote($csn);
     }
 
     /** @return list<array<string, mixed>> */

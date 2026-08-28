@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Domains\Billing\Models\Payment;
 use App\Filament\Resources\PaymentResource\Pages;
+use App\Support\PaymentListingData;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -15,7 +16,6 @@ class PaymentResource extends Resource
     protected static ?string $model = Payment::class;
 
     protected static ?string $tenantOwnershipRelationshipName = 'company';
-
 
     protected static ?string $navigationIcon = 'heroicon-o-banknotes';
 
@@ -62,29 +62,38 @@ class PaymentResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('id')->sortable(),
-                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Branch'),
-                Tables\Columns\TextColumn::make('customer.company_name')->searchable(),
-                Tables\Columns\TextColumn::make('consignmentNote.number')->label('CSN'),
-                Tables\Columns\TextColumn::make('invoice.number')->label('Invoice'),
-                Tables\Columns\TextColumn::make('method')->badge(),
-                Tables\Columns\TextColumn::make('amount')->money('MYR'),
-                Tables\Columns\TextColumn::make('receipt.number')->label('Receipt'),
-                Tables\Columns\TextColumn::make('reconciliation_status')->badge(),
-                Tables\Columns\TextColumn::make('created_at')->dateTime()->sortable(),
+                Tables\Columns\TextColumn::make('id')
+                    ->label('Payment Number')
+                    ->sortable()
+                    ->formatStateUsing(fn ($state, Payment $record): string => PaymentListingData::paymentNumber($record))
+                    ->weight('medium'),
+                Tables\Columns\TextColumn::make('customer.company_name')
+                    ->label('Customer')
+                    ->default('—'),
+                Tables\Columns\TextColumn::make('consignmentNote.number')
+                    ->label('Related CSN')
+                    ->default('—'),
+                Tables\Columns\TextColumn::make('method')
+                    ->label('Type')
+                    ->formatStateUsing(fn ($state, Payment $record): string => PaymentListingData::typeLabel($record)),
+                Tables\Columns\TextColumn::make('amount')
+                    ->label('Payment')
+                    ->money('MYR')
+                    ->alignRight()
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('status')
+                    ->label('Status')
+                    ->badge()
+                    ->formatStateUsing(fn ($state, Payment $record): string => PaymentListingData::statusLabel($record))
+                    ->color(fn ($state, Payment $record): string => PaymentListingData::statusColor($record)),
             ])
             ->defaultSort('created_at', 'desc')
-            ->filters([
-                Tables\Filters\SelectFilter::make('method')->options([
-                    'cash' => 'Cash',
-                    'cod' => 'COD',
-                    'bank_transfer' => 'Bank Transfer',
-                    'online' => 'Online',
-                ]),
-                Tables\Filters\SelectFilter::make('source_branch_id')->relationship('sourceBranch', 'name'),
-            ]);
+            ->paginated([10, 25, 50])
+            ->defaultPaginationPageOption(10)
+            ->filters([])
+            ->actions([])
+            ->bulkActions([]);
     }
-
 
     public static function getPages(): array
     {

@@ -12,6 +12,7 @@ use App\Enums\CsnBillingType;
 use App\Enums\CsnStatus;
 use App\Enums\QuotationStatus;
 use App\Filament\Resources\ConsignmentNoteResource;
+use App\Support\CsnDocumentData;
 use App\Support\CsnTransportMatrix;
 use App\Support\CurrentCompany;
 use App\Support\QuotationMatrix;
@@ -923,30 +924,30 @@ class ConsignmentNoteForm
         $lines = $matrix->linesFromMatrix($columns, $rows, $chargeColumn);
 
         return [
-            'number' => $get('number') ?: 'AUTO',
-            'issued_at' => $get('issued_at'),
-            'billing_type' => $get('billing_type'),
-            'customer_name' => $get('customer_name'),
-            'customer_brn' => $get('customer_brn'),
-            'consignor_name' => $get('consignor_name'),
-            'consignor_address' => $get('consignor_address'),
-            'consignee_name' => $get('consignee_name'),
-            'consignee_pic' => $get('consignee_pic'),
-            'consignee_phone' => $get('consignee_phone'),
-            'delivery_address' => $get('delivery_address'),
-            'delivery_city' => $get('delivery_city'),
-            'delivery_state' => $get('delivery_state'),
-            'delivery_postcode' => $get('delivery_postcode'),
-            'from_location' => static::locationLabel($get('from_location_id')),
-            'to_location' => static::locationLabel($get('to_location_id')),
-            'lines' => $lines,
-            'transport_charges' => (float) ($get('transport_charges') ?: 0),
-            'subtotal' => static::chargeSubtotal($get),
-            'discount' => (float) ($get('discount') ?: 0),
-            'tax_amount' => (float) ($get('tax_amount') ?: 0),
-            'total_amount' => static::accountAmount($get),
-            'remarks' => $get('remarks'),
-            'marking' => $get('marking'),
+            'document' => app(CsnDocumentData::class)->fromPreviewFields([
+                'number' => $get('number') ?: 'AUTO',
+                'issued_at' => $get('issued_at'),
+                'do_number' => $get('do_number'),
+                'consignor_name' => $get('consignor_name'),
+                'consignor_address' => $get('consignor_address'),
+                'consignee_name' => $get('consignee_name'),
+                'consignee_pic' => $get('consignee_pic'),
+                'consignee_phone' => $get('consignee_phone'),
+                'delivery_address' => $get('delivery_address'),
+                'delivery_city' => $get('delivery_city'),
+                'delivery_state' => $get('delivery_state'),
+                'delivery_postcode' => $get('delivery_postcode'),
+                'from_location' => static::locationLabel($get('from_location_id')),
+                'to_location' => static::locationLabel($get('to_location_id')),
+                'lines' => $lines,
+                'transport_charges' => (float) ($get('transport_charges') ?: 0),
+                'subtotal' => static::chargeSubtotal($get),
+                'discount' => (float) ($get('discount') ?: 0),
+                'tax_amount' => (float) ($get('tax_amount') ?: 0),
+                'total_amount' => static::accountAmount($get),
+                'remarks' => $get('remarks'),
+                'marking' => $get('marking'),
+            ]),
         ];
     }
 }
