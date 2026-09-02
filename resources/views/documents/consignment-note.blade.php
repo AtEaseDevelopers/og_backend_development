@@ -89,7 +89,6 @@
                 <th class="csn-doc-qty">Quantity</th>
                 <th class="csn-doc-desc">Description</th>
                 @unless($hidePricing)
-                    <th class="csn-doc-amt">Amount<br>(SGD)</th>
                     <th class="csn-doc-amt">Amount<br>(MYR)</th>
                     <th class="csn-doc-amt">SST<br>(MYR)</th>
                     <th class="csn-doc-amt">Total<br>(MYR)</th>
@@ -116,7 +115,6 @@
                         </td>
                     @endif
                     @unless($hidePricing)
-                        <td class="csn-doc-amt csn-doc-amt-value">{{ $line['amount_sgd'] ?? '' }}</td>
                         <td class="csn-doc-amt csn-doc-amt-value">{{ $line['amount_myr'] ?? '' }}</td>
                         <td class="csn-doc-amt csn-doc-amt-value">{{ $line['sst_myr'] ?? '' }}</td>
                         <td class="csn-doc-amt csn-doc-amt-value">{{ $line['total_myr'] ?? '' }}</td>
@@ -139,7 +137,6 @@
                         <td class="csn-doc-amt"></td>
                         <td class="csn-doc-amt"></td>
                         <td class="csn-doc-amt"></td>
-                        <td class="csn-doc-amt"></td>
                     @endunless
                 </tr>
             @endforelse
@@ -147,7 +144,6 @@
                 <tr class="csn-doc-total-row">
                     <td></td>
                     <td class="csn-doc-desc csn-doc-total-label">Total</td>
-                    <td class="csn-doc-amt csn-doc-amt-value">{{ $totals['amount_sgd'] ?? '' }}</td>
                     <td class="csn-doc-amt csn-doc-amt-value">{{ $totals['amount_myr'] ?? '' }}</td>
                     <td class="csn-doc-amt csn-doc-amt-value">{{ $totals['sst_myr'] ?? '' }}</td>
                     <td class="csn-doc-amt csn-doc-amt-value">{{ $totals['total_myr'] ?? '' }}</td>

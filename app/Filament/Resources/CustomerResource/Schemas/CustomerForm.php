@@ -426,7 +426,6 @@ class CustomerForm
     {
         return [
             'MYR' => 'MYR — Malaysian Ringgit',
-            'SGD' => 'SGD — Singapore Dollar',
             'USD' => 'USD — US Dollar',
         ];
     }

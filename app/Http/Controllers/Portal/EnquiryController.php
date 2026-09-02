@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Portal;
 
 use App\Domains\MasterData\Models\Branch;
+use App\Domains\MasterData\Models\Company;
 use App\Domains\Quotation\Models\PortalEnquiry;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
@@ -42,7 +43,11 @@ class EnquiryController extends Controller
         $customerId = $request->user()->customer_id
             ?? $request->user()->customers()->wherePivot('status', 'approved')->value('customers.id');
 
+        $branch = Branch::query()->findOrFail($data['branch_id']);
+        $companyId = Company::query()->where('branch_id', $branch->id)->value('id');
+
         PortalEnquiry::query()->create([
+            'company_id' => $companyId,
             'customer_id' => $customerId,
             'branch_id' => $data['branch_id'],
             'user_id' => $request->user()->id,

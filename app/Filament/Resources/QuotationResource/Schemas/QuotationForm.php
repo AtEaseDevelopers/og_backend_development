@@ -7,6 +7,7 @@ use App\Domains\MasterData\Models\Customer;
 use App\Domains\MasterData\Models\CustomerAddress;
 use App\Domains\MasterData\Models\Location;
 use App\Enums\QuotationStatus;
+use App\Filament\Resources\QuotationResource;
 use App\Support\CurrentCompany;
 use App\Support\CustomerQuotationPriceHistory;
 use App\Support\QuotationHistoryPanel;
@@ -128,10 +129,9 @@ class QuotationForm
         return [
             Forms\Components\Select::make('customer_id')
                 ->label('Consignor')
-                ->relationship('customer', 'company_name')
-                ->getOptionLabelFromRecordUsing(fn (Customer $record) => trim(($record->code ? $record->code.' — ' : '').$record->company_name))
+                ->options(fn () => QuotationResource::customerOptions())
+                ->getOptionLabelUsing(fn ($value): ?string => Customer::query()->find((string) $value)?->company_name)
                 ->searchable()
-                ->preload()
                 ->required()
                 ->live()
                 ->placeholder('Please input the company name')
@@ -443,30 +443,80 @@ class QuotationForm
             return;
         }
 
+        foreach (static::consignorStateForCustomer($customerId) as $field => $value) {
+            $set($field, $value);
+        }
+    }
+
+    /** @return array<string, mixed> */
+    public static function consignorStateForCustomer(?string $customerId, bool $withPickupPreset = true): array
+    {
+        if (! $customerId) {
+            return [];
+        }
+
         $customer = Customer::query()->with(['pics', 'addresses'])->find($customerId);
 
         if (! $customer) {
-            return;
+            return [];
         }
 
-        $set('customer_address', $customer->address ?? '');
-        $set('consignor_brn', $customer->brn ?? '');
-        $set('attention', $customer->pics->firstWhere('is_default', true)?->name
-            ?? $customer->pics->first()?->name
-            ?? '');
-        $set('terms_of_payment', $customer->credit_term_days
-            ? $customer->credit_term_days.' days'
-            : 'Cash / COD');
+        $state = [
+            'customer_address' => $customer->address ?? '',
+            'consignor_brn' => $customer->brn ?? '',
+            'attention' => $customer->pics->firstWhere('is_default', true)?->name
+                ?? $customer->pics->first()?->name
+                ?? '',
+            'terms_of_payment' => $customer->credit_term_days
+                ? $customer->credit_term_days.' days'
+                : 'Cash / COD',
+        ];
 
-        static::defaultFromLocation($set);
+        $branchId = $customer->branch_id ?? CurrentCompany::branchId();
+        $fromLocationId = static::fromLocationIdForBranch($branchId);
 
-        $defaultAddress = $customer->addresses->firstWhere('is_default', true)
-            ?? $customer->addresses->first();
-
-        if ($defaultAddress) {
-            $set('pickup_location_preset', (string) $defaultAddress->id);
-            static::fillPickupLocation((string) $defaultAddress->id, $set);
+        if ($fromLocationId) {
+            $state['from_location_id'] = (string) $fromLocationId;
         }
+
+        if ($withPickupPreset) {
+            $defaultAddress = $customer->addresses->firstWhere('is_default', true)
+                ?? $customer->addresses->first();
+
+            if ($defaultAddress) {
+                $state['pickup_location_preset'] = (string) $defaultAddress->id;
+                $state['pickup_location'] = trim(collect([
+                    $defaultAddress->label,
+                    $defaultAddress->address,
+                    $defaultAddress->postcode,
+                    $defaultAddress->city,
+                    $defaultAddress->state,
+                ])->filter()->implode(', '));
+            }
+        }
+
+        return $state;
+    }
+
+    private static function fromLocationIdForBranch(?int $branchId): ?int
+    {
+        if (! $branchId) {
+            return null;
+        }
+
+        $branch = Branch::query()->find($branchId);
+
+        if (! $branch) {
+            return null;
+        }
+
+        return Location::query()
+            ->where('is_active', true)
+            ->where(function ($query) use ($branch) {
+                $query->where('code', $branch->code)
+                    ->orWhere('name', 'like', '%'.$branch->name.'%');
+            })
+            ->value('id');
     }
 
     public static function fillPickupLocation(?string $addressId, Set $set): void

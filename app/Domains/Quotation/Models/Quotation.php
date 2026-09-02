@@ -24,7 +24,7 @@ class Quotation extends Model
     protected $fillable = [
         'number', 'company_id', 'branch_id', 'customer_id', 'salesperson_id', 'portal_enquiry_id',
         'status', 'valid_until', 'title', 'is_active', 'quoted_at', 'expected_delivery_date',
-        'myr_to_sgd_rate', 'sgd_to_myr_rate', 'from_location_id', 'to_location_id',
+        'from_location_id', 'to_location_id',
         'consignor_brn', 'pickup_location', 'consignee_name', 'consignee_brn',
         'consignee_address', 'drop_off_location', 'customer_address',
         'attention', 'customer_fax', 'customer_phone_alt', 'issued_by_name', 'terms_of_payment',
@@ -40,8 +40,6 @@ class Quotation extends Model
             'valid_until' => 'date',
             'quoted_at' => 'date',
             'expected_delivery_date' => 'date',
-            'myr_to_sgd_rate' => 'decimal:6',
-            'sgd_to_myr_rate' => 'decimal:6',
             'is_active' => 'boolean',
             'subtotal' => 'decimal:2',
             'tax_amount' => 'decimal:2',

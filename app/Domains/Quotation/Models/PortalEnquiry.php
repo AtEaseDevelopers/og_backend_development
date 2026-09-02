@@ -6,6 +6,7 @@ use App\Models\Concerns\BelongsToCompany;
 
 use App\Domains\MasterData\Models\Branch;
 use App\Domains\MasterData\Models\Customer;
+use App\Enums\PortalEnquiryStatus;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -25,6 +26,7 @@ class PortalEnquiry extends Model
         return [
             'preferred_delivery_date' => 'date',
             'payload' => 'array',
+            'status' => PortalEnquiryStatus::class,
         ];
     }
 

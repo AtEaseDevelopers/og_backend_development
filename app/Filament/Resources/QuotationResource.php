@@ -2,12 +2,14 @@
 
 namespace App\Filament\Resources;
 
+use App\Domains\MasterData\Models\Customer;
 use App\Domains\Quotation\Actions\ConvertQuotationToCsns;
 use App\Domains\Quotation\Actions\EvaluateCreditEligibility;
 use App\Domains\Quotation\Models\Quotation;
 use App\Enums\QuotationStatus;
 use App\Filament\Resources\QuotationResource\Pages;
 use App\Filament\Resources\QuotationResource\Schemas\QuotationForm;
+use App\Support\CurrentCompany;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
@@ -106,6 +108,7 @@ class QuotationResource extends Resource
                         'formula' => 'Formula Pricing',
                         'manual' => 'Manual Pricing',
                         'ocr' => 'OCR',
+                        'portal' => 'Portal Enquiry',
                     ]),
                 Tables\Filters\Filter::make('valid_until')
                     ->label('Valid until')
@@ -268,5 +271,24 @@ class QuotationResource extends Resource
             'view' => Pages\ViewQuotation::route('/{record}'),
             'edit' => Pages\EditQuotation::route('/{record}/edit'),
         ];
+    }
+
+    /** @return array<int, string> */
+    public static function customerOptions(): array
+    {
+        $query = Customer::query()
+            ->where('status', 'active')
+            ->orderBy('company_name');
+
+        if ($companyId = CurrentCompany::id()) {
+            $query->where('company_id', $companyId);
+        }
+
+        return $query
+            ->get()
+            ->mapWithKeys(fn (Customer $customer) => [
+                (string) $customer->id => trim(($customer->code ? $customer->code.' — ' : '').$customer->company_name),
+            ])
+            ->all();
     }
 }

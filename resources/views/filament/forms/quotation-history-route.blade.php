@@ -9,7 +9,6 @@
                     <th class="py-1.5 pr-2 font-medium">Measurement</th>
                     <th class="py-1.5 pr-2 font-medium">Qty</th>
                     <th class="py-1.5 pr-2 font-medium text-right">Price (MYR)</th>
-                    <th class="py-1.5 pr-2 font-medium text-right">Price (SGD)</th>
                     <th class="py-1.5 font-medium">Bill To</th>
                 </tr>
             </thead>
@@ -25,17 +24,10 @@
                                 —
                             @endif
                         </td>
-                        <td class="py-1.5 pr-2 text-right">
-                            @if($row['price'] !== null)
-                                SGD {{ number_format($row['price'] * $myrToSgd, 4) }}
-                            @else
-                                —
-                            @endif
-                        </td>
                         <td class="py-1.5">{{ $row['bill_to'] }}</td>
                     </tr>
                 @empty
-                    <tr><td colspan="5" class="py-3 text-gray-500">No route prices for this consignee.</td></tr>
+                    <tr><td colspan="4" class="py-3 text-gray-500">No route prices for this consignee.</td></tr>
                 @endforelse
             </tbody>
         </table>

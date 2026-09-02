@@ -97,7 +97,6 @@ class CsnDocumentData
                 return [
                     'quantity' => $qty > 0 ? trim($this->formatQuantity($qty).' '.$uom) : '—',
                     'description' => '- '.($line['item_name'] ?? '—'),
-                    'amount_sgd' => null,
                     'amount_myr' => $this->nullableAmount($line['line_total'] ?? null),
                     'sst_myr' => null,
                     'total_myr' => $this->nullableAmount($line['line_total'] ?? null),
@@ -111,7 +110,6 @@ class CsnDocumentData
             $lines[] = [
                 'quantity' => '—',
                 'description' => '- Transport charges',
-                'amount_sgd' => null,
                 'amount_myr' => $this->formatAmount($transportCharges),
                 'sst_myr' => null,
                 'total_myr' => $this->formatAmount($transportCharges),
@@ -187,7 +185,6 @@ class CsnDocumentData
                 ),
             ],
             'totals' => [
-                'amount_sgd' => '',
                 'amount_myr' => $this->formatAmount((float) ($fields['subtotal'] ?? 0)),
                 'sst_myr' => $this->formatAmount((float) ($fields['tax_amount'] ?? 0)),
                 'total_myr' => $this->formatAmount($totalMyr),
