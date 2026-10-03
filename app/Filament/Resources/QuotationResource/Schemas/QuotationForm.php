@@ -87,7 +87,75 @@ class QuotationForm
                                 ->relationship('salesperson', 'name')
                                 ->searchable()
                                 ->label('Salesperson')
+                                ->live()
+                                ->afterStateUpdated(function (?string $state, Set $set, Get $get): void {
+                                    if ($state && ! $get('sa_location_id')) {
+                                        $set('sa_location_id', (string) (\App\Models\User::query()->find($state)?->sa_location_id ?? ''));
+                                    }
+                                })
+                                ->disabled(fn (Get $get) => (bool) $get('salesperson_locked'))
+                                ->dehydrated()
+                                ->helperText(fn (Get $get) => $get('salesperson_locked') ? 'Locked: assigned from the customer enquiry' : null)
                                 ->columnSpan(['default' => 12, 'md' => 6, 'xl' => 2]),
+                        ]),
+                        Forms\Components\Hidden::make('salesperson_locked')->default(false),
+                        Forms\Components\Grid::make(12)->schema([
+                            Forms\Components\Select::make('order_type')
+                                ->label('Order type')
+                                ->options(\App\Enums\OrderType::options())
+                                ->required()
+                                ->default(fn (Get $get) => \App\Domains\MasterData\Models\Customer::query()->find($get('customer_id'))?->default_order_type)
+                                ->helperText('Term → Term / Cash / COD · COD → Cash only · Cash fixed')
+                                ->columnSpan(['default' => 12, 'md' => 3]),
+                            Forms\Components\Select::make('service_type')
+                                ->label('Service (Pick Up / Store)')
+                                ->options(\App\Enums\ServiceType::options())
+                                ->required()
+                                ->default(\App\Enums\ServiceType::Pickup->value)
+                                ->columnSpan(['default' => 12, 'md' => 2]),
+                            Forms\Components\Select::make('payment_method')
+                                ->label('Payment method')
+                                ->options(\App\Enums\PaymentMethod::options())
+                                ->columnSpan(['default' => 12, 'md' => 2]),
+                            Forms\Components\TextInput::make('customer_do_number')
+                                ->label('Customer DO number')
+                                ->required()
+                                ->maxLength(100)
+                                ->columnSpan(['default' => 12, 'md' => 2]),
+                            Forms\Components\Select::make('sa_location_id')
+                                ->label('SA location (CSN prefix)')
+                                ->options(fn () => QuotationResource::saLocationOptions())
+                                ->searchable()
+                                ->columnSpan(['default' => 12, 'md' => 3]),
+                        ]),
+                        Forms\Components\Textarea::make('pricing_override_reason')
+                            ->label('Price override reason')
+                            ->rows(2)
+                            ->helperText('Required whenever a rate differs from the standard price list. Overrides need HQ Admin or Branch Manager permission and are kept on the order audit trail.')
+                            ->columnSpanFull(),
+                        Forms\Components\Grid::make(12)->schema([
+                            Forms\Components\Repeater::make('destination_types')
+                                ->label('Destination drop-off / service type (per matrix column)')
+                                ->schema([
+                                    Forms\Components\TextInput::make('column')->label('Destination column')->required(),
+                                    Forms\Components\Select::make('drop_off_type')->label('Drop-off type')->options(\App\Enums\DropOffType::options()),
+                                    Forms\Components\Select::make('service_type')->label('Service')->options(\App\Enums\ServiceType::options()),
+                                ])
+                                ->columns(3)
+                                ->addActionLabel('Add destination type')
+                                ->collapsible()
+                                ->default([])
+                                ->columnSpan(['default' => 12, 'lg' => 8]),
+                            Forms\Components\FileUpload::make('attachments')
+                                ->label('Order photos / documents')
+                                ->multiple()
+                                ->disk('public')
+                                ->directory('quotation-attachments')
+                                ->acceptedFileTypes(['image/*', 'application/pdf'])
+                                ->maxFiles(10)
+                                ->downloadable()
+                                ->openable()
+                                ->columnSpan(['default' => 12, 'lg' => 4]),
                         ]),
                         Forms\Components\Grid::make(12)->schema([
                             Forms\Components\TextInput::make('title')

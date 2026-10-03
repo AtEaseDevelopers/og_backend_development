@@ -24,6 +24,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        /*
+         * UI convention: positive actions (Create / Save / Submit / Confirm) sit on the RIGHT,
+         * Cancel / Close to their left. With end alignment Filament renders the action row
+         * reversed, so [Save, Cancel] shows as "Cancel  Save" at the right edge.
+         */
+        \Filament\Pages\BasePage::alignFormActionsEnd();
+
+        \Filament\Actions\MountableAction::configureUsing(
+            fn (\Filament\Actions\MountableAction $action) => $action->modalFooterActionsAlignment(\Filament\Support\Enums\Alignment::End),
+        );
     }
 }

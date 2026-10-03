@@ -47,8 +47,8 @@
                 </select>
             </div>
             <div class="bb-filter-actions">
-                <button type="submit" class="bb-btn bb-btn-primary">Search</button>
                 <button type="button" wire:click="resetFilters" class="bb-btn bb-btn-secondary">Reset</button>
+                <button type="submit" class="bb-btn bb-btn-primary">Search</button>
             </div>
         </form>
     </div>

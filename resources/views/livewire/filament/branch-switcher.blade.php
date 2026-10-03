@@ -9,15 +9,16 @@
                         'hover:bg-gray-100 focus-visible:bg-gray-100 dark:hover:bg-white/5 dark:focus-visible:bg-white/5' => $canSwitch,
                     ])
                     @disabled(! $canSwitch)
+                    title="Current branch: {{ $currentBranch->code }} — {{ $currentBranch->name }}"
                 >
-                    <span
-                        class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary-500/10 text-xs font-bold text-primary-600 dark:text-primary-400"
-                    >
-                        {{ $currentBranch->code }}
-                    </span>
+                    <x-filament::icon
+                        icon="heroicon-m-building-office-2"
+                        class="h-5 w-5 shrink-0 text-primary-600 dark:text-primary-400"
+                    />
 
-                    <span class="hidden max-w-[10rem] truncate text-gray-950 dark:text-white sm:inline">
-                        {{ $currentBranch->name }}
+                    <span class="whitespace-nowrap text-gray-950 dark:text-white">
+                        <span class="font-semibold">{{ $currentBranch->code }}</span>
+                        <span class="text-gray-500 dark:text-gray-400"> — {{ $currentBranch->name }}</span>
                     </span>
 
                     @if ($canSwitch)

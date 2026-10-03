@@ -45,7 +45,8 @@ class CompanySelectionController extends Controller
 
         PortalSelection::setCompany($company);
 
-        return redirect()->route('portal.dashboard');
+        // honour a salesperson ordering link opened before login (section A)
+        return redirect()->intended(route('portal.dashboard'));
     }
 
     public function register(Request $request): RedirectResponse

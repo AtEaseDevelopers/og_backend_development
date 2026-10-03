@@ -85,7 +85,7 @@ class EvaluateCreditEligibility
         }
 
         // Manual / previous / formula pricing recorded on quotation is acceptable.
-        return in_array($quotation->pricing_source, ['previous', 'special', 'formula', 'manual', 'default'], true);
+        return in_array($quotation->pricing_source, ['previous', 'special', 'formula', 'manual', 'default', 'portal', 'ocr'], true);
     }
 
     private function outstandingBalance(Customer $customer): float

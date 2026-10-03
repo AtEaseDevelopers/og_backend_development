@@ -44,7 +44,9 @@
             <input name="email" type="email" value="{{ old('email', $buyer['email'] ?? '') }}">
             <label>Phone</label>
             <input name="phone" value="{{ old('phone', $buyer['phone'] ?? '') }}">
-            <button type="submit">Save buyer info</button>
+            <div style="display:flex;justify-content:flex-end">
+                <button type="submit">Save buyer info</button>
+            </div>
         </form>
     </div>
 </div>

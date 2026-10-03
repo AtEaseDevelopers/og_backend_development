@@ -106,6 +106,19 @@ class AdminPanelProvider extends PanelProvider
             )
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
+                fn (): View => view('filament.hooks.datatable-theme'),
+            )
+            ->renderHook(
+                PanelsRenderHook::BODY_END,
+                fn (): View => view('filament.hooks.back-to-top'),
+            )
+            ->renderHook(
+                PanelsRenderHook::PAGE_START,
+                fn (): View => view('filament.hooks.enquiry-lock-heartbeat'),
+                scopes: \App\Filament\Resources\QuotationResource\Pages\CreateQuotation::class,
+            )
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
                 fn (): View => view('filament.hooks.brand-logo-theme'),
             )
             ->renderHook(
@@ -163,6 +176,10 @@ class AdminPanelProvider extends PanelProvider
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
                 fn (): View => view('filament.hooks.portal-enquiries-theme'),
+            )
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): View => view('filament.hooks.order-operations-theme'),
             )
             ->renderHook(
                 PanelsRenderHook::HEAD_END,

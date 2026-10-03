@@ -17,6 +17,8 @@ use Filament\Resources\Pages\CreateRecord;
 
 class CreateQuotation extends CreateRecord
 {
+    use \App\Filament\Resources\QuotationResource\Concerns\ValidatesPriceOverrides;
+
     protected static string $resource = QuotationResource::class;
 
     /** @var list<string> */
@@ -63,6 +65,19 @@ class CreateQuotation extends CreateRecord
             return;
         }
 
+        // Section A: keep the enquiry locked while this order is being prepared (2s heartbeat below)
+        if (auth()->user() && ! $enquiry->acquireLock(auth()->user())) {
+            Notification::make()
+                ->title('Currently being attended')
+                ->body(($enquiry->locker?->name ?? 'Another user').' is already preparing this enquiry.')
+                ->warning()
+                ->send();
+
+            $this->redirect(\App\Filament\Pages\OrderOperations::getUrl(), navigate: false);
+
+            return;
+        }
+
         $prefill = app(PortalEnquiryQuotationPrefill::class)->formState($enquiry);
 
         $this->data = array_merge($this->data ?? [], $prefill);
@@ -94,6 +109,8 @@ class CreateQuotation extends CreateRecord
         $this->matrixColumns = $data['matrix_columns'] ?? ['Seremban', 'Melaka', 'Johor'];
         $this->matrixRows = $data['matrix_rows'] ?? [];
 
+        $data = $this->enforcePriceOverrideRules($data, $this->matrixColumns, $this->matrixRows);
+
         unset($data['matrix_columns'], $data['matrix_rows']);
 
         $data['number'] = app(DocumentNumberingService::class)->next($branch, DocumentType::Quotation);
@@ -108,18 +125,44 @@ class CreateQuotation extends CreateRecord
         if ($this->portalEnquiryId) {
             $data['portal_enquiry_id'] = $this->portalEnquiryId;
             $data['pricing_source'] = $data['pricing_source'] ?? 'portal';
+
+            $enquiry = PortalEnquiry::query()->find($this->portalEnquiryId);
+
+            // Section A: the enquiry owner is fixed on every order created from it
+            if ($enquiry?->salesperson_id) {
+                $data['salesperson_id'] = $enquiry->salesperson_id;
+                $data['salesperson_locked'] = true;
+                $data['sa_location_id'] = $data['sa_location_id'] ?? $enquiry->sa_location_id ?? $enquiry->salesperson?->sa_location_id;
+            }
         }
+
+        if (empty($data['sa_location_id']) && ! empty($data['salesperson_id'])) {
+            $data['sa_location_id'] = \App\Models\User::query()->find($data['salesperson_id'])?->sa_location_id;
+        }
+
+        $data['version'] = 1;
 
         return $data;
     }
 
     protected function afterCreate(): void
     {
+        // each order is its own version root until it is revised
+        $this->record->forceFill(['root_quotation_id' => $this->record->id])->saveQuietly();
+
         app(QuotationMatrix::class)->sync(
             $this->record,
             $this->matrixColumns,
             $this->matrixRows,
         );
+
+        \App\Domains\Quotation\Models\QuotationStatusLog::query()->create([
+            'quotation_id' => $this->record->id,
+            'from_status' => null,
+            'to_status' => \App\Enums\QuotationStatus::Draft->value,
+            'user_id' => auth()->id(),
+            'remarks' => $this->portalEnquiryId ? 'Order created from customer enquiry' : 'Order created (admin entry)',
+        ]);
 
         if ($this->portalEnquiryId) {
             $enquiry = PortalEnquiry::query()->find($this->portalEnquiryId);
@@ -134,6 +177,23 @@ class CreateQuotation extends CreateRecord
         }
 
         $this->record->refresh();
+    }
+
+    /** Polled every 2 seconds while the form is open (see filament.hooks.enquiry-lock-heartbeat). */
+    public function heartbeat(): void
+    {
+        if ($this->portalEnquiryId && auth()->user()) {
+            PortalEnquiry::query()->find($this->portalEnquiryId)?->heartbeat(auth()->user());
+        }
+    }
+
+    protected function getRedirectUrl(): string
+    {
+        if ($this->portalEnquiryId && auth()->user()) {
+            PortalEnquiry::query()->find($this->portalEnquiryId)?->releaseLock(auth()->user());
+        }
+
+        return parent::getRedirectUrl();
     }
 
     private function findEnquiry(int $enquiryId): ?PortalEnquiry

@@ -17,4 +17,6 @@ enum DocumentType: string
     case CommissionSlip = 'CS';
     case CommissionPo = 'CPO';
     case CommissionPi = 'CPI';
+    case CashBill = 'CBL';
+    case RefundNote = 'RN';
 }

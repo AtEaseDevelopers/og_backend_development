@@ -34,20 +34,83 @@ class PortalEnquiryListingData
         ];
     }
 
+    /**
+     * Status counts for the same search / date window, ignoring the status filter.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return array{total: int, needs_attention: int, quoted: int, rejected: int}
+     */
+    public function summary(array $filters): array
+    {
+        $counts = $this->query(array_merge($filters, ['status' => 'all']))
+            ->reorder()
+            ->select('status')
+            ->selectRaw('count(*) as aggregate')
+            ->groupBy('status')
+            ->pluck('aggregate', 'status')
+            ->mapWithKeys(fn ($count, $status): array => [(string) $status => (int) $count]);
+
+        $of = fn (PortalEnquiryStatus $status): int => $counts->get($status->value, 0);
+
+        return [
+            'total' => (int) $counts->sum(),
+            'needs_attention' => $of(PortalEnquiryStatus::Pending) + $of(PortalEnquiryStatus::InReview),
+            'quoted' => $of(PortalEnquiryStatus::Quoted),
+            'rejected' => $of(PortalEnquiryStatus::Rejected),
+        ];
+    }
+
     /** @return array<string, mixed> */
     public function detail(PortalEnquiry $enquiry): array
     {
-        $enquiry->loadMissing(['customer', 'branch', 'user', 'quotation']);
+        $enquiry->loadMissing(['customer', 'branch', 'user', 'quotation', 'quotations', 'salesperson', 'saLocation', 'locker', 'attendee']);
         $payload = $enquiry->payload ?? [];
         $destinations = collect($payload['destinations'] ?? []);
         $items = collect($payload['items'] ?? []);
         $firstDestination = $destinations->first() ?? [];
         $review = $this->reviewStatusDisplay($enquiry->status);
+        $viewer = auth()->user();
+        $lockedByOther = $enquiry->isLockedByOther($viewer);
 
         $totalWeightKg = $items->sum(fn (array $item): float => (float) ($item['weight'] ?? 0));
 
         return [
             'id' => $enquiry->id,
+            // --- section A / B ---
+            'salesperson' => $enquiry->salesperson?->name,
+            'salesperson_id' => $enquiry->salesperson_id,
+            'salesperson_locked' => (bool) $enquiry->salesperson_locked,
+            'sa_location' => $enquiry->saLocation?->label(),
+            'source' => match ($enquiry->source) {
+                PortalEnquiry::SOURCE_SALESPERSON_LINK => 'Salesperson link',
+                PortalEnquiry::SOURCE_WALK_IN => 'Walk-in',
+                PortalEnquiry::SOURCE_ADMIN => 'Admin entry',
+                default => 'Customer portal',
+            },
+            'order_type' => $enquiry->order_type?->getLabel() ?? '—',
+            'payment_method' => \App\Enums\PaymentMethod::tryFrom((string) $enquiry->payment_method)?->getLabel() ?? '—',
+            'customer_do_number' => $enquiry->customer_do_number ?? '—',
+            'attachments' => collect($enquiry->attachments ?? [])->map(fn (array $file) => [
+                'name' => $file['name'] ?? basename((string) ($file['path'] ?? '')),
+                'url' => isset($file['path']) ? \Illuminate\Support\Facades\Storage::disk('public')->url($file['path']) : null,
+                'is_image' => str_starts_with((string) ($file['mime'] ?? ''), 'image/'),
+            ])->values()->all(),
+            'is_locked_by_other' => $lockedByOther,
+            'locked_by' => $lockedByOther ? ($enquiry->locker?->name ?? 'another user') : null,
+            'locked_since' => $lockedByOther ? $enquiry->locked_at?->format('H:i') : null,
+            'attended_by' => $enquiry->attendee?->name,
+            'orders' => $enquiry->quotations->map(fn ($q) => [
+                'number' => $q->number,
+                'version' => $q->version,
+                'status' => $q->status->getLabel(),
+                'total' => 'RM '.number_format((float) $q->total_amount, 2),
+                'url' => QuotationResource::getUrl('view', ['record' => $q]),
+            ])->values()->all(),
+            'can_assign_salesperson' => ! $lockedByOther && ! $enquiry->salesperson_locked && in_array($this->statusValue($enquiry->status), [
+                PortalEnquiryStatus::Pending->value,
+                PortalEnquiryStatus::InReview->value,
+                PortalEnquiryStatus::Quoted->value,
+            ], true),
             'reference_no' => $enquiry->reference_no ?? '—',
             'status' => $this->statusValue($enquiry->status),
             'status_label' => $review['label'],
@@ -114,15 +177,17 @@ class PortalEnquiryListingData
             'payment' => $this->paymentPanel($enquiry),
             'traceability' => $this->traceabilitySteps($enquiry),
             'notifications' => $this->notificationItems($enquiry),
-            'can_create_quotation' => in_array($this->statusValue($enquiry->status), [
+            // one enquiry may create several order records; another order can be started while quoted
+            'can_create_quotation' => ! $lockedByOther && in_array($this->statusValue($enquiry->status), [
+                PortalEnquiryStatus::Pending->value,
+                PortalEnquiryStatus::InReview->value,
+                PortalEnquiryStatus::Quoted->value,
+            ], true),
+            'can_approve' => ! $lockedByOther && in_array($this->statusValue($enquiry->status), [
                 PortalEnquiryStatus::Pending->value,
                 PortalEnquiryStatus::InReview->value,
             ], true),
-            'can_approve' => in_array($this->statusValue($enquiry->status), [
-                PortalEnquiryStatus::Pending->value,
-                PortalEnquiryStatus::InReview->value,
-            ], true),
-            'can_reject' => in_array($this->statusValue($enquiry->status), [
+            'can_reject' => ! $lockedByOther && in_array($this->statusValue($enquiry->status), [
                 PortalEnquiryStatus::Pending->value,
                 PortalEnquiryStatus::InReview->value,
             ], true),
@@ -138,6 +203,7 @@ class PortalEnquiryListingData
     {
         return [
             '' => 'All Pending',
+            'all' => 'All Statuses',
             ...collect(PortalEnquiryStatus::cases())
                 ->mapWithKeys(fn (PortalEnquiryStatus $status) => [$status->value => $this->reviewStatusDisplay($status)['label']])
                 ->all(),
@@ -174,6 +240,8 @@ class PortalEnquiryListingData
                 PortalEnquiryStatus::Pending->value,
                 PortalEnquiryStatus::InReview->value,
             ]);
+        } elseif (($filters['status'] ?? null) === 'all') {
+            // no status restriction
         } elseif (filled($filters['status'] ?? null)) {
             $query->where('status', (string) $filters['status']);
         }
@@ -194,19 +262,72 @@ class PortalEnquiryListingData
     {
         $payload = $enquiry->payload ?? [];
         $destinations = collect($payload['destinations'] ?? []);
+        $items = collect($payload['items'] ?? []);
         $review = $this->reviewStatusDisplay($enquiry->status);
+        $status = $this->statusValue($enquiry->status);
+        $quotation = $enquiry->quotation;
 
         return [
             'id' => $enquiry->id,
             'reference_no' => $enquiry->reference_no ?? '—',
             'customer' => $enquiry->customer?->company_name ?? '—',
+            'customer_code' => $enquiry->customer?->code,
+            'branch' => $enquiry->branch?->code ?? '—',
+            'submitted_by' => $enquiry->user?->name ?? '—',
             'destination' => $this->destinationShort($destinations),
+            'route' => $this->routeSummary($enquiry, $destinations),
+            'items_summary' => $this->itemsSummary($items),
             'preferred_delivery_date' => $enquiry->preferred_delivery_date?->format('d/m/Y') ?? '—',
-            'status' => $this->statusValue($enquiry->status),
+            'status' => $status,
             'status_label' => $review['label'],
             'status_color' => $review['color'],
+            'stage_hint' => $this->stageHint($status, $quotation !== null),
+            'payment_label' => $quotation ? ($quotation->status?->getLabel() ?? '—') : 'Not requested',
+            'payment_hint' => $quotation ? 'Quotation '.$quotation->number : 'After confirmation',
+            'amount' => $quotation ? 'RM '.number_format((float) $quotation->total_amount, 2) : 'Not priced',
+            'quotation_number' => $quotation?->number,
+            'quotation_url' => $quotation ? QuotationResource::getUrl('view', ['record' => $quotation]) : null,
+            'next_step' => $this->nextStep($status, $quotation !== null),
             'submitted_at' => $enquiry->created_at?->format('d/m/Y H:i') ?? '—',
         ];
+    }
+
+    /** @param  Collection<int, array<string, mixed>>  $items */
+    private function itemsSummary(Collection $items): string
+    {
+        if ($items->isEmpty()) {
+            return 'No items listed';
+        }
+
+        $first = $items->first();
+        $label = trim($this->formatQuantity($first['quantity'] ?? null).' '.strtoupper((string) ($first['uom'] ?? 'UNIT')));
+        $more = $items->count() > 1 ? ' · +'.($items->count() - 1).' more' : '';
+
+        return $label.$more;
+    }
+
+    private function stageHint(string $status, bool $hasQuotation): string
+    {
+        return match ($status) {
+            PortalEnquiryStatus::Pending->value => 'New submission · Review required',
+            PortalEnquiryStatus::InReview->value => $hasQuotation
+                ? 'Quotation drafted · Awaiting customer'
+                : 'Pricing in progress · Admin editing',
+            PortalEnquiryStatus::Quoted->value => 'Quotation linked · Continue in quotation',
+            PortalEnquiryStatus::Rejected->value => 'Rejected by admin',
+            default => 'Cancelled by customer',
+        };
+    }
+
+    private function nextStep(string $status, bool $hasQuotation): string
+    {
+        return match ($status) {
+            PortalEnquiryStatus::Pending->value => 'Review submitted order',
+            PortalEnquiryStatus::InReview->value => $hasQuotation ? 'View quotation' : 'Provide pricing',
+            PortalEnquiryStatus::Quoted->value => 'View quotation',
+            PortalEnquiryStatus::Rejected->value => 'View rejection',
+            default => 'View order',
+        };
     }
 
     /** @return array{label: string, color: string} */

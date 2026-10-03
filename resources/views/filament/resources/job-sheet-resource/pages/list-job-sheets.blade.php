@@ -78,8 +78,8 @@
                 </select>
             </div>
             <div class="js-filter-actions">
-                <button type="submit" class="js-btn js-btn-primary">Search</button>
                 <button type="button" wire:click="resetFilters" class="js-btn js-btn-secondary">Reset</button>
+                <button type="submit" class="js-btn js-btn-primary">Search</button>
             </div>
         </form>
     </div>

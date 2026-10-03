@@ -18,6 +18,7 @@ class ViewInvoice extends ViewRecord
                 ->icon('heroicon-o-document-arrow-down')
                 ->url(fn (): string => InvoiceResource::pdfUrl($this->getRecord()))
                 ->openUrlInNewTab(),
+            InvoiceResource::sendAction(Actions\Action::make('sendToCustomer')),
         ];
     }
 }

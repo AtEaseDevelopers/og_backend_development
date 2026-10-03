@@ -90,7 +90,45 @@ class InvoiceResource extends Resource
                     ->icon('heroicon-o-document-arrow-down')
                     ->url(fn (Invoice $record): string => static::pdfUrl($record))
                     ->openUrlInNewTab(),
+                static::sendAction(Tables\Actions\Action::make('sendToCustomer')),
             ]);
+    }
+
+    /**
+     * Section G: email the confirmed Invoice / Cash Bill (PDF attached) to the customer.
+     * Shared by the table row and the view page header.
+     */
+    public static function sendAction(\Filament\Actions\Action|Tables\Actions\Action $action): \Filament\Actions\Action|Tables\Actions\Action
+    {
+        return $action
+            ->label(fn (Invoice $record) => $record->sent_at ? 'Resend to customer' : 'Send to customer')
+            ->icon('heroicon-o-envelope')
+            ->color('info')
+            ->visible(fn (Invoice $record) => ! in_array($record->status, ['draft', 'cancelled'], true))
+            ->form(fn (Invoice $record) => [
+                \Filament\Forms\Components\TextInput::make('email')
+                    ->label('Send to')
+                    ->email()
+                    ->default($record->customer?->email)
+                    ->required(),
+                \Filament\Forms\Components\Textarea::make('note')->label('Message to customer (optional)')->rows(2),
+                \Filament\Forms\Components\Placeholder::make('last')
+                    ->label('Last sent')
+                    ->content($record->sent_at?->format('d/m/Y H:i') ?? 'Never')
+                    ->visible((bool) $record->sent_at),
+            ])
+            ->action(function (Invoice $record, array $data) {
+                try {
+                    $log = app(\App\Domains\Billing\Actions\SendInvoice::class)->execute($record, auth()->user(), $data['email'], $data['note'] ?? null);
+
+                    \Filament\Notifications\Notification::make()
+                        ->title($log->status === 'sent' ? 'Invoice emailed to '.$data['email'] : 'Invoice not sent: '.($log->error ?? $log->status))
+                        ->{$log->status === 'sent' ? 'success' : 'warning'}()
+                        ->send();
+                } catch (\Throwable $e) {
+                    \Filament\Notifications\Notification::make()->title($e->getMessage())->danger()->send();
+                }
+            });
     }
 
     public static function canCreate(): bool

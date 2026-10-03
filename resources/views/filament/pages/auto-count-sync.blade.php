@@ -8,12 +8,12 @@
 
         <form class="space-y-4">
             {{ $this->form }}
-            <div class="flex gap-3">
+            <div class="flex justify-end gap-3">
+                <x-filament::button type="button" color="warning" outlined wire:click="syncSelected(true)">
+                    Force retry
+                </x-filament::button>
                 <x-filament::button type="button" wire:click="syncSelected(false)">
                     Sync
-                </x-filament::button>
-                <x-filament::button type="button" color="warning" wire:click="syncSelected(true)">
-                    Force retry
                 </x-filament::button>
             </div>
         </form>

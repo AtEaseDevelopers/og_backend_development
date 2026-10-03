@@ -46,8 +46,8 @@
                 </select>
             </div>
             <div class="cl-filter-actions">
-                <button type="submit" class="cl-btn cl-btn-primary">Search</button>
                 <button type="button" wire:click="resetFilters" class="cl-btn cl-btn-secondary">Reset</button>
+                <button type="submit" class="cl-btn cl-btn-primary">Search</button>
             </div>
         </form>
     </div>

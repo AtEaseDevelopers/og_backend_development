@@ -67,6 +67,21 @@ class UserResource extends Resource
                 ->preload()
                 ->required(),
             Forms\Components\Toggle::make('is_active')->default(true),
+            Forms\Components\Section::make('Sales ownership (section A)')
+                ->description('Each salesperson belongs to one SA location; the SA location carries the CSN prefix. The ordering link fixes the salesperson on every order a customer submits through it.')
+                ->schema([
+                    Forms\Components\Select::make('sa_location_id')
+                        ->label('SA location')
+                        ->options(fn () => \App\Domains\MasterData\Models\SaLocation::query()->where('is_active', true)->orderBy('code')->get()
+                            ->mapWithKeys(fn ($l) => [$l->id => $l->code.' — '.$l->name.' ('.$l->csn_prefix.')']))
+                        ->searchable(),
+                    Forms\Components\Placeholder::make('ordering_link')
+                        ->label('Customer ordering link')
+                        ->content(fn (?User $record) => $record?->ordering_token
+                            ? new \Illuminate\Support\HtmlString('<code class="text-xs">'.e($record->orderingLink()).'</code>')
+                            : 'Save the account, then use "Generate ordering link" on the edit page.')
+                        ->visible(fn (string $operation) => $operation === 'edit'),
+                ])->columns(2),
         ]);
     }
 
@@ -83,9 +98,26 @@ class UserResource extends Resource
                 ->label('Roles')
                 ->badge()
                 ->separator(','),
+            Tables\Columns\TextColumn::make('saLocation.code')
+                ->label('SA location')
+                ->placeholder('—'),
             Tables\Columns\IconColumn::make('is_active')->boolean(),
         ])->actions([
             Tables\Actions\EditAction::make(),
+            Tables\Actions\Action::make('orderingLink')
+                ->label(fn (User $record) => $record->ordering_token ? 'Copy ordering link' : 'Generate ordering link')
+                ->icon('heroicon-o-link')
+                ->visible(fn (User $record) => $record->hasRole('salesperson'))
+                ->action(function (User $record) {
+                    $record->ensureOrderingToken();
+
+                    \Filament\Notifications\Notification::make()
+                        ->title('Ordering link for '.$record->name)
+                        ->body($record->orderingLink())
+                        ->persistent()
+                        ->success()
+                        ->send();
+                }),
         ]);
     }
 

@@ -70,5 +70,28 @@
 
     @yield('content')
 </div>
+
+<button type="button" id="og-back-to-top" aria-label="Back to top" title="Back to top"
+        style="position:fixed;right:1.25rem;bottom:1.25rem;z-index:40;display:none;align-items:center;gap:.3rem;padding:.5rem .8rem .5rem .65rem;border-radius:9999px;border:0;background:var(--accent);color:#fff;font-size:.75rem;font-weight:600;box-shadow:0 6px 18px rgba(28,25,23,.18);cursor:pointer">
+    <svg viewBox="0 0 20 20" fill="currentColor" width="15" height="15" aria-hidden="true"><path fill-rule="evenodd" d="M10 17a.75.75 0 0 1-.75-.75V5.612L5.29 9.77a.75.75 0 0 1-1.08-1.04l5.25-5.5a.75.75 0 0 1 1.08 0l5.25 5.5a.75.75 0 1 1-1.08 1.04l-3.96-4.158V16.25A.75.75 0 0 1 10 17Z" clip-rule="evenodd"/></svg>
+    <span>Top</span>
+</button>
+<script>
+    (function () {
+        const btn = document.getElementById('og-back-to-top');
+        let ticking = false;
+        function update() {
+            const doc = document.documentElement;
+            const y = window.scrollY;
+            const nearBottom = window.innerHeight + y >= doc.scrollHeight - 120;
+            btn.style.display = (y > Math.min(400, window.innerHeight * 0.6) || (nearBottom && y > 150)) ? 'inline-flex' : 'none';
+            ticking = false;
+        }
+        window.addEventListener('scroll', () => { if (!ticking) { ticking = true; requestAnimationFrame(update); } }, { passive: true });
+        window.addEventListener('resize', update);
+        btn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+        update();
+    })();
+</script>
 </body>
 </html>

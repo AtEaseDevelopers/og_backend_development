@@ -52,6 +52,56 @@ class QuotationMatrix
     }
 
     /**
+     * Section D: rates that differ from the standard price list (or the customer's special price)
+     * are overrides. They need a reason and HQ Admin / Branch Manager permission.
+     *
+     * @param  list<string>  $columns
+     * @param  list<array{item_name: string, line_type?: string, quantity?: mixed, prices: array<string, mixed>}>  $rows
+     * @return list<array{item: string, destination: string, standard: float, entered: float}>
+     */
+    public function detectOverrides(?int $customerId, array $columns, array $rows): array
+    {
+        $lookup = app(QuotationPricingLookup::class);
+        $overrides = [];
+
+        foreach ($rows as $row) {
+            $itemName = trim((string) ($row['item_name'] ?? ''));
+
+            if ($itemName === '') {
+                continue;
+            }
+
+            $lineType = $row['line_type'] ?? $lookup->inferLineType($row['catalog_key'] ?? null, $itemName);
+            $quantity = $lineType === 'uom' ? max(0.01, (float) ($row['quantity'] ?? 1)) : 1.0;
+
+            foreach (array_filter($columns) as $column) {
+                $price = $row['prices'][$column] ?? null;
+
+                if ($price === null || $price === '') {
+                    continue;
+                }
+
+                $standard = $lookup->lookupForCustomer($customerId, $itemName, $column, $quantity)['price'] ?? null;
+
+                if ($standard === null) {
+                    continue; // nothing to compare against: manual pricing, not an override
+                }
+
+                if (abs(round((float) $price, 2) - round((float) $standard, 2)) >= 0.005) {
+                    $overrides[] = [
+                        'item' => $itemName,
+                        'destination' => $column,
+                        'standard' => round((float) $standard, 2),
+                        'entered' => round((float) $price, 2),
+                    ];
+                }
+            }
+        }
+
+        return $overrides;
+    }
+
+    /**
      * @param  list<string>  $columns
      * @param  list<array{item_name: string, line_type?: string, quantity?: mixed, prices: array<string, mixed>}>  $rows
      */
@@ -67,14 +117,19 @@ class QuotationMatrix
         }
 
         $destinations = [];
+        $destinationTypes = collect($quotation->destination_types ?? [])->keyBy('column');
 
         foreach ($columns as $index => $column) {
+            $typeSetting = $destinationTypes->get($column, []);
+
             $destinations[$column] = $quotation->destinations()->create([
                 'sequence' => $index + 1,
                 'consignee_name' => $column,
                 'address' => $column,
                 'city' => $column,
                 'state' => '',
+                'drop_off_type' => $typeSetting['drop_off_type'] ?? null,
+                'service_type' => $typeSetting['service_type'] ?? $quotation->service_type?->value,
             ]);
         }
 

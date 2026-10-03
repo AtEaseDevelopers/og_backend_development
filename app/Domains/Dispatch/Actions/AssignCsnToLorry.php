@@ -6,25 +6,40 @@ use App\Domains\Consignment\Models\ConsignmentNote;
 use App\Domains\Dispatch\Models\DeliveryOrder;
 use App\Domains\Dispatch\Models\JobSheet;
 use App\Domains\Dispatch\Models\JobSheetTask;
+use App\Domains\MasterData\Models\Driver;
 use App\Domains\MasterData\Models\Lorry;
+use App\Domains\Notification\Actions\SendNotification;
+use App\Domains\Notification\Models\NotificationLog;
 use App\Enums\CsnStatus;
 use App\Enums\DeliveryOrderStatus;
 use App\Enums\DocumentType;
-use App\Enums\JobSheetStatus;
+use App\Models\User;
 use App\Services\DocumentNumberingService;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 class AssignCsnToLorry
 {
-    public function __construct(private DocumentNumberingService $numbering) {}
+    public function __construct(
+        private DocumentNumberingService $numbering,
+        private ResolveJobSheet $resolveJobSheet,
+        private SendNotification $notify,
+    ) {}
 
+    /**
+     * Manual assignment (admin) or assignment following a driver claim.
+     *
+     * @param  JobSheet|null  $jobSheet  target trip; when null the lorry's open trip for the date is used
+     */
     public function execute(
         ConsignmentNote $csn,
         Lorry $lorry,
         ?string $operatingDate = null,
         ?int $driverId = null,
+        ?User $actor = null,
+        ?JobSheet $jobSheet = null,
     ): DeliveryOrder {
         if ($csn->deliveryOrder()->exists()) {
             throw new InvalidArgumentException('CSN already has a Delivery Order.');
@@ -40,38 +55,35 @@ class AssignCsnToLorry
             );
         }
 
-        $date = $operatingDate
-            ? \Illuminate\Support\Carbon::parse($operatingDate)->toDateString()
-            : now()->toDateString();
+        if (! $lorry->is_active) {
+            throw new InvalidArgumentException('Lorry '.$lorry->registration_no.' is not active.');
+        }
 
-        return DB::transaction(function () use ($csn, $lorry, $date, $driverId) {
+        $date = $operatingDate
+            ? Carbon::parse($operatingDate)->toDateString()
+            : ($jobSheet?->operating_date?->toDateString() ?? now()->toDateString());
+
+        return DB::transaction(function () use ($csn, $lorry, $date, $driverId, $actor, $jobSheet) {
             $lorry->load('defaultDriver', 'branch');
             $resolvedDriverId = $driverId ?: $lorry->default_driver_id;
 
+            if ($resolvedDriverId) {
+                $driver = Driver::query()->find($resolvedDriverId);
+
+                if ($driver && ! $driver->is_active) {
+                    throw new InvalidArgumentException('Driver '.$driver->name.' is not active.');
+                }
+            }
+
             $isShared = $csn->source_branch_id !== $lorry->branch_id;
 
-            $jobSheet = JobSheet::query()->firstOrCreate(
-                [
-                    'lorry_id' => $lorry->id,
-                    'operating_date' => $date,
-                ],
-                [
-                    'number' => $this->numbering->next($lorry->branch, DocumentType::JobSheet),
-                    'company_id' => $lorry->company_id ?? $csn->company_id,
-                    'operating_branch_id' => $lorry->branch_id,
-                    'driver_id' => $resolvedDriverId,
-                    'status' => JobSheetStatus::Draft,
-                    'is_shared_dispatch' => $isShared,
-                ]
+            $jobSheet ??= $this->resolveJobSheet->forLorry(
+                $lorry,
+                $date,
+                $resolvedDriverId,
+                $csn->company_id,
+                $isShared,
             );
-
-            if ($resolvedDriverId && (int) $jobSheet->driver_id !== (int) $resolvedDriverId) {
-                $jobSheet->update(['driver_id' => $resolvedDriverId]);
-            }
-
-            if ($isShared && ! $jobSheet->is_shared_dispatch) {
-                $jobSheet->update(['is_shared_dispatch' => true]);
-            }
 
             $do = DeliveryOrder::query()->create([
                 'number' => $this->numbering->next($csn->sourceBranch, DocumentType::Do),
@@ -94,9 +106,45 @@ class AssignCsnToLorry
                 'route_group' => $csn->delivery_state,
             ]);
 
-            $csn->update(['status' => CsnStatus::Assigned]);
+            $csn->update([
+                'status' => CsnStatus::Assigned,
+                'assigned_by' => $actor?->id,
+                'assigned_at' => now(),
+                'transfer_claim_pending' => false,
+            ]);
 
-            return $do->load(['consignmentNote', 'jobSheet', 'lorry', 'driver']);
+            $this->notifyDriver($do->load(['consignmentNote', 'jobSheet', 'lorry', 'driver']));
+
+            return $do;
         });
+    }
+
+    private function notifyDriver(DeliveryOrder $do): void
+    {
+        $driver = $do->driver;
+
+        if (! $driver) {
+            return;
+        }
+
+        $csn = $do->consignmentNote;
+
+        $this->notify->execute(
+            event: 'csn_assigned',
+            recipient: ['type' => 'driver', 'name' => $driver->name, 'phone' => $driver->phone, 'email' => $driver->user?->email],
+            subject: 'New delivery assigned: '.$csn->number,
+            message: sprintf(
+                "CSN %s (DO %s) has been assigned to lorry %s on %s (%s).\nDeliver to: %s, %s",
+                $csn->number,
+                $do->number,
+                $do->lorry?->registration_no,
+                $do->jobSheet?->operating_date?->format('d/m/Y'),
+                $do->jobSheet?->tripLabel(),
+                $csn->consignee_name,
+                $csn->delivery_address,
+            ),
+            related: $csn,
+            channels: [NotificationLog::CHANNEL_WHATSAPP, NotificationLog::CHANNEL_SYSTEM],
+        );
     }
 }

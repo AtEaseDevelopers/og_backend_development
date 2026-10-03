@@ -15,9 +15,13 @@ use App\Domains\MasterData\Models\Branch;
 use App\Domains\MasterData\Models\Customer;
 use App\Domains\Quotation\Models\Quotation;
 use App\Domains\Quotation\Models\QuotationDestination;
+use App\Domains\MasterData\Models\SaLocation;
+use App\Domains\MasterData\Models\TransferCode;
 use App\Enums\CsnBillingType;
 use App\Enums\CsnStatus;
+use App\Enums\OrderType;
 use App\Enums\PaymentStatus;
+use App\Enums\ServiceType;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -47,11 +51,20 @@ class ConsignmentNote extends Model
         'subtotal', 'discount', 'tax_amount', 'tax_rate', 'total_amount',
         'cost_center', 'is_taxable', 'advance_taken', 'issue_invoice',
         'storekeeper_id', 'qr_token', 'tracking_token', 'created_by', 'cancelled_at',
+        // section H
+        'salesperson_id', 'sa_location_id', 'sa_prefix', 'order_type', 'invoice_number', 'proforma_number',
+        'transfer_code_id', 'customer_do_number', 'service_type', 'drop_off_type',
+        'claimed_by', 'claimed_at', 'claim_channel', 'assigned_by', 'assigned_at', 'transfer_claim_pending',
     ];
 
     protected function casts(): array
     {
         return [
+            'order_type' => OrderType::class,
+            'service_type' => ServiceType::class,
+            'claimed_at' => 'datetime',
+            'assigned_at' => 'datetime',
+            'transfer_claim_pending' => 'boolean',
             'billing_type' => CsnBillingType::class,
             'status' => CsnStatus::class,
             'payment_status' => PaymentStatus::class,
@@ -190,10 +203,77 @@ class ConsignmentNote extends Model
             return false;
         }
 
-        if ($this->billing_type === CsnBillingType::CashBill) {
+        // Orders billed through the new flow (Invoice / Cash Bill issued before the CSN exists)
+        // are already paid or released; the legacy cash-bill gate only applies to manual CSNs.
+        if ($this->billing_type === CsnBillingType::CashBill && $this->invoice_number === null) {
             return $this->isCashBillFullyPaid();
         }
 
         return true;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Section H relations / helpers
+    |--------------------------------------------------------------------------
+    */
+
+    public function salesperson(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'salesperson_id');
+    }
+
+    public function saLocation(): BelongsTo
+    {
+        return $this->belongsTo(SaLocation::class);
+    }
+
+    public function transferCode(): BelongsTo
+    {
+        return $this->belongsTo(TransferCode::class);
+    }
+
+    public function claimer(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'claimed_by');
+    }
+
+    public function assigner(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_by');
+    }
+
+    public function transfers(): HasMany
+    {
+        return $this->hasMany(\App\Domains\Dispatch\Models\JobSheetTransfer::class);
+    }
+
+    public function notificationLogs(): \Illuminate\Database\Eloquent\Relations\MorphMany
+    {
+        return $this->morphMany(\App\Domains\Notification\Models\NotificationLog::class, 'notifiable');
+    }
+
+    public function isPendingAssignment(): bool
+    {
+        return $this->status instanceof CsnStatus && $this->status->isAwaitingAssignment();
+    }
+
+    public function isClaimed(): bool
+    {
+        return $this->claimed_by !== null;
+    }
+
+    /** Can this CSN be claimed right now (scan-to-claim, section H / J)? */
+    public function isClaimable(): bool
+    {
+        if ($this->status === CsnStatus::Cancelled || $this->cancelled_at !== null) {
+            return false;
+        }
+
+        if ($this->transfer_claim_pending) {
+            return true;
+        }
+
+        return $this->isPendingAssignment() && ! $this->isClaimed();
     }
 }

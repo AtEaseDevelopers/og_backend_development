@@ -102,35 +102,38 @@ class SharedDispatch extends Page implements HasForms
                     ->label('CSN QR token')
                     ->visible(fn (Forms\Get $get) => $get('assignment_mode') === 'qr')
                     ->required(fn (Forms\Get $get) => $get('assignment_mode') === 'qr'),
-                Forms\Components\Placeholder::make('availability')
-                    ->label('Daily Job Sheets for selected date')
-                    ->content(function (Forms\Get $get) {
-                        $date = $get('operating_date');
-                        if (! $date) {
-                            return 'Select a date';
-                        }
-
-                        $sheets = JobSheet::query()
-                            ->with(['lorry.branch', 'driver'])
-                            ->whereDate('operating_date', $date)
-                            ->orderBy('number')
-                            ->get();
-
-                        if ($sheets->isEmpty()) {
-                            return 'No job sheets yet for this date.';
-                        }
-
-                        return $sheets->map(fn (JobSheet $js) => sprintf(
-                            '%s — %s [%s] / %s%s',
-                            $js->number,
-                            $js->lorry?->registration_no,
-                            $js->lorry?->branch?->code,
-                            $js->driver?->name ?? 'no driver',
-                            $js->is_shared_dispatch ? ' (shared)' : ''
-                        ))->implode("\n");
-                    }),
             ])
+            ->columns(2)
             ->statePath('data');
+    }
+
+    /**
+     * Job sheets (trips) on the selected operating date, grouped by operating branch.
+     *
+     * @return \Illuminate\Support\Collection<string, \Illuminate\Support\Collection<int, JobSheet>>
+     */
+    public function getDailyJobSheets(): \Illuminate\Support\Collection
+    {
+        $date = $this->data['operating_date'] ?? null;
+
+        if (! $date) {
+            return collect();
+        }
+
+        return JobSheet::query()
+            ->with(['lorry.branch', 'driver', 'operatingBranch'])
+            ->withCount('deliveryOrders')
+            ->whereDate('operating_date', $date)
+            ->orderBy('operating_branch_id')
+            ->orderBy('lorry_id')
+            ->orderBy('trip_no')
+            ->get()
+            ->groupBy(fn (JobSheet $sheet) => $sheet->operatingBranch?->code ?? '—');
+    }
+
+    public function useLorry(int $lorryId): void
+    {
+        $this->data['lorry_id'] = $lorryId;
     }
 
     public function assign(): void

@@ -41,8 +41,8 @@
                 </select>
             </div>
             <div class="pl-filter-actions">
-                <button type="submit" class="pl-btn pl-btn-primary">Search</button>
                 <button type="button" wire:click="resetFilters" class="pl-btn pl-btn-secondary">Reset</button>
+                <button type="submit" class="pl-btn pl-btn-primary">Search</button>
             </div>
         </form>
     </div>

@@ -87,6 +87,12 @@ class JobSheetResource extends Resource
                 Tables\Columns\TextColumn::make('number')
                     ->label('Job Sheet Number')
                     ->sortable(),
+                Tables\Columns\TextColumn::make('trip_no')
+                    ->label('Trip')
+                    ->formatStateUsing(fn ($state) => 'Trip '.($state ?: 1))
+                    ->badge()
+                    ->color('gray')
+                    ->sortable(),
                 Tables\Columns\TextColumn::make('operating_date')
                     ->label('Operating Date')
                     ->date('d/m/Y')
@@ -128,7 +134,7 @@ class JobSheetResource extends Resource
                 Tables\Actions\Action::make('transfer_task')
                     ->label('Transfer task')
                     ->icon('heroicon-o-arrows-right-left')
-                    ->visible(fn (JobSheet $record) => in_array($record->status, [
+                    ->visible(fn (JobSheet $record) => TransferJobSheetTask::canTransfer(auth()->user()) && in_array($record->status, [
                         JobSheetStatus::Draft,
                         JobSheetStatus::InTransit,
                     ], true))
@@ -178,9 +184,21 @@ class JobSheetResource extends Resource
                             ->searchable()
                             ->visible(fn (Forms\Get $get) => $get('mode') === 'lorry')
                             ->required(fn (Forms\Get $get) => $get('mode') === 'lorry'),
+                        Forms\Components\Select::make('driver_id')
+                            ->label('New driver (optional, defaults to the lorry\'s driver)')
+                            ->options(fn () => \App\Domains\MasterData\Models\Driver::query()->where('is_active', true)->orderBy('name')->pluck('name', 'id'))
+                            ->searchable()
+                            ->visible(fn (Forms\Get $get) => $get('mode') === 'lorry'),
+                        Forms\Components\DateTimePicker::make('handover_at')
+                            ->label('Handover time')
+                            ->default(now())
+                            ->seconds(false),
+                        Forms\Components\TextInput::make('handover_location')
+                            ->label('Handover location')
+                            ->placeholder('e.g. R&R Sungai Buloh'),
                         Forms\Components\Textarea::make('reason')
                             ->required()
-                            ->helperText('Required for in-transit controlled transfers.'),
+                            ->helperText('Mandatory. Original and new lorry / driver, time and reason are recorded; both drivers and the customer are notified.'),
                     ])
                     ->action(function (JobSheet $record, array $data) {
                         try {
@@ -192,20 +210,58 @@ class JobSheetResource extends Resource
                                     $do,
                                     JobSheet::findOrFail($data['to_job_sheet_id']),
                                     auth()->user(),
-                                    $data['reason']
+                                    $data['reason'],
+                                    $data['handover_at'] ?? null,
+                                    $data['handover_location'] ?? null,
                                 );
                             } else {
                                 $transfer = $action->transferToLorry(
                                     $do,
                                     Lorry::findOrFail($data['lorry_id']),
                                     auth()->user(),
-                                    $data['reason']
+                                    $data['reason'],
+                                    null,
+                                    isset($data['driver_id']) ? (int) $data['driver_id'] : null,
+                                    $data['handover_at'] ?? null,
+                                    $data['handover_location'] ?? null,
                                 );
                             }
 
                             Notification::make()
                                 ->title('Task transferred')
-                                ->body($do->number.' → '.$transfer->toJobSheet?->number)
+                                ->body($do->number.' → '.$transfer->toJobSheet?->number.' ('.$transfer->toLorry?->registration_no.' / '.($transfer->toDriver?->name ?? 'no driver').')')
+                                ->success()
+                                ->send();
+                        } catch (Throwable $e) {
+                            Notification::make()->title($e->getMessage())->danger()->send();
+                        }
+                    }),
+                Tables\Actions\Action::make('nextTrip')
+                    ->label('Create next trip')
+                    ->icon('heroicon-o-plus-circle')
+                    ->color('gray')
+                    ->form([
+                        Forms\Components\Placeholder::make('info')
+                            ->label('Trip')
+                            ->content(fn (JobSheet $record) => 'Creates '.('Trip '.($record->trip_no + 1)).' for '.$record->lorry?->registration_no.' / '.$record->driver?->name.' on '.$record->operating_date?->format('d/m/Y').'. '.$record->number.' is kept as is.'),
+                        Forms\Components\DateTimePicker::make('planned_departure_at')
+                            ->label('Planned departure')
+                            ->seconds(false),
+                        Forms\Components\Checkbox::make('allow_overlap')
+                            ->label('Allow overlapping trip (another trip on this lorry is still in transit)'),
+                    ])
+                    ->action(function (JobSheet $record, array $data) {
+                        try {
+                            $next = app(\App\Domains\Dispatch\Actions\CreateNextTrip::class)->execute(
+                                $record,
+                                auth()->user(),
+                                $data['planned_departure_at'] ?? null,
+                                null,
+                                (bool) ($data['allow_overlap'] ?? false),
+                            );
+
+                            Notification::make()
+                                ->title($next->tripLabel().' created: '.$next->number)
                                 ->success()
                                 ->send();
                         } catch (Throwable $e) {

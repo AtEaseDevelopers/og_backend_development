@@ -40,9 +40,14 @@ class RecordPayment
             }
 
             $payment = Payment::query()->create([
+                'company_id' => $data['company_id'] ?? $csn?->company_id ?? \App\Support\CurrentCompany::id(),
                 'source_branch_id' => $branchId,
                 'customer_id' => $data['customer_id'] ?? $csn?->customer_id,
                 'consignment_note_id' => $csn?->id,
+                'quotation_id' => $data['quotation_id'] ?? $csn?->quotation_id,
+                'payment_submission_id' => $data['payment_submission_id'] ?? null,
+                'approved_by' => $data['approved_by'] ?? null,
+                'approved_at' => $data['approved_at'] ?? null,
                 'invoice_id' => $data['invoice_id'] ?? null,
                 'delivery_order_id' => $data['delivery_order_id'] ?? null,
                 'driver_id' => $data['driver_id'] ?? null,

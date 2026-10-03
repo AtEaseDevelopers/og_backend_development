@@ -41,11 +41,27 @@ class PortalEnquiryQuotationPrefill
 
         $customerId = $enquiry->customer_id ? (string) $enquiry->customer_id : null;
 
+        // Section A: every order from the enquiry stays under the enquiry's salesperson
+        $salespersonId = $enquiry->salesperson_id ?? auth()->id();
+        $saLocationId = $enquiry->sa_location_id ?? $enquiry->salesperson?->sa_location_id ?? auth()->user()?->sa_location_id;
+
         $state = [
             'company_id' => (string) ($enquiry->company_id ?? CurrentCompany::id()),
             'branch_id' => (string) ($enquiry->branch_id ?? CurrentCompany::branchId()),
             'customer_id' => $customerId,
-            'salesperson_id' => auth()->id() ? (string) auth()->id() : null,
+            'salesperson_id' => $salespersonId ? (string) $salespersonId : null,
+            'salesperson_locked' => $enquiry->salesperson_id !== null,
+            'sa_location_id' => $saLocationId ? (string) $saLocationId : null,
+            'order_type' => $enquiry->order_type?->value ?? $enquiry->customer?->default_order_type,
+            'service_type' => $enquiry->service_type?->value,
+            'payment_method' => $enquiry->payment_method,
+            'customer_do_number' => $enquiry->customer_do_number,
+            'attachments' => collect($enquiry->attachments ?? [])->pluck('path')->filter()->values()->all(),
+            'destination_types' => $destinations->values()->map(fn (array $destination, int $index): array => [
+                'column' => $this->destinationLabel($destination, $index),
+                'drop_off_type' => $destination['drop_off_type'] ?? null,
+                'service_type' => $destination['service_type'] ?? null,
+            ])->all(),
             'pricing_source' => 'portal',
             'expected_delivery_date' => $enquiry->preferred_delivery_date?->toDateString(),
             'pickup_location' => $enquiry->pickup_address,
@@ -80,7 +96,7 @@ class PortalEnquiryQuotationPrefill
      */
     private function stringifySelectValues(array $state): array
     {
-        foreach (['company_id', 'branch_id', 'customer_id', 'salesperson_id', 'from_location_id'] as $key) {
+        foreach (['company_id', 'branch_id', 'customer_id', 'salesperson_id', 'sa_location_id', 'from_location_id'] as $key) {
             if (filled($state[$key] ?? null)) {
                 $state[$key] = (string) $state[$key];
             }

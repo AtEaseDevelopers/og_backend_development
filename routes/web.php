@@ -6,7 +6,9 @@ use App\Http\Controllers\Portal\BranchSelectionController;
 use App\Http\Controllers\Portal\CompanySelectionController;
 use App\Http\Controllers\Portal\DashboardController;
 use App\Http\Controllers\Portal\EnquiryController;
+use App\Http\Controllers\Portal\PaymentSubmissionController;
 use App\Http\Controllers\Portal\QuotationController;
+use App\Http\Controllers\Portal\SalespersonLinkController;
 use App\Http\Controllers\Portal\TrackingController;
 use Illuminate\Support\Facades\Route;
 
@@ -18,6 +20,9 @@ Route::get('/einvoice-buyer/{token}', [EinvoiceBuyerController::class, 'show'])-
 Route::post('/einvoice-buyer/{token}', [EinvoiceBuyerController::class, 'store'])->name('einvoice.buyer.store');
 
 Route::prefix('portal')->name('portal.')->group(function () {
+    // Section A: each salesperson's unique ordering link (works for guests and logged-in customers)
+    Route::get('order/{token}', SalespersonLinkController::class)->name('salesperson-link');
+
     Route::middleware('guest')->group(function () {
         Route::get('login', [AuthController::class, 'showLogin'])->name('login');
         Route::post('login', [AuthController::class, 'login']);
@@ -44,6 +49,7 @@ Route::prefix('portal')->name('portal.')->group(function () {
             Route::post('quotations/{quotation}/confirm', [QuotationController::class, 'confirm'])->name('quotations.confirm');
             Route::post('quotations/{quotation}/reject', [QuotationController::class, 'reject'])->name('quotations.reject');
             Route::post('quotations/{quotation}/amend', [QuotationController::class, 'requestAmendment'])->name('quotations.amend');
+            Route::post('quotations/{quotation}/payments', [PaymentSubmissionController::class, 'store'])->name('quotations.payments.store');
         });
     });
 });

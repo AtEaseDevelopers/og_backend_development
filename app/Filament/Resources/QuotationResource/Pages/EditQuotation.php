@@ -12,6 +12,8 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditQuotation extends EditRecord
 {
+    use \App\Filament\Resources\QuotationResource\Concerns\ValidatesPriceOverrides;
+
     protected static string $resource = QuotationResource::class;
 
     /** @var list<string> */
@@ -70,6 +72,8 @@ class EditQuotation extends EditRecord
     {
         $this->matrixColumns = $data['matrix_columns'] ?? ['Seremban', 'Melaka', 'Johor'];
         $this->matrixRows = $data['matrix_rows'] ?? [];
+
+        $data = $this->enforcePriceOverrideRules($data, $this->matrixColumns, $this->matrixRows);
 
         unset($data['matrix_columns'], $data['matrix_rows']);
 

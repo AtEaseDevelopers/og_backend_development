@@ -33,7 +33,9 @@
                 <option value="{{ $branch->id }}">{{ $branch->name }}</option>
             @endforeach
         </select>
-        <button class="btn" type="submit">Submit for approval</button>
+        <div style="display:flex;justify-content:flex-end">
+            <button class="btn" type="submit">Submit for approval</button>
+        </div>
     </form>
 </div>
 @endsection

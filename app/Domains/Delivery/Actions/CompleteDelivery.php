@@ -104,7 +104,7 @@ class CompleteDelivery
                     ->exists();
 
                 if (! $pending) {
-                    $jobSheet->update(['status' => JobSheetStatus::Completed]);
+                    $jobSheet->update(['status' => JobSheetStatus::Completed, 'completed_at' => now()]);
                 }
             }
 

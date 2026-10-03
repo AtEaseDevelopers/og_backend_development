@@ -194,6 +194,42 @@ class CustomerForm
                     ->default('all_documents')
                     ->visible(fn (Get $get): bool => (bool) $get('is_credit')),
             ]),
+            Forms\Components\Section::make('Order type & pricing consent')
+                ->description('Section C: credit-term customers may hold a consent letter so approved special prices proceed without another customer confirmation.')
+                ->compact()
+                ->schema([
+                    Forms\Components\Grid::make(3)->schema([
+                        Forms\Components\Select::make('default_order_type')
+                            ->label('Default order type')
+                            ->options(\App\Enums\OrderType::options())
+                            ->helperText('Term → Term / Cash / COD · COD → Cash only · Cash cannot change'),
+                        Forms\Components\Select::make('consent_letter_type')
+                            ->label('Consent letter')
+                            ->options(\App\Domains\MasterData\Models\Customer::consentOptions())
+                            ->default(\App\Domains\MasterData\Models\Customer::CONSENT_NONE)
+                            ->live()
+                            ->afterStateUpdated(fn ($state, Set $set) => $set(
+                                'pricing_reconfirmation_required',
+                                $state !== \App\Domains\MasterData\Models\Customer::CONSENT_NO_RECONFIRMATION,
+                            )),
+                        Forms\Components\Toggle::make('pricing_reconfirmation_required')
+                            ->label('Pricing reconfirmation required')
+                            ->default(true)
+                            ->inline(false)
+                            ->helperText('Off = quotation at the agreed special price is accepted automatically.'),
+                    ]),
+                    Forms\Components\Grid::make(3)->schema([
+                        Forms\Components\DatePicker::make('consent_valid_from')->label('Consent valid from'),
+                        Forms\Components\DatePicker::make('consent_valid_until')->label('Consent valid until'),
+                        Forms\Components\FileUpload::make('consent_document_path')
+                            ->label('Consent letter document')
+                            ->disk('public')
+                            ->directory('consent-letters')
+                            ->acceptedFileTypes(['application/pdf', 'image/*'])
+                            ->downloadable()
+                            ->openable(),
+                    ])->visible(fn (Get $get): bool => $get('consent_letter_type') !== \App\Domains\MasterData\Models\Customer::CONSENT_NONE && filled($get('consent_letter_type'))),
+                ]),
             Forms\Components\Grid::make(2)->schema([
                 Forms\Components\Toggle::make('portal_approved')
                     ->label('Portal approved')

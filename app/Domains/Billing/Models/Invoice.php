@@ -21,11 +21,34 @@ class Invoice extends Model
         'number', 'company_id', 'source_branch_id', 'customer_id', 'consignment_note_id', 'type',
         'billing_month', 'status', 'subtotal', 'tax_amount', 'rounding_amount',
         'total_amount', 'invoice_date', 'due_date', 'autocount_sync_status',
+        'quotation_id', 'proforma_invoice_id', 'payment_id', 'sent_at',
     ];
+
+    public function quotation(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\Quotation\Models\Quotation::class);
+    }
+
+    public function proformaInvoice(): BelongsTo
+    {
+        return $this->belongsTo(ProformaInvoice::class);
+    }
+
+    /** The cash payment this Cash Bill was issued for (one Cash Bill per cash transaction). */
+    public function payment(): BelongsTo
+    {
+        return $this->belongsTo(Payment::class);
+    }
+
+    public function isCashBill(): bool
+    {
+        return $this->type === 'cash_bill';
+    }
 
     protected function casts(): array
     {
         return [
+            'sent_at' => 'datetime',
             'subtotal' => 'decimal:2',
             'tax_amount' => 'decimal:2',
             'rounding_amount' => 'decimal:2',

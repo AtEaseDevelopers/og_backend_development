@@ -23,3 +23,8 @@ Schedule::command('og:flag-vehicle-maintenance-due')
 Schedule::command('og:submit-pending-einvoices')
     ->hourly()
     ->timezone(config('app.timezone', 'Asia/Kuala_Lumpur'));
+
+// Section D: unanswered quotations → Pending Customer Review → Closed Case (configurable days)
+Schedule::command('og:close-pending-reviews')
+    ->dailyAt('01:00')
+    ->timezone(config('app.timezone', 'Asia/Kuala_Lumpur'));

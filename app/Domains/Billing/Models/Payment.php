@@ -23,11 +23,34 @@ class Payment extends Model
         'delivery_order_id', 'driver_id', 'method', 'amount', 'expected_amount',
         'shortage_amount', 'reference', 'status', 'reconciliation_status',
         'slip_path', 'remarks', 'received_by',
+        'quotation_id', 'payment_submission_id', 'approved_by', 'approved_at',
     ];
+
+    public function quotation(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\Quotation\Models\Quotation::class);
+    }
+
+    public function submission(): BelongsTo
+    {
+        return $this->belongsTo(PaymentSubmission::class, 'payment_submission_id');
+    }
+
+    public function approver(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    /** Cash Bill issued for this payment (cash orders). */
+    public function cashBill(): HasOne
+    {
+        return $this->hasOne(Invoice::class, 'payment_id');
+    }
 
     protected function casts(): array
     {
         return [
+            'approved_at' => 'datetime',
             'amount' => 'decimal:2',
             'expected_amount' => 'decimal:2',
             'shortage_amount' => 'decimal:2',

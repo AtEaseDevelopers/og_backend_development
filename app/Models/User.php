@@ -34,7 +34,36 @@ class User extends Authenticatable implements FilamentUser, HasTenants
         'phone',
         'driver_id',
         'customer_id',
+        'sa_location_id',
+        'ordering_token',
     ];
+
+    public function saLocation(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\MasterData\Models\SaLocation::class);
+    }
+
+    public function isSalesperson(): bool
+    {
+        return $this->hasRole('salesperson');
+    }
+
+    /** Issue (or return) this salesperson's unique customer ordering link token (section A). */
+    public function ensureOrderingToken(): string
+    {
+        if (! $this->ordering_token) {
+            $this->forceFill(['ordering_token' => \Illuminate\Support\Str::random(40)])->saveQuietly();
+        }
+
+        return $this->ordering_token;
+    }
+
+    public function orderingLink(): ?string
+    {
+        return $this->ordering_token
+            ? route('portal.salesperson-link', ['token' => $this->ordering_token])
+            : null;
+    }
 
     protected $hidden = [
         'password',

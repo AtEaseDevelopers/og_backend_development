@@ -25,11 +25,60 @@ class Customer extends Model
         'credit_control_scope', 'sales_tax_exemption_no', 'sales_tax_exemption_expiry',
         'discount_percent', 'tax_type', 'price_category', 'account_group', 'notes',
         'status', 'portal_approved', 'payment_methods', 'email_notifications',
+        'pricing_reconfirmation_required', 'consent_letter_type', 'consent_valid_from',
+        'consent_valid_until', 'consent_document_path', 'default_order_type',
     ];
+
+    /** Consent letter types (section C). */
+    public const CONSENT_NONE = 'none';
+
+    public const CONSENT_NO_RECONFIRMATION = 'no_reconfirmation';
+
+    public const CONSENT_RECONFIRMATION_REQUIRED = 'reconfirmation_required';
+
+    /** @return array<string, string> */
+    public static function consentOptions(): array
+    {
+        return [
+            self::CONSENT_NONE => 'No consent letter on file',
+            self::CONSENT_NO_RECONFIRMATION => 'No pricing reconfirmation required (approved special price)',
+            self::CONSENT_RECONFIRMATION_REQUIRED => 'Pricing reconfirmation required',
+        ];
+    }
+
+    /**
+     * Credit-term customer with a valid "no reconfirmation" consent: quotations at the
+     * agreed special price proceed without asking the customer to confirm again.
+     */
+    public function consentSkipsReconfirmation(): bool
+    {
+        if (! $this->is_credit || $this->pricing_reconfirmation_required) {
+            return false;
+        }
+
+        if ($this->consent_letter_type !== self::CONSENT_NO_RECONFIRMATION) {
+            return false;
+        }
+
+        $today = now()->toDateString();
+
+        if ($this->consent_valid_from && $this->consent_valid_from->toDateString() > $today) {
+            return false;
+        }
+
+        if ($this->consent_valid_until && $this->consent_valid_until->toDateString() < $today) {
+            return false;
+        }
+
+        return true;
+    }
 
     protected function casts(): array
     {
         return [
+            'pricing_reconfirmation_required' => 'boolean',
+            'consent_valid_from' => 'date',
+            'consent_valid_until' => 'date',
             'is_credit' => 'boolean',
             'is_group_company' => 'boolean',
             'portal_approved' => 'boolean',

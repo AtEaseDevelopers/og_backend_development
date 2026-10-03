@@ -49,6 +49,9 @@ class ConsignmentNoteResource extends Resource
 
     protected static ?int $navigationSort = 2;
 
+    /** Listed inside the combined Orders & CSN page (OrderOperations); view/edit/create routes remain. */
+    protected static bool $shouldRegisterNavigation = false;
+
     public static function form(Form $form): Form
     {
         return ConsignmentNoteForm::configure($form);
@@ -61,10 +64,28 @@ class ConsignmentNoteResource extends Resource
                 Tables\Columns\TextColumn::make('number')
                     ->searchable()
                     ->sortable()
+                    ->description(fn (ConsignmentNote $record) => trim(($record->customer_do_number ? 'DO '.$record->customer_do_number : '').($record->sa_prefix ? ' · '.$record->sa_prefix : '')) ?: null)
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('customer_name')
                     ->searchable()
+                    ->description(fn (ConsignmentNote $record) => $record->salesperson?->name)
                     ->toggleable(),
+                Tables\Columns\TextColumn::make('order_type')
+                    ->label('Order type')
+                    ->badge()
+                    ->placeholder('—')
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('service_type')
+                    ->label('Service')
+                    ->badge()
+                    ->color('gray')
+                    ->placeholder('—')
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('claimer.name')
+                    ->label('Claimed by')
+                    ->description(fn (ConsignmentNote $record) => $record->claimed_at?->format('d/m H:i'))
+                    ->placeholder('—')
+                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('billing_type')
                     ->badge()
                     ->formatStateUsing(fn ($state) => $state instanceof CsnBillingType ? $state->label() : $state)
@@ -119,6 +140,42 @@ class ConsignmentNoteResource extends Resource
                     ->relationship('customer', 'company_name')
                     ->searchable()
                     ->preload(),
+                Tables\Filters\SelectFilter::make('service_type')
+                    ->label('Service (Pick Up / Store)')
+                    ->options(\App\Enums\ServiceType::options()),
+                Tables\Filters\SelectFilter::make('order_type')
+                    ->label('Order type')
+                    ->options(\App\Enums\OrderType::options()),
+                Tables\Filters\SelectFilter::make('sa_location_id')
+                    ->label('SA location prefix')
+                    ->options(fn () => \App\Domains\MasterData\Models\SaLocation::query()->orderBy('code')->get()->mapWithKeys(fn ($l) => [$l->id => $l->csn_prefix.' — '.$l->name])),
+                Tables\Filters\SelectFilter::make('transfer_code_id')
+                    ->label('Transfer code')
+                    ->relationship('transferCode', 'code'),
+                Tables\Filters\SelectFilter::make('salesperson_id')
+                    ->label('Salesperson')
+                    ->relationship('salesperson', 'name')
+                    ->searchable()
+                    ->preload(),
+                Tables\Filters\Filter::make('driver_id')
+                    ->label('Driver')
+                    ->form([
+                        Forms\Components\Select::make('value')
+                            ->label('Driver')
+                            ->options(fn () => static::driverOptions())
+                            ->searchable(),
+                    ])
+                    ->query(fn (Builder $query, array $data): Builder => $query->when(
+                        $data['value'] ?? null,
+                        fn (Builder $query, $driverId): Builder => $query->whereHas('deliveryOrder', fn (Builder $q) => $q->where('driver_id', $driverId)),
+                    )),
+                Tables\Filters\TernaryFilter::make('claimed')
+                    ->label('Claimed')
+                    ->queries(
+                        true: fn (Builder $query) => $query->whereNotNull('claimed_by'),
+                        false: fn (Builder $query) => $query->whereNull('claimed_by'),
+                        blank: fn (Builder $query) => $query,
+                    ),
                 Tables\Filters\SelectFilter::make('status')
                     ->label('Status')
                     ->options(collect(CsnStatus::cases())->mapWithKeys(
@@ -172,9 +229,12 @@ class ConsignmentNoteResource extends Resource
                     ),
                 Tables\Filters\Filter::make('issued_at')
                     ->label('Issued date')
+                    ->columnSpan(2)
                     ->form([
-                        Forms\Components\DatePicker::make('from')->label('From'),
-                        Forms\Components\DatePicker::make('until')->label('Until'),
+                        Forms\Components\Fieldset::make('Issued date')->schema([
+                            Forms\Components\DatePicker::make('from')->label('From'),
+                            Forms\Components\DatePicker::make('until')->label('Until'),
+                        ])->columns(2),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         return $query
@@ -189,9 +249,12 @@ class ConsignmentNoteResource extends Resource
                     }),
                 Tables\Filters\Filter::make('job_date')
                     ->label('Job date')
+                    ->columnSpan(2)
                     ->form([
-                        Forms\Components\DatePicker::make('from')->label('From'),
-                        Forms\Components\DatePicker::make('until')->label('Until'),
+                        Forms\Components\Fieldset::make('Job date')->schema([
+                            Forms\Components\DatePicker::make('from')->label('From'),
+                            Forms\Components\DatePicker::make('until')->label('Until'),
+                        ])->columns(2),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         return $query
@@ -205,10 +268,13 @@ class ConsignmentNoteResource extends Resource
                             );
                     }),
                 Tables\Filters\Filter::make('created_at')
-                    ->label('Created at')
+                    ->label('Created date')
+                    ->columnSpan(2)
                     ->form([
-                        Forms\Components\DatePicker::make('from')->label('From'),
-                        Forms\Components\DatePicker::make('until')->label('Until'),
+                        Forms\Components\Fieldset::make('Created date')->schema([
+                            Forms\Components\DatePicker::make('from')->label('From'),
+                            Forms\Components\DatePicker::make('until')->label('Until'),
+                        ])->columns(2),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         return $query
@@ -223,13 +289,16 @@ class ConsignmentNoteResource extends Resource
                     }),
                 Tables\Filters\Filter::make('total_amount')
                     ->label('Total amount')
+                    ->columnSpan(2)
                     ->form([
-                        Forms\Components\TextInput::make('min')
-                            ->label('Min (MYR)')
-                            ->numeric(),
-                        Forms\Components\TextInput::make('max')
-                            ->label('Max (MYR)')
-                            ->numeric(),
+                        Forms\Components\Fieldset::make('Total amount')->schema([
+                            Forms\Components\TextInput::make('min')
+                                ->label('Min (MYR)')
+                                ->numeric(),
+                            Forms\Components\TextInput::make('max')
+                                ->label('Max (MYR)')
+                                ->numeric(),
+                        ])->columns(2),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         return $query
@@ -261,6 +330,74 @@ class ConsignmentNoteResource extends Resource
                     ->icon('heroicon-o-document-arrow-down')
                     ->url(fn (ConsignmentNote $record): string => static::pdfUrl($record))
                     ->openUrlInNewTab(),
+                Tables\Actions\Action::make('claim')
+                    ->label('Claim')
+                    ->icon('heroicon-o-qr-code')
+                    ->color('warning')
+                    ->visible(fn (ConsignmentNote $record) => $record->isClaimable() && ! $record->transfer_claim_pending)
+                    ->form([
+                        Forms\Components\TextInput::make('qr_token')
+                            ->label('Scan / paste CSN QR code (optional)')
+                            ->helperText('Leave blank to claim the selected CSN directly.'),
+                    ])
+                    ->modalDescription(fn (ConsignmentNote $record) => 'Claiming '.$record->number.' reserves it for your branch / store and removes it from the unassigned queue.')
+                    ->action(function (ConsignmentNote $record, array $data) {
+                        try {
+                            $claim = app(\App\Domains\Dispatch\Actions\ClaimCsn::class);
+                            $csn = filled($data['qr_token'] ?? null)
+                                ? $claim->executeByQrToken($data['qr_token'], auth()->user())
+                                : $claim->execute($record, auth()->user());
+
+                            Notification::make()->title('CSN '.$csn->number.' claimed by '.auth()->user()->name)->success()->send();
+                        } catch (Throwable $e) {
+                            Notification::make()->title($e->getMessage())->danger()->send();
+                        }
+                    }),
+                Tables\Actions\Action::make('transferLorry')
+                    ->label('Transfer lorry')
+                    ->icon('heroicon-o-arrows-right-left')
+                    ->color('gray')
+                    ->visible(fn (ConsignmentNote $record) => \App\Domains\Dispatch\Actions\TransferJobSheetTask::canTransfer(auth()->user())
+                        && $record->deliveryOrder()->exists()
+                        && ! in_array($record->status, [CsnStatus::Delivered, CsnStatus::Cancelled], true))
+                    ->form([
+                        Forms\Components\Select::make('lorry_id')
+                            ->label('New lorry')
+                            ->options(fn () => static::lorryOptions())
+                            ->searchable()
+                            ->required(),
+                        Forms\Components\Select::make('driver_id')
+                            ->label('New driver (optional, defaults to the lorry\'s driver)')
+                            ->options(fn () => static::driverOptions())
+                            ->searchable(),
+                        Forms\Components\DateTimePicker::make('handover_at')->label('Handover time')->default(now())->seconds(false),
+                        Forms\Components\TextInput::make('handover_location')->label('Handover location'),
+                        Forms\Components\Textarea::make('reason')->required()
+                            ->helperText('Allowed even while in route. Original and new lorry / driver, time and reason are recorded; drivers and the customer are notified; the new driver scans the CSN to claim it.'),
+                    ])
+                    ->action(function (ConsignmentNote $record, array $data) {
+                        try {
+                            $do = $record->deliveryOrder()->firstOrFail();
+                            $transfer = app(\App\Domains\Dispatch\Actions\TransferJobSheetTask::class)->transferToLorry(
+                                $do,
+                                Lorry::query()->findOrFail($data['lorry_id']),
+                                auth()->user(),
+                                $data['reason'],
+                                null,
+                                isset($data['driver_id']) ? (int) $data['driver_id'] : null,
+                                $data['handover_at'] ?? null,
+                                $data['handover_location'] ?? null,
+                            );
+
+                            Notification::make()
+                                ->title('Transferred to '.$transfer->toLorry?->registration_no.' / '.($transfer->toDriver?->name ?? 'no driver'))
+                                ->body('Job sheet '.$transfer->toJobSheet?->number.'. Both drivers notified.')
+                                ->success()
+                                ->send();
+                        } catch (Throwable $e) {
+                            Notification::make()->title($e->getMessage())->danger()->send();
+                        }
+                    }),
                 Tables\Actions\Action::make('collectPayment')
                     ->label('Collect Payment')
                     ->icon('heroicon-o-banknotes')
