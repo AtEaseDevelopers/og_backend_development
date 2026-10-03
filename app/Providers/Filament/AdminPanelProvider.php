@@ -88,6 +88,8 @@ class AdminPanelProvider extends PanelProvider
                     ->name('delivery-orders.pdf');
                 Route::get('/ocr-uploads/{ocrUpload}/document', OcrUploadDocumentController::class)
                     ->name('ocr-uploads.document');
+                Route::get('/daily-lorry-schedule/pdf', \App\Http\Controllers\Admin\DailyLorrySchedulePdfController::class)
+                    ->name('daily-lorry-schedule.pdf');
             })
             ->userMenuItems([
                 'change-branch' => MenuItem::make()
