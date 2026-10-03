@@ -142,7 +142,7 @@ class OrderListingData
             'items_summary' => $this->itemsSummary($items).($enquiry->preferred_delivery_date ? ' · Delivery '.$enquiry->preferred_delivery_date->format('d/m/Y') : ''),
             'order_type' => $enquiry->order_type?->getLabel(),
             'service_type' => $enquiry->service_type?->getLabel(),
-            'step' => 1,
+            'step' => $stageKey === 'quotation' ? 2 : 1,
             'stage_key' => $stageKey,
             'stage_label' => $stageLabel,
             'stage_color' => $stageColor,
