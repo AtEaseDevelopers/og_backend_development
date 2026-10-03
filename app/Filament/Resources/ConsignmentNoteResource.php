@@ -21,6 +21,7 @@ use App\Enums\PaymentStatus;
 use App\Filament\Resources\ConsignmentNoteResource\Pages;
 use App\Filament\Resources\ConsignmentNoteResource\RelationManagers;
 use App\Filament\Resources\ConsignmentNoteResource\Schemas\ConsignmentNoteForm;
+use App\Filament\Resources\QuotationResource;
 use App\Support\CurrentCompany;
 use Filament\Facades\Filament;
 use Filament\Forms;
@@ -49,8 +50,7 @@ class ConsignmentNoteResource extends Resource
 
     protected static ?int $navigationSort = 2;
 
-    /** Listed inside the combined Orders & CSN page (OrderOperations); view/edit/create routes remain. */
-    protected static bool $shouldRegisterNavigation = false;
+    protected static bool $shouldRegisterNavigation = true;
 
     public static function form(Form $form): Form
     {
@@ -69,6 +69,13 @@ class ConsignmentNoteResource extends Resource
                 Tables\Columns\TextColumn::make('customer_name')
                     ->searchable()
                     ->description(fn (ConsignmentNote $record) => $record->salesperson?->name)
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('quotation.number')
+                    ->label('Order')
+                    ->url(fn (ConsignmentNote $record) => $record->quotation ? QuotationResource::getUrl('view', ['record' => $record->quotation]) : null)
+                    ->color('primary')
+                    ->placeholder('—')
+                    ->description(fn (ConsignmentNote $record) => $record->invoice_number)
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('order_type')
                     ->label('Order type')

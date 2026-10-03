@@ -73,7 +73,7 @@ class CreateQuotation extends CreateRecord
                 ->warning()
                 ->send();
 
-            $this->redirect(\App\Filament\Pages\OrderOperations::getUrl(), navigate: false);
+            $this->redirect(\App\Filament\Pages\Orders::getUrl(), navigate: false);
 
             return;
         }

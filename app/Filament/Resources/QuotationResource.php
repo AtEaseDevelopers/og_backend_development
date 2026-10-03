@@ -206,6 +206,12 @@ class QuotationResource extends Resource
                         'quotation' => $record,
                     ]))
                     ->openUrlInNewTab(),
+                Tables\Actions\Action::make('viewCsns')
+                    ->label('CSNs')
+                    ->icon('heroicon-o-truck')
+                    ->color('gray')
+                    ->visible(fn (Quotation $record) => $record->consignmentNotes()->exists())
+                    ->url(fn (Quotation $record) => \App\Filament\Resources\ConsignmentNoteResource::getUrl('index', ['tableFilters' => ['quotation_id' => ['value' => $record->id]]])),
                 Tables\Actions\ActionGroup::make(static::stageActions())
                     ->label('Order actions')
                     ->icon('heroicon-o-bolt')

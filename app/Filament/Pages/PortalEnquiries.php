@@ -24,7 +24,7 @@ class PortalEnquiries extends Page
 
     protected static ?int $navigationSort = 12;
 
-    /** Superseded in the sidebar by the combined Orders & CSN page (OrderOperations). */
+    /** Superseded in the sidebar by the Orders page (App\Filament\Pages\Orders), which extends this one. */
     protected static bool $shouldRegisterNavigation = false;
 
     protected static string $view = 'filament.pages.portal-enquiries';
