@@ -13,12 +13,12 @@
         table { width: 100%; border-collapse: collapse; }
         td, th { padding: 2px 6px; vertical-align: top; }
         th { text-align: left; font-size: 9px; text-transform: uppercase; color: #555; border-bottom: 1px solid #999; }
-        td.no { width: 16%; font-family: DejaVu Sans Mono, monospace; }
-        td.lorry { width: 14%; font-weight: bold; background: #f7a24a; }
+        td.no { width: 21%; white-space: nowrap; font-family: DejaVu Sans Mono, monospace; font-size: 10px; }
+        td.lorry { width: 13%; white-space: nowrap; font-weight: bold; background: #f7a24a; }
         td.lorry.other { background: #4fb3ff; }
-        td.from { width: 14%; }
+        td.from { width: 12%; white-space: nowrap; }
         td.to { font-weight: bold; }
-        td.cnt { width: 6%; text-align: center; color: #555; }
+        td.cnt { width: 18%; white-space: nowrap; text-align: right; color: #555; font-size: 10px; }
         tr.row td { border-bottom: 1px dotted #ddd; }
         .empty { color: #777; font-style: italic; padding: 6px 0; }
         .foot { margin-top: 10px; font-size: 9px; color: #777; }
