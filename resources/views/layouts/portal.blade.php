@@ -35,7 +35,7 @@
     </style>
 </head>
 <body>
-<div class="wrap">
+<div class="wrap" style="padding-bottom:4.5rem">
     <header>
         <div class="brand">
             <img src="{{ asset('images/logo-og-circle.png') }}" alt="O&G Transport">

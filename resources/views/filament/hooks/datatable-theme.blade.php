@@ -77,6 +77,33 @@
         background-color: rgb(243 244 246);
     }
 
+    /* Dark mode: the sticky column must use the dark row colours, or white text disappears. */
+    .dark .fi-page-order-operations .fi-ta-table thead th:first-child,
+    .dark .fi-resource-consignment-notes .fi-ta-table thead th:first-child {
+        background-color: rgb(17 24 39);
+        box-shadow: 1px 0 0 rgb(55 65 81);
+    }
+
+    .dark .fi-page-order-operations .fi-ta-table tbody td:first-child,
+    .dark .fi-resource-consignment-notes .fi-ta-table tbody td:first-child {
+        box-shadow: 1px 0 0 rgb(55 65 81);
+    }
+
+    .dark .fi-page-order-operations .fi-ta-table tbody tr,
+    .dark .fi-resource-consignment-notes .fi-ta-table tbody tr {
+        background-color: rgb(17 24 39);
+    }
+
+    .dark .fi-page-order-operations .fi-ta-table tbody tr:nth-child(even),
+    .dark .fi-resource-consignment-notes .fi-ta-table tbody tr:nth-child(even) {
+        background-color: rgb(24 32 48);
+    }
+
+    .dark .fi-page-order-operations .fi-ta-table tbody tr:hover,
+    .dark .fi-resource-consignment-notes .fi-ta-table tbody tr:hover {
+        background-color: rgb(31 41 55);
+    }
+
     /*
      * Confirmation modals use a centred two-column grid rendered as [Confirm, Cancel].
      * Flip the reading direction of the row so Cancel is on the left and Confirm on the right,

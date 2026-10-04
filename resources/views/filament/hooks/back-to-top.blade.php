@@ -70,6 +70,11 @@
         height: 0.95rem;
     }
 
+    /* Keep page content (form footer actions, pagination) clear of the floating button. */
+    .fi-main .fi-page {
+        padding-bottom: 4.5rem;
+    }
+
     @media (max-width: 640px) {
         .og-back-to-top { right: 1rem; bottom: 1rem; }
         .og-back-to-top span { display: none; }

@@ -817,6 +817,23 @@
         color: rgb(107 114 128);
     }
 
+    /* Dark mode: the list theme above is light-only; keep containers dark so white text stays readable. */
+    .dark .fi-resource-consignment-notes.fi-resource-list-records-page .fi-ta-header-ctn,
+    .dark .fi-resource-consignment-notes.fi-resource-list-records-page .fi-ta-filter-indicators,
+    .dark .fi-resource-consignment-notes.fi-resource-list-records-page .fi-ta-content,
+    .dark .fi-resource-consignment-notes.fi-resource-list-records-page .fi-ta-search-field .fi-input-wrp {
+        background: rgb(17 24 39);
+    }
+
+    .dark .fi-resource-consignment-notes.fi-resource-list-records-page .fi-ta-content.divide-y > :not([hidden]) ~ :not([hidden]) {
+        border-color: rgb(55 65 81);
+    }
+
+    .dark .fi-resource-consignment-notes.fi-resource-list-records-page .fi-ta-header-cell,
+    .dark .fi-resource-consignment-notes.fi-resource-list-records-page .fi-ta-header-cell .fi-ta-header-cell-label {
+        color: rgb(156 163 175);
+    }
+
     @media (max-width: 767px) {
         .fi-resource-consignment-notes.fi-resource-list-records-page .fi-ta-header-toolbar > .ms-auto {
             flex-direction: column;

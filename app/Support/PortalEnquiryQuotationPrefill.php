@@ -70,7 +70,7 @@ class PortalEnquiryQuotationPrefill
             'consignee_address' => $enquiry->customer?->address,
             'notes' => $notes !== '' ? $notes : null,
             'matrix_columns' => $matrixColumns,
-            'matrix_rows' => $this->matrixRows($items, $matrixColumns),
+            'matrix_rows' => $this->matrixRows($items, $matrixColumns, $enquiry->customer_id ? (int) $enquiry->customer_id : null),
             'history_destination' => $firstLabel,
         ];
 
@@ -110,7 +110,7 @@ class PortalEnquiryQuotationPrefill
      * @param  list<string>  $matrixColumns
      * @return list<array<string, mixed>>
      */
-    private function matrixRows($items, array $matrixColumns): array
+    private function matrixRows($items, array $matrixColumns, ?int $customerId = null): array
     {
         if ($items->isEmpty()) {
             return [[
@@ -124,7 +124,7 @@ class PortalEnquiryQuotationPrefill
 
         $lookup = app(QuotationPricingLookup::class);
 
-        return $items->map(function (array $item) use ($matrixColumns, $lookup): array {
+        return $items->map(function (array $item) use ($matrixColumns, $lookup, $customerId): array {
             $itemName = trim((string) ($item['item_name'] ?? 'Transport item'));
             $uom = strtoupper(trim((string) ($item['uom'] ?? '')));
             $lineType = $uom !== '' ? 'uom' : 'item';
@@ -134,12 +134,23 @@ class PortalEnquiryQuotationPrefill
                 $catalogKey = $lookup->resolveCatalogKey($uom) ?: null;
             }
 
+            $quantity = max(0.01, (float) ($item['quantity'] ?? 1));
+            $prices = array_fill_keys($matrixColumns, null);
+
+            // UOM rows are priced from the master price list (qty range tiers per location),
+            // exactly as the form does when a UOM/qty is changed by hand.
+            if ($lineType === 'uom') {
+                foreach ($matrixColumns as $column) {
+                    $prices[$column] = $lookup->lookupForCustomer($customerId, $itemName, $column, $quantity)['price'] ?? null;
+                }
+            }
+
             return [
                 'line_type' => $lineType,
                 'item_name' => $itemName,
                 'catalog_key' => $catalogKey,
-                'quantity' => max(0.01, (float) ($item['quantity'] ?? 1)),
-                'prices' => array_fill_keys($matrixColumns, null),
+                'quantity' => $quantity,
+                'prices' => $prices,
             ];
         })->values()->all();
     }
@@ -162,6 +173,12 @@ class PortalEnquiryQuotationPrefill
     /** @param  array<string, mixed>  $destination */
     private function destinationLabel(array $destination, int $index): string
     {
+        // Prefer a price-list location (UOM rate tiers are keyed by Location) so UOM
+        // rows auto-price; the matrix column label must equal the Location name.
+        if ($location = $this->matchPriceListLocation($destination)) {
+            return $location;
+        }
+
         if (filled($destination['consignee_name'] ?? null)) {
             return (string) $destination['consignee_name'];
         }
@@ -175,6 +192,38 @@ class PortalEnquiryQuotationPrefill
         }
 
         return 'Destination '.($index + 1);
+    }
+
+    /** @param  array<string, mixed>  $destination */
+    private function matchPriceListLocation(array $destination): ?string
+    {
+        $candidates = collect([
+            $destination['city'] ?? null,
+            $destination['state'] ?? null,
+            $destination['address'] ?? null,
+            $destination['consignee_name'] ?? null,
+        ])->filter()->map(fn ($value) => mb_strtolower(trim((string) $value)))->values();
+
+        if ($candidates->isEmpty()) {
+            return null;
+        }
+
+        $locations = Location::query()
+            ->where('is_active', true)
+            ->whereHas('uomRateTiers')
+            ->get(['id', 'code', 'name']);
+
+        foreach ($candidates as $candidate) {
+            foreach ($locations as $location) {
+                $name = mb_strtolower($location->name);
+
+                if ($candidate === $name || str_contains($candidate, $name)) {
+                    return $location->name;
+                }
+            }
+        }
+
+        return null;
     }
 
     private function fromLocationIdForBranch(?int $branchId): ?int
