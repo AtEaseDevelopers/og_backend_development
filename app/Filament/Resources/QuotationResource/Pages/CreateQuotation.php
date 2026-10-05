@@ -55,14 +55,14 @@ class CreateQuotation extends CreateRecord
             return;
         }
 
+        // Section A: one enquiry may produce several orders. An already-quoted enquiry
+        // still prefills, and the user is told this will be an additional order.
         if ($enquiry->status === PortalEnquiryStatus::Quoted) {
             Notification::make()
-                ->title('Quotation already created')
-                ->body('This enquiry is linked to quotation '.$enquiry->quotation?->number.'.')
-                ->warning()
+                ->title('Additional order for '.$enquiry->reference_no)
+                ->body('This enquiry already has order '.$enquiry->quotation?->number.'. Saving creates another order linked to it.')
+                ->info()
                 ->send();
-
-            return;
         }
 
         // Section A: keep the enquiry locked while this order is being prepared (2s heartbeat below)

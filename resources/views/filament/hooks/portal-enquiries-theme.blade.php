@@ -421,6 +421,22 @@
         background: white;
     }
 
+    .fi-page-portal-enquiries .cor-trace-step {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.1rem;
+        line-height: 1.2;
+    }
+
+    .fi-page-portal-enquiries .cor-trace-value {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.625rem;
+        font-weight: 500;
+        letter-spacing: 0.01em;
+        opacity: 0.85;
+    }
+
     .fi-page-portal-enquiries .cor-trace-step-completed {
         background: rgb(220 252 231);
         border-color: rgb(187 247 208);

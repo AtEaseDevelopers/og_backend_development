@@ -195,7 +195,22 @@ class PortalEnquiryListingData
             'quotation_url' => $enquiry->quotation
                 ? QuotationResource::getUrl('view', ['record' => $enquiry->quotation])
                 : null,
+            'csn_url' => ($order = $this->latestOrder($enquiry)) && $order->consignmentNotes()->exists()
+                ? \App\Filament\Resources\ConsignmentNoteResource::getUrl('index', ['tableFilters' => ['quotation_id' => ['value' => $order->id]]])
+                : null,
         ];
+    }
+
+    /** The newest version of the order created from this enquiry, if any. */
+    private function latestOrder(PortalEnquiry $enquiry): ?\App\Domains\Quotation\Models\Quotation
+    {
+        $order = $enquiry->quotation;
+
+        while ($order && $order->newerVersion) {
+            $order = $order->newerVersion;
+        }
+
+        return $order;
     }
 
     /** @return array<string, string> */
@@ -415,12 +430,19 @@ class PortalEnquiryListingData
         $status = $this->statusValue($enquiry->status);
         $hasQuotation = $enquiry->quotation_id !== null;
 
+        // Follow the order to its latest version so CSN / billing / DO reflect the live state.
+        $order = $this->latestOrder($enquiry);
+
+        $csns = $order ? $order->consignmentNotes()->with('deliveryOrder')->get() : collect();
+        $invoice = $order?->invoices()->latest('id')->first();
+        $deliveryOrders = $csns->map(fn ($csn) => $csn->deliveryOrder)->filter();
+
         return [
-            ['key' => 'portal', 'label' => 'Portal Order', 'active' => ! $hasQuotation, 'completed' => true],
-            ['key' => 'quotation', 'label' => 'Quotation', 'active' => $hasQuotation && $status !== PortalEnquiryStatus::Quoted->value, 'completed' => $hasQuotation],
-            ['key' => 'csn', 'label' => 'CSN', 'active' => false, 'completed' => false],
-            ['key' => 'invoice', 'label' => 'Invoice', 'active' => false, 'completed' => false],
-            ['key' => 'delivery', 'label' => 'Delivery Order', 'active' => false, 'completed' => false],
+            ['key' => 'portal', 'label' => 'Portal Order', 'value' => $enquiry->reference_no, 'active' => ! $hasQuotation, 'completed' => true],
+            ['key' => 'quotation', 'label' => 'Quotation', 'value' => $order?->number, 'active' => $hasQuotation && $status !== PortalEnquiryStatus::Quoted->value, 'completed' => $hasQuotation],
+            ['key' => 'invoice', 'label' => 'Invoice / Cash Bill', 'value' => $invoice?->number, 'active' => $hasQuotation && ! $invoice && $csns->isEmpty(), 'completed' => (bool) $invoice],
+            ['key' => 'csn', 'label' => 'CSN', 'value' => $csns->pluck('number')->implode(', ') ?: null, 'active' => $csns->isNotEmpty() && $deliveryOrders->isEmpty(), 'completed' => $csns->isNotEmpty()],
+            ['key' => 'delivery', 'label' => 'Delivery Order', 'value' => $deliveryOrders->pluck('number')->implode(', ') ?: null, 'active' => $deliveryOrders->isNotEmpty(), 'completed' => $deliveryOrders->isNotEmpty()],
         ];
     }
 

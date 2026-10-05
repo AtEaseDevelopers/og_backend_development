@@ -263,6 +263,7 @@ class OrderListingData
             'amount_muted' => $total <= 0,
             'next_step' => $nextStep,
             'next_url' => $nextUrl,
+            'view_url' => QuotationResource::getUrl('view', ['record' => $q]),
             'is_closed' => $isClosed,
             'sort_at' => $q->created_at?->timestamp ?? 0,
         ];

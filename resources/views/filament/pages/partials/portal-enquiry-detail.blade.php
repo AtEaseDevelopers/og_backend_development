@@ -218,6 +218,9 @@
                     ])
                 >
                     {{ $step['label'] }}
+                    @if (! empty($step['value']))
+                        <span class="cor-trace-value">{{ $step['value'] }}</span>
+                    @endif
                 </div>
             @endforeach
         </div>
@@ -258,14 +261,21 @@
         @endif
     @endif
 
-    @if($detail['can_create_quotation'])
-        <button type="button" wire:click="createQuotation({{ $detail['id'] }})" class="cor-btn cor-btn-secondary-solid">
-            Generate Quotation
-        </button>
-    @elseif($detail['quotation_url'])
+    @if($detail['quotation_url'])
         <a href="{{ $detail['quotation_url'] }}" wire:navigate class="cor-btn cor-btn-secondary-solid">
-            View Quotation
+            View Order {{ $detail['quotation_number'] }}
         </a>
+        @if(! empty($detail['csn_url']))
+            <a href="{{ $detail['csn_url'] }}" class="cor-btn cor-btn-secondary-solid">
+                View CSN
+            </a>
+        @endif
+    @endif
+
+    @if($detail['can_create_quotation'])
+        <button type="button" wire:click="createQuotation({{ $detail['id'] }})" @class(['cor-btn', 'cor-btn-secondary-solid' => ! $detail['quotation_url'], 'cor-btn-outline' => (bool) $detail['quotation_url']])>
+            {{ $detail['quotation_url'] ? 'New order from this enquiry' : 'Generate Quotation' }}
+        </button>
     @endif
 
     @if($detail['can_approve'])

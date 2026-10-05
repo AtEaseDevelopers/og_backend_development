@@ -120,12 +120,16 @@
                         @forelse ($rows as $row)
                             <tr
                                 wire:key="ord-row-{{ $row['kind'] }}-{{ $row['id'] }}"
-                                @if ($row['kind'] === 'enquiry') wire:click="openDetail({{ $row['id'] }})" @endif
+                                @if ($row['enquiry_id'])
+                                    wire:click="openDetail({{ $row['enquiry_id'] }})"
+                                @elseif (! empty($row['view_url']))
+                                    x-on:click="if (! $event.target.closest('a')) window.location.href = '{{ $row['view_url'] }}'"
+                                @endif
                                 @class([
                                     'cor-row',
                                     'ops-row',
                                     'ops-row-'.$row['stage_color'],
-                                    'cor-row-selected' => $row['kind'] === 'enquiry' && $selectedEnquiryId === $row['id'],
+                                    'cor-row-selected' => $row['enquiry_id'] && $selectedEnquiryId === $row['enquiry_id'],
                                 ])
                             >
                                 <td>
@@ -177,7 +181,7 @@
         @if ($detail)
             <div class="cor-detail-panel ops-detail" id="ops-detail" wire:key="ops-detail-{{ $detail['id'] }}" wire:poll.2s="heartbeat">
                 <div class="ops-detail-bar">
-                    <span class="ops-detail-crumb">Enquiry review · {{ $detail['customer'] }}</span>
+                    <span class="ops-detail-crumb">{{ $detail['quotation_number'] ? 'Order '.$detail['quotation_number'] : 'Enquiry review' }} · {{ $detail['customer'] }}</span>
                     <button type="button" wire:click="closeDetail" class="cor-btn cor-btn-outline ops-btn-sm">Close</button>
                 </div>
                 @include('filament.pages.partials.portal-enquiry-detail', ['detail' => $detail, 'showRejectForm' => $showRejectForm])
