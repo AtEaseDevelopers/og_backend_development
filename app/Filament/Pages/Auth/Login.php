@@ -10,7 +10,7 @@ class Login extends BaseLogin
     public function mount(): void
     {
         if (Filament::auth()->check()) {
-            $this->redirect(route('filament.admin.select-branch'));
+            $this->redirect(\App\Support\DefaultBranch::homeUrl());
 
             return;
         }

@@ -4,7 +4,7 @@ namespace App\Support;
 
 use App\Domains\Quotation\Models\PortalEnquiry;
 use App\Enums\PortalEnquiryStatus;
-use App\Filament\Resources\QuotationResource;
+use App\Filament\Pages\OrderDetail;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -104,7 +104,7 @@ class PortalEnquiryListingData
                 'version' => $q->version,
                 'status' => $q->status->getLabel(),
                 'total' => 'RM '.number_format((float) $q->total_amount, 2),
-                'url' => QuotationResource::getUrl('view', ['record' => $q]),
+                'url' => OrderDetail::urlFor('order', (int) $q->getKey()),
             ])->values()->all(),
             'can_assign_salesperson' => ! $lockedByOther && ! $enquiry->salesperson_locked && in_array($this->statusValue($enquiry->status), [
                 PortalEnquiryStatus::Pending->value,
@@ -193,7 +193,7 @@ class PortalEnquiryListingData
             ], true),
             'quotation_number' => $enquiry->quotation?->number,
             'quotation_url' => $enquiry->quotation
-                ? QuotationResource::getUrl('view', ['record' => $enquiry->quotation])
+                ? OrderDetail::urlFor('order', (int) $enquiry->quotation->getKey())
                 : null,
             'csn_url' => ($order = $this->latestOrder($enquiry)) && $order->consignmentNotes()->exists()
                 ? \App\Filament\Resources\ConsignmentNoteResource::getUrl('index', ['tableFilters' => ['quotation_id' => ['value' => $order->id]]])
@@ -301,7 +301,7 @@ class PortalEnquiryListingData
             'payment_hint' => $quotation ? 'Quotation '.$quotation->number : 'After confirmation',
             'amount' => $quotation ? 'RM '.number_format((float) $quotation->total_amount, 2) : 'Not priced',
             'quotation_number' => $quotation?->number,
-            'quotation_url' => $quotation ? QuotationResource::getUrl('view', ['record' => $quotation]) : null,
+            'quotation_url' => $quotation ? OrderDetail::urlFor('order', (int) $quotation->getKey()) : null,
             'next_step' => $this->nextStep($status, $quotation !== null),
             'submitted_at' => $enquiry->created_at?->format('d/m/Y H:i') ?? '—',
         ];

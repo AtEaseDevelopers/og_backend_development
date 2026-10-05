@@ -4,6 +4,7 @@ namespace App\Enums;
 
 enum DocumentType: string
 {
+    case Order = 'ORD';
     case Quotation = 'QT';
     case Csn = 'CSN';
     case Do = 'DO';

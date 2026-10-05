@@ -5,7 +5,7 @@ namespace App\Support;
 use App\Domains\Billing\Models\Invoice;
 use App\Domains\Quotation\Models\CreditApprovalRequest;
 use App\Enums\InvoiceStatus;
-use App\Filament\Resources\QuotationResource;
+use App\Filament\Pages\OrderDetail;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Spatie\Activitylog\Models\Activity;
@@ -59,7 +59,7 @@ class CreditApprovalListingData
             'audit_trail' => $this->auditTrail($request),
             'quotation_number' => $request->quotation?->number,
             'quotation_url' => $request->quotation
-                ? QuotationResource::getUrl('view', ['record' => $request->quotation])
+                ? OrderDetail::urlFor('order', (int) $request->quotation->getKey())
                 : null,
             'can_approve' => $request->isPending(),
             'can_reject' => $request->isPending(),

@@ -83,13 +83,16 @@ class QuotationPdfController
                         $line->handling_notes,
                     ])->filter()->implode(' · '),
                     'prices' => array_fill(0, max(1, $destinations->count()), null),
+                    'amounts' => array_fill(0, max(1, $destinations->count()), null),
+                    'qty' => (float) $line->quantity,
                 ];
             }
 
-            if ($destIndex !== false) {
-                $rows[$rowKey]['prices'][$destIndex] = $line->unit_price;
-            } elseif ($destinations->isEmpty()) {
-                $rows[$rowKey]['prices'][0] = $line->unit_price;
+            $column = $destIndex !== false ? $destIndex : ($destinations->isEmpty() ? 0 : null);
+
+            if ($column !== null) {
+                $rows[$rowKey]['prices'][$column] = $line->unit_price;
+                $rows[$rowKey]['amounts'][$column] = $line->line_total;
             }
         }
 
@@ -99,14 +102,25 @@ class QuotationPdfController
                     'label' => $line->item_name,
                     'sub' => collect([$line->dimensions, $line->handling_notes])->filter()->implode(' · '),
                     'prices' => [$line->unit_price],
+                    'amounts' => [$line->line_total],
+                    'qty' => (float) $line->quantity,
                 ];
             }
             $destinationLabels = ['Rate'];
         }
 
+        $rows = array_values($rows);
+        $totals = [];
+
+        foreach (array_keys($destinationLabels) as $index) {
+            $totals[$index] = round(collect($rows)->sum(fn (array $row) => (float) ($row['amounts'][$index] ?? 0)), 2);
+        }
+
         return [
             'destinations' => $destinationLabels,
-            'rows' => array_values($rows),
+            'rows' => $rows,
+            'totals' => $totals,
+            'grand_total' => (float) $quotation->total_amount,
         ];
     }
 }

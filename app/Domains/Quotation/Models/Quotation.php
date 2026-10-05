@@ -33,7 +33,7 @@ class Quotation extends Model
     use LogsActivity;
 
     protected $fillable = [
-        'number', 'company_id', 'branch_id', 'customer_id', 'salesperson_id', 'portal_enquiry_id',
+        'number', 'company_id', 'branch_id', 'customer_id', 'consignor_name', 'salesperson_id', 'portal_enquiry_id',
         'status', 'valid_until', 'title', 'is_active', 'quoted_at', 'expected_delivery_date',
         'from_location_id', 'to_location_id',
         'consignor_brn', 'pickup_location', 'consignee_name', 'consignee_brn',
@@ -227,6 +227,12 @@ class Quotation extends Model
     | Helpers
     |--------------------------------------------------------------------------
     */
+
+    /** The order number shared by every record created from the same enquiry / admin entry. */
+    public function orderNumber(): string
+    {
+        return $this->portalEnquiry?->order_number ?: $this->number;
+    }
 
     public function rootId(): int
     {

@@ -21,7 +21,7 @@ class DecideCreditApproval
             throw new InvalidArgumentException('Only branch managers or HQ can decide credit approvals.');
         }
 
-        return DB::transaction(function () use ($request, $actor, $approve, $remarks) {
+        $request = DB::transaction(function () use ($request, $actor, $approve, $remarks) {
             $request->update([
                 'status' => $approve ? 'approved' : 'rejected',
                 'approved_by' => $actor->id,
@@ -51,5 +51,12 @@ class DecideCreditApproval
 
             return $request->fresh(['customer', 'quotation', 'approver']);
         });
+
+        // Credit approved → the term order needs no payment step: invoice and CSN follow immediately
+        if ($approve && $request->quotation) {
+            app(\App\Domains\Billing\Actions\ProceedNonCashOrderToCsn::class)->execute($request->quotation, $actor);
+        }
+
+        return $request->fresh(['customer', 'quotation', 'approver']);
     }
 }

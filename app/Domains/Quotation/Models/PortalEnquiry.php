@@ -32,7 +32,7 @@ class PortalEnquiry extends Model
     public const SOURCE_ADMIN = 'admin';
 
     protected $fillable = [
-        'customer_id', 'company_id', 'branch_id', 'user_id', 'reference_no', 'pickup_address',
+        'customer_id', 'company_id', 'branch_id', 'user_id', 'reference_no', 'order_number', 'received_through', 'pickup_address',
         'pickup_maps_url', 'preferred_delivery_date', 'special_requirements',
         'status', 'quotation_id', 'payload',
         'salesperson_id', 'salesperson_locked', 'source', 'sa_location_id',
@@ -173,5 +173,22 @@ class PortalEnquiry extends Model
     public function hasSalesperson(): bool
     {
         return $this->salesperson_id !== null;
+    }
+
+    /** Shared order number of every record created from this enquiry (falls back to the enquiry ref). */
+    public function orderNumber(): string
+    {
+        return $this->order_number ?: ($this->reference_no ?? 'ENQ-'.$this->id);
+    }
+
+    /** Human label for where the order came from. */
+    public function sourceLabel(): string
+    {
+        return match ($this->source) {
+            self::SOURCE_SALESPERSON_LINK => 'Salesperson link',
+            self::SOURCE_WALK_IN => 'Walk-in',
+            self::SOURCE_ADMIN => 'Admin entry',
+            default => 'Customer portal',
+        };
     }
 }

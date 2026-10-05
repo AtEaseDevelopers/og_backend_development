@@ -3,9 +3,9 @@
 namespace App\Filament\Pages;
 
 use App\Domains\Quotation\Actions\AssignEnquirySalesperson;
+use App\Domains\Quotation\Actions\CreateOrderFromEnquiry;
 use App\Domains\Quotation\Models\PortalEnquiry;
 use App\Enums\PortalEnquiryStatus;
-use App\Filament\Resources\QuotationResource;
 use App\Models\User;
 use App\Support\PortalEnquiryListingData;
 use Filament\Notifications\Notification;
@@ -13,6 +13,7 @@ use Filament\Pages\Page;
 use Illuminate\Support\Carbon;
 use InvalidArgumentException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 class PortalEnquiries extends Page
 {
@@ -259,7 +260,13 @@ class PortalEnquiries extends Page
         // Ownership: the attending salesperson takes the enquiry; otherwise one must be selected.
         if (! $enquiry->salesperson_id) {
             if (auth()->user()?->isSalesperson()) {
-                app(AssignEnquirySalesperson::class)->execute($enquiry, auth()->user(), auth()->user(), lock: true);
+                try {
+                    $enquiry = app(AssignEnquirySalesperson::class)->execute($enquiry, auth()->user(), auth()->user(), lock: true);
+                } catch (InvalidArgumentException $e) {
+                    Notification::make()->title($e->getMessage())->danger()->send();
+
+                    return;
+                }
             } else {
                 Notification::make()
                     ->title('Assign a salesperson first')
@@ -273,11 +280,24 @@ class PortalEnquiries extends Page
 
         $enquiry->update(['attended_by' => $enquiry->attended_by ?? auth()->id(), 'attended_at' => $enquiry->attended_at ?? now()]);
 
+        // The order records (one per consignor–consignee pair) are created here and priced in the Orders workspace.
+        try {
+            $orders = app(CreateOrderFromEnquiry::class)->execute($enquiry, auth()->user());
+        } catch (Throwable $e) {
+            Notification::make()->title($e->getMessage())->danger()->send();
+
+            return;
+        }
+
         $this->releaseSelectedLock();
 
-        session(['portal_enquiry_id' => $enquiryId]);
+        Notification::make()
+            ->title($orders->count().' order record(s) created under '.$enquiry->orderNumber())
+            ->body($orders->pluck('number')->implode(', ').' · enter the charges to continue.')
+            ->success()
+            ->send();
 
-        $this->redirect(QuotationResource::getUrl('create'), navigate: false);
+        $this->redirect(OrderDetail::urlFor('order', (int) $orders->first()->id).'?tab=pricing', navigate: false);
     }
 
     public function toggleRejectForm(): void

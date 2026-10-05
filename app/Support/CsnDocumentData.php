@@ -50,8 +50,10 @@ class CsnDocumentData
                 'delivery_postcode' => $csn->delivery_postcode,
                 'delivery_city' => $csn->delivery_city,
                 'delivery_state' => $csn->delivery_state,
-                'from_location' => $csn->fromLocation?->name,
-                'to_location' => $csn->toLocation?->name,
+                'from_location' => $csn->fromLocation?->name
+                    ?? app(OrderListingData::class)->cityFromAddress($csn->consignor_address)
+                    ?? $csn->sourceBranch?->name,
+                'to_location' => $csn->toLocation?->name ?? ($csn->delivery_city ?: null),
                 'lines' => $lines,
                 'transport_charges' => (float) $csn->transport_charges,
                 'subtotal' => (float) $csn->subtotal,
@@ -92,10 +94,9 @@ class CsnDocumentData
             ->filter(fn (array $line) => filled($line['item_name'] ?? null))
             ->map(function (array $line) {
                 $qty = (float) ($line['quantity'] ?? 0);
-                $uom = $this->formatUom($line['uom'] ?? null);
 
                 return [
-                    'quantity' => $qty > 0 ? trim($this->formatQuantity($qty).' '.$uom) : '—',
+                    'quantity' => $qty > 0 ? $this->formatQuantity($qty) : '—',
                     'description' => '- '.($line['item_name'] ?? '—'),
                     'amount_myr' => $this->nullableAmount($line['line_total'] ?? null),
                     'sst_myr' => null,
@@ -121,14 +122,13 @@ class CsnDocumentData
             $totalMyr = collect($lines)->sum(fn (array $line) => $this->parseAmount($line['total_myr']));
         }
 
-        $dropOffAddress = collect([
+        $dropOffAddress = $this->addressBlock(
             $fields['delivery_address'] ?? null,
-            collect([
-                $fields['delivery_postcode'] ?? null,
-                $fields['delivery_city'] ?? null,
-                $fields['delivery_state'] ?? null,
-            ])->filter()->implode(', '),
-        ])->filter()->implode("\n");
+            $fields['delivery_postcode'] ?? null,
+            $fields['delivery_city'] ?? null,
+            $fields['delivery_state'] ?? null,
+            $fields['consignee_name'] ?? null,
+        );
 
         $issuedAt = $fields['issued_at'] ?? null;
         if ($issuedAt && ! $issuedAt instanceof Carbon) {
@@ -163,14 +163,7 @@ class CsnDocumentData
             ],
             'consignee' => [
                 'name' => $fields['consignee_name'] ?? '—',
-                'address' => collect([
-                    $fields['delivery_address'] ?? null,
-                    collect([
-                        $fields['delivery_postcode'] ?? null,
-                        $fields['delivery_city'] ?? null,
-                        $fields['delivery_state'] ?? null,
-                    ])->filter()->implode(', '),
-                ])->filter()->implode("\n") ?: '—',
+                'address' => $dropOffAddress ?: '—',
             ],
             'route' => [
                 'from' => $fields['from_location'] ?? '—',
@@ -197,6 +190,29 @@ class CsnDocumentData
                 'declaration_receipt_no' => null,
             ],
         ];
+    }
+
+    /**
+     * Address lines without repeats: skips a street line that only repeats the consignee or the
+     * city, and city/state/postcode parts that already appear in the street line.
+     */
+    private function addressBlock(?string $street, ?string $postcode, ?string $city, ?string $state, ?string $consigneeName): string
+    {
+        $street = trim((string) $street);
+        $norm = fn (?string $v) => mb_strtolower(trim((string) $v));
+
+        if ($street !== '' && in_array($norm($street), [$norm($consigneeName), $norm($city), $norm($state)], true)) {
+            $street = '';
+        }
+
+        $tail = collect([$postcode, $city, $state])
+            ->map(fn ($v) => trim((string) $v))
+            ->filter()
+            ->reject(fn ($v) => $street !== '' && str_contains(mb_strtolower($street), mb_strtolower($v)))
+            ->unique(fn ($v) => mb_strtolower($v))
+            ->implode(', ');
+
+        return collect([$street, $tail])->filter()->implode("\n");
     }
 
     private function formatUom(?string $uom): string

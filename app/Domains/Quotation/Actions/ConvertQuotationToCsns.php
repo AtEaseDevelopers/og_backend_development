@@ -45,7 +45,11 @@ class ConvertQuotationToCsns
         }
 
         return DB::transaction(function () use ($quotation, $actor, $billingType) {
-            $quotation->load(['destinations', 'lines', 'customer', 'branch', 'saLocation', 'salesperson', 'invoices', 'proformaInvoice']);
+            $quotation->load(['destinations', 'lines', 'customer', 'branch', 'saLocation', 'salesperson', 'invoices', 'proformaInvoice', 'toLocation']);
+            // Order records from the Orders workspace have one consignor & consignee each: the record
+            // itself holds the real consignee, addresses and locations (the destination row only holds
+            // the price-list column label).
+            $single = $quotation->destinations->count() === 1;
             $notes = collect();
 
             $orderType = $quotation->orderType() ?? OrderType::fromBillingType($billingType);
@@ -89,14 +93,20 @@ class ConvertQuotationToCsns
                     'customer_brn' => $quotation->customer->brn,
                     'customer_tin' => $quotation->customer->tin,
                     'customer_phone' => $quotation->customer->phone,
-                    'consignor_address' => $quotation->customer->address,
-                    'consignee_name' => $destination->consignee_name,
+                    'consignor_name' => $quotation->consignor_name ?: $quotation->customer->company_name,
+                    'consignor_address' => $quotation->pickup_location ?: ($quotation->customer_address ?: $quotation->customer->address),
+                    'consignee_name' => $single && filled($quotation->consignee_name) ? $quotation->consignee_name : $destination->consignee_name,
                     'consignee_pic' => $destination->consignee_pic,
                     'consignee_phone' => $destination->consignee_phone,
-                    'delivery_address' => $destination->address,
+                    // delivery_address is NOT NULL: fall back to the destination label (the PDF hides label-only repeats)
+                    'delivery_address' => ($single
+                        ? ($quotation->drop_off_location ?: ($quotation->consignee_address ?: $this->realAddress($destination)))
+                        : $this->realAddress($destination)) ?? (string) ($destination->address ?? $destination->consignee_name ?? ''),
                     'delivery_postcode' => $destination->postcode,
                     'delivery_state' => $destination->state,
-                    'delivery_city' => $destination->city,
+                    'delivery_city' => $single ? ($quotation->toLocation?->name ?? $destination->city) : $destination->city,
+                    'from_location_id' => $quotation->from_location_id,
+                    'to_location_id' => $single ? $quotation->to_location_id : null,
                     'subtotal' => $subtotal,
                     'total_amount' => $subtotal,
                     'issued_at' => now()->toDateString(),
@@ -143,6 +153,18 @@ class ConvertQuotationToCsns
 
             return $notes;
         });
+    }
+
+    /** The destination address, unless it only repeats the column label (consignee / city). */
+    private function realAddress($destination): ?string
+    {
+        $address = trim((string) $destination->address);
+
+        if ($address === '' || $address === trim((string) $destination->consignee_name) || $address === trim((string) $destination->city)) {
+            return null;
+        }
+
+        return $address;
     }
 
     private function paymentStatus(Quotation $quotation, string $billingType): string

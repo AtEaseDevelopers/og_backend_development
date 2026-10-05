@@ -124,13 +124,10 @@ class AcceptQuotation
 
         $this->notifyCustomer($quotation);
 
-        // COD orders proceed to billing automatically unless Admin blocks them (section F).
-        if ($quotation->status === QuotationStatus::Confirmed && $quotation->orderType() === OrderType::Cod && ! $quotation->cod_blocked) {
-            try {
-                app(GenerateOrderBilling::class)->execute($quotation, $reviewer ?? $actor);
-            } catch (Throwable) {
-                // billing_status = failed is recorded by GenerateOrderBilling; Admin can retry
-            }
+        // Non-cash orders (COD / credit term) skip the payment summary and proceed straight to
+        // the invoice and CSN once confirmed. COD stays blockable by Admin (section F).
+        if ($quotation->status === QuotationStatus::Confirmed && in_array($quotation->orderType(), [OrderType::Cod, OrderType::Term], true)) {
+            app(\App\Domains\Billing\Actions\ProceedNonCashOrderToCsn::class)->execute($quotation, $reviewer ?? $actor);
         }
 
         return $quotation->fresh();

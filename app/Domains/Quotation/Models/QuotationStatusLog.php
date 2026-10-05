@@ -9,8 +9,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class QuotationStatusLog extends Model
 {
     protected $fillable = [
-        'quotation_id', 'from_status', 'to_status', 'user_id', 'remarks',
+        'quotation_id', 'from_status', 'to_status', 'user_id', 'remarks', 'meta',
     ];
+
+    protected function casts(): array
+    {
+        return ['meta' => 'array'];
+    }
 
     public function quotation(): BelongsTo
     {

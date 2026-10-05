@@ -21,7 +21,7 @@ use App\Enums\PaymentStatus;
 use App\Filament\Resources\ConsignmentNoteResource\Pages;
 use App\Filament\Resources\ConsignmentNoteResource\RelationManagers;
 use App\Filament\Resources\ConsignmentNoteResource\Schemas\ConsignmentNoteForm;
-use App\Filament\Resources\QuotationResource;
+use App\Filament\Pages\OrderDetail;
 use App\Support\CurrentCompany;
 use Filament\Facades\Filament;
 use Filament\Forms;
@@ -72,7 +72,7 @@ class ConsignmentNoteResource extends Resource
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('quotation.number')
                     ->label('Order')
-                    ->url(fn (ConsignmentNote $record) => $record->quotation ? QuotationResource::getUrl('view', ['record' => $record->quotation]) : null)
+                    ->url(fn (ConsignmentNote $record) => $record->quotation ? OrderDetail::urlFor('order', (int) $record->quotation_id) : null)
                     ->color('primary')
                     ->placeholder('—')
                     ->description(fn (ConsignmentNote $record) => $record->invoice_number)

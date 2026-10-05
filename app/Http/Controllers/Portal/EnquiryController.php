@@ -94,13 +94,14 @@ class EnquiryController extends Controller
         $chosenSalesperson = $linkedSalesperson
             ?? (filled($data['salesperson_id'] ?? null) ? User::query()->find($data['salesperson_id']) : null);
 
-        $enquiry = DB::transaction(function () use ($request, $data, $customerId, $companyId, $linkedSalesperson, $chosenSalesperson) {
+        $enquiry = DB::transaction(function () use ($request, $data, $customerId, $companyId, $linkedSalesperson, $chosenSalesperson, $branch) {
             $enquiry = PortalEnquiry::query()->create([
                 'company_id' => $companyId,
                 'customer_id' => $customerId,
                 'branch_id' => $data['branch_id'],
                 'user_id' => $request->user()->id,
                 'reference_no' => 'ENQ-'.Str::upper(Str::random(8)),
+                'order_number' => app(\App\Services\DocumentNumberingService::class)->next($branch, \App\Enums\DocumentType::Order),
                 'source' => $linkedSalesperson ? PortalEnquiry::SOURCE_SALESPERSON_LINK : PortalEnquiry::SOURCE_PORTAL,
                 'order_type' => $data['order_type'],
                 'service_type' => $data['service_type'],

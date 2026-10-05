@@ -102,14 +102,17 @@
                 return '';
             }
 
-            $formatted = number_format((float) $amount, 2, '.', '');
-
-            return 'RM '.str_replace('.', '-', $formatted);
+            return 'RM '.number_format((float) $amount, 2, '.', ',');
         };
+
+        $formatQty = fn ($qty): string => rtrim(rtrim(number_format((float) $qty, 3, '.', ','), '0'), '.');
 
         $destinations = $rateMatrix['destinations'] ?? [];
         $rows = $rateMatrix['rows'] ?? [];
         $columnCount = max(1, count($destinations));
+        $singleDestination = count($destinations) <= 1;
+        $totals = $rateMatrix['totals'] ?? [];
+        $grandTotal = (float) ($rateMatrix['grand_total'] ?? 0);
     @endphp
 
     {{-- Letterhead --}}
@@ -169,35 +172,91 @@
     <div class="intro">Please find the transportation charges for the following:-</div>
 
     {{-- Rate matrix --}}
-    <table class="rates">
-        <thead>
-            <tr>
-                <th class="item-col">Item</th>
-                @foreach($destinations as $destinationLabel)
-                    <th class="price-col">{{ $destinationLabel }}</th>
-                @endforeach
-            </tr>
-        </thead>
-        <tbody>
-            @forelse($rows as $row)
+    @if($singleDestination)
+        <table class="rates">
+            <thead>
                 <tr>
-                    <td class="item-col">
-                        {{ $row['label'] }}
-                        @if(! empty($row['sub']))
-                            <div class="item-sub">{{ $row['sub'] }}</div>
-                        @endif
-                    </td>
-                    @foreach($row['prices'] as $price)
-                        <td class="price-col">{{ $formatRm($price) }}</td>
+                    <th class="item-col">Item</th>
+                    <th class="price-col">Destination</th>
+                    <th class="price-col">Qty</th>
+                    <th class="price-col">Unit price</th>
+                    <th class="price-col">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                @forelse($rows as $row)
+                    <tr>
+                        <td class="item-col">
+                            {{ $row['label'] }}
+                            @if(! empty($row['sub']))
+                                <div class="item-sub">{{ $row['sub'] }}</div>
+                            @endif
+                        </td>
+                        <td class="price-col">{{ $destinations[0] ?? '—' }}</td>
+                        <td class="price-col">{{ $formatQty($row['qty'] ?? 1) }}</td>
+                        <td class="price-col">{{ $formatRm($row['prices'][0] ?? null) }}</td>
+                        <td class="price-col">{{ $formatRm($row['amounts'][0] ?? null) }}</td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td class="item-col" colspan="5">No transport charges listed.</td>
+                    </tr>
+                @endforelse
+                @if($rows !== [])
+                    <tr>
+                        <td class="item-col bold" colspan="4" style="text-align:right;">Total</td>
+                        <td class="price-col bold">{{ $formatRm($grandTotal) }}</td>
+                    </tr>
+                @endif
+            </tbody>
+        </table>
+    @else
+        <table class="rates">
+            <thead>
+                <tr>
+                    <th class="item-col">Item</th>
+                    @foreach($destinations as $destinationLabel)
+                        <th class="price-col">{{ $destinationLabel }}</th>
                     @endforeach
                 </tr>
-            @empty
-                <tr>
-                    <td class="item-col" colspan="{{ $columnCount + 1 }}">No transport charges listed.</td>
-                </tr>
-            @endforelse
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @forelse($rows as $row)
+                    <tr>
+                        <td class="item-col">
+                            {{ $row['label'] }}
+                            @if(($row['qty'] ?? 1) > 1)
+                                <div class="item-sub">Qty {{ $formatQty($row['qty']) }}</div>
+                            @endif
+                            @if(! empty($row['sub']))
+                                <div class="item-sub">{{ $row['sub'] }}</div>
+                            @endif
+                        </td>
+                        @foreach($row['prices'] as $i => $price)
+                            <td class="price-col">
+                                {{ $formatRm($price) }}
+                                @if($price !== null && ($row['qty'] ?? 1) > 1)
+                                    <div class="item-sub">= {{ $formatRm($row['amounts'][$i] ?? null) }}</div>
+                                @endif
+                            </td>
+                        @endforeach
+                    </tr>
+                @empty
+                    <tr>
+                        <td class="item-col" colspan="{{ $columnCount + 1 }}">No transport charges listed.</td>
+                    </tr>
+                @endforelse
+                @if($rows !== [])
+                    <tr>
+                        <td class="item-col bold" style="text-align:right;">Total</td>
+                        @foreach($destinations as $i => $label)
+                            <td class="price-col bold">{{ $formatRm($totals[$i] ?? 0) }}</td>
+                        @endforeach
+                    </tr>
+                @endif
+            </tbody>
+        </table>
+    @endif
 
     {{-- Footnotes from quotation notes or defaults --}}
     <div class="footnotes">

@@ -2,23 +2,24 @@
 
 namespace App\Filament\Pages;
 
+use App\Domains\MasterData\Models\Customer;
 use App\Domains\MasterData\Models\SaLocation;
-use App\Enums\BillingStatus;
+use App\Domains\Quotation\Models\PortalEnquiry;
 use App\Enums\OrderType;
-use App\Filament\Resources\QuotationResource;
 use App\Models\User;
+use App\Support\CurrentCompany;
 use App\Support\OrderListingData;
+use App\Support\OrderStage;
+use Filament\Pages\Page;
 use Livewire\Attributes\Url;
 
 /**
- * Orders workspace: one list following the flow
- * Enquiry → Quotation → Confirmation → Proforma → Payment / Release → Invoice / Cash Bill → CSN.
+ * Order management: one workspace from enquiry to billing and dispatch.
  *
- * Enquiry rows open the review panel below the list (approve / reject / prepare quotation);
- * order rows link to the order record, and converted orders link to their CSNs.
- * Inherits the enquiry review behaviour (lock, heartbeat, actions) from PortalEnquiries.
+ * Every row is an enquiry waiting for pricing or an order record (one per consignor–consignee,
+ * sharing the enquiry's order number). Rows open the order detail page.
  */
-class Orders extends PortalEnquiries
+class Orders extends Page
 {
     protected static ?string $navigationIcon = 'heroicon-o-clipboard-document-list';
 
@@ -30,157 +31,228 @@ class Orders extends PortalEnquiries
 
     protected static ?string $slug = 'orders';
 
-    protected static bool $shouldRegisterNavigation = true;
-
     protected static string $view = 'filament.pages.orders';
 
+    #[Url(as: 'q', except: '')]
+    public string $search = '';
+
+    #[Url(as: 'card', except: '')]
+    public string $card = '';
+
     #[Url(as: 'stage', except: '')]
-    public ?string $filterStatus = null;
+    public string $stage = '';
+
+    #[Url(as: 'customer', except: '')]
+    public string $customer = '';
 
     #[Url(as: 'type', except: '')]
-    public ?string $filterOrderType = null;
+    public string $orderType = '';
 
     #[Url(as: 'salesperson', except: '')]
-    public ?string $filterSalesperson = null;
+    public string $salesperson = '';
+
+    #[Url(as: 'payment', except: '')]
+    public string $paymentStatus = '';
+
+    #[Url(as: 'method', except: '')]
+    public string $paymentMethod = '';
 
     #[Url(as: 'sa', except: '')]
-    public ?string $filterSaLocation = null;
+    public string $saLocation = '';
 
-    #[Url(as: 'billing', except: '')]
-    public ?string $filterBilling = null;
+    #[Url(as: 'pricing', except: '')]
+    public string $pricingSource = '';
+
+    #[Url(as: 'qs', except: '')]
+    public string $quotationStatus = '';
+
+    #[Url(as: 'dropoff', except: '')]
+    public string $dropOffType = '';
+
+    #[Url(as: 'from', except: '')]
+    public string $createdFrom = '';
+
+    #[Url(as: 'until', except: '')]
+    public string $createdTo = '';
+
+    #[Url(as: 'valid_from', except: '')]
+    public string $validFrom = '';
+
+    #[Url(as: 'valid_until', except: '')]
+    public string $validTo = '';
+
+    #[Url(as: 'min', except: '')]
+    public string $amountMin = '';
+
+    #[Url(as: 'max', except: '')]
+    public string $amountMax = '';
+
+    public bool $filtersOpen = false;
 
     public function mount(): void
     {
-        if (! $this->filterDateFrom) {
-            $this->filterDateFrom = now()->subDays(30)->format('Y-m-d');
-        }
-
-        if (! $this->filterDateTo) {
-            $this->filterDateTo = now()->format('Y-m-d');
-        }
+        $this->filtersOpen = filled($this->paymentStatus) || filled($this->paymentMethod) || filled($this->saLocation)
+            || filled($this->pricingSource) || filled($this->quotationStatus) || filled($this->dropOffType)
+            || filled($this->createdFrom) || filled($this->createdTo) || filled($this->validFrom) || filled($this->validTo)
+            || filled($this->amountMin) || filled($this->amountMax);
     }
 
     public function getTitle(): string
     {
-        return 'Orders';
+        return 'Order management';
     }
 
-    public function getSubheading(): ?string
+    /** The page renders its own header (breadcrumb, title, actions) to match the design. */
+    public function getHeading(): string
     {
-        return 'Enquiry → Quotation → Confirmation → Proforma → Payment / Admin release → Invoice / Cash Bill → CSN';
-    }
-
-    /** No auto-selection: the enquiry panel opens on click. */
-    public function applyFilters(): void
-    {
-        $this->releaseSelectedLock();
-        $this->selectedEnquiryId = null;
-        $this->showRejectForm = false;
-    }
-
-    public function resetFilters(): void
-    {
-        $this->filterSearch = null;
-        $this->filterStatus = null;
-        $this->filterOrderType = null;
-        $this->filterSalesperson = null;
-        $this->filterSaLocation = null;
-        $this->filterBilling = null;
-        $this->filterDateFrom = now()->subDays(30)->format('Y-m-d');
-        $this->filterDateTo = now()->format('Y-m-d');
-        $this->applyFilters();
-    }
-
-    public function closeDetail(): void
-    {
-        $this->releaseSelectedLock();
-        $this->selectedEnquiryId = null;
-        $this->rejectReason = '';
-        $this->showRejectForm = false;
-    }
-
-    public function openDetail(int $enquiryId): void
-    {
-        parent::openDetail($enquiryId);
-
-        $this->dispatch('ops-scroll-to-detail');
+        return '';
     }
 
     /** @return array<string, mixed> */
     public function getOrders(): array
     {
         return app(OrderListingData::class)->for([
-            'search' => $this->filterSearch,
-            'stage' => $this->filterStatus ?? '',
-            'order_type' => $this->filterOrderType,
-            'salesperson_id' => $this->filterSalesperson,
-            'sa_location_id' => $this->filterSaLocation,
-            'billing_status' => $this->filterBilling,
-            'date_from' => $this->filterDateFrom,
-            'date_to' => $this->filterDateTo,
+            'search' => $this->search,
+            'card' => $this->card ?? '',
+            'stage' => $this->stage ?? '',
+            'customer_id' => $this->customer,
+            'order_type' => $this->orderType,
+            'salesperson_id' => $this->salesperson,
+            'payment_status' => $this->paymentStatus,
+            'payment_method' => $this->paymentMethod,
+            'sa_location_id' => $this->saLocation,
+            'pricing_source' => $this->pricingSource,
+            'quotation_status' => $this->quotationStatus,
+            'drop_off_type' => $this->dropOffType,
+            'created_from' => $this->createdFrom,
+            'created_to' => $this->createdTo,
+            'valid_from' => $this->validFrom,
+            'valid_to' => $this->validTo,
+            'amount_min' => $this->amountMin,
+            'amount_max' => $this->amountMax,
         ]);
     }
 
-    /** @return list<array{key: string, label: string, hint: string, count: int, stage: string}> */
-    public function getCards(array $summary): array
+    /** @return list<array{key: string, label: string, hint: string, count: int}> */
+    public function cards(array $summary): array
     {
         return [
-            ['key' => 'all', 'label' => 'All', 'hint' => 'Open orders in this window', 'count' => $summary['total'], 'stage' => ''],
-            ['key' => 'attention', 'label' => 'Needs attention', 'hint' => 'New enquiries, pricing & credit review', 'count' => $summary['needs_attention'], 'stage' => 'enquiry'],
-            ['key' => 'customer', 'label' => 'Awaiting customer', 'hint' => 'Quotation sent · not confirmed', 'count' => $summary['awaiting_customer'], 'stage' => 'awaiting_customer'],
-            ['key' => 'bill', 'label' => 'Ready to bill', 'hint' => 'Confirmed · payment or release pending', 'count' => $summary['ready_to_bill'], 'stage' => 'payment'],
+            ['key' => '', 'label' => 'All', 'hint' => 'Orders in this branch', 'count' => $summary['total']],
+            ['key' => 'attention', 'label' => 'Needs attention', 'hint' => 'New enquiries & payment review', 'count' => $summary['needs_attention']],
+            ['key' => 'customer', 'label' => 'Awaiting customer', 'hint' => 'Quotation confirmation', 'count' => $summary['awaiting_customer']],
+            ['key' => 'bill', 'label' => 'Ready to bill', 'hint' => 'Released for billing', 'count' => $summary['ready_to_bill']],
         ];
     }
 
-    public function selectCard(string $stage): void
+    public function selectCard(string $key): void
     {
-        $this->filterStatus = $stage === '' ? null : $stage;
-        $this->applyFilters();
+        $this->card = $key;
     }
 
-    public function isCardActive(string $stage): bool
+    public function toggleFilters(): void
     {
-        return ($this->filterStatus ?? '') === $stage;
+        $this->filtersOpen = ! $this->filtersOpen;
+    }
+
+    public function resetFilters(): void
+    {
+        foreach (['search', 'card', 'stage', 'customer', 'orderType', 'salesperson', 'paymentStatus', 'paymentMethod', 'saLocation', 'pricingSource', 'quotationStatus', 'dropOffType', 'createdFrom', 'createdTo', 'validFrom', 'validTo', 'amountMin', 'amountMax'] as $property) {
+            $this->{$property} = '';
+        }
+    }
+
+    /** @return array<string, string> */
+    public function legend(): array
+    {
+        return OrderStage::LEGEND;
     }
 
     /** @return array<string, string> */
     public function stageOptions(): array
     {
-        return OrderListingData::stageOptions();
+        return OrderStage::stageOptions();
     }
 
     /** @return array<string, string> */
     public function orderTypeOptions(): array
     {
-        return ['' => 'All types'] + OrderType::options();
+        return ['' => 'All'] + OrderType::options();
     }
 
     /** @return array<string, string> */
-    public function billingOptions(): array
+    public function paymentStatusOptions(): array
     {
-        return ['' => 'Any payment state'] + collect(BillingStatus::cases())->mapWithKeys(fn ($c) => [$c->value => $c->getLabel()])->all();
+        return OrderStage::paymentOptions();
+    }
+
+    /** @return array<string, string> */
+    public function paymentMethodOptions(): array
+    {
+        return OrderListingData::paymentMethodOptions();
+    }
+
+    /** @return array<string, string> */
+    public function pricingSourceOptions(): array
+    {
+        return OrderListingData::pricingSourceOptions();
+    }
+
+    /** @return array<string, string> */
+    public function quotationStatusOptions(): array
+    {
+        return OrderListingData::quotationStatusOptions();
+    }
+
+    /** @return array<string, string> */
+    public function dropOffTypeOptions(): array
+    {
+        return OrderListingData::dropOffTypeOptions();
     }
 
     /** @return array<int|string, string> */
-    public function salespersonFilterOptions(): array
+    public function customerOptions(): array
     {
-        return ['' => 'All salespersons'] + User::query()->role('salesperson')->orderBy('name')->pluck('name', 'id')->all();
+        $query = Customer::query()->orderBy('company_name');
+
+        if ($companyId = CurrentCompany::id()) {
+            $query->where('company_id', $companyId);
+        }
+
+        return ['' => 'All'] + $query->pluck('company_name', 'id')->all();
+    }
+
+    /** @return array<int|string, string> */
+    public function salespersonOptions(): array
+    {
+        return ['' => 'All'] + User::query()->role('salesperson')->orderBy('name')->pluck('name', 'id')->all();
     }
 
     /** @return array<int|string, string> */
     public function saLocationOptions(): array
     {
-        return ['' => 'All SA locations'] + SaLocation::query()->orderBy('code')->get()->mapWithKeys(fn (SaLocation $l) => [$l->id => $l->code.' — '.$l->name])->all();
+        return ['' => 'All'] + SaLocation::query()->orderBy('code')->get()->mapWithKeys(fn (SaLocation $l) => [$l->id => $l->code])->all();
     }
 
-    public function getCreateOrderUrl(): string
+    public function createUrl(): string
     {
-        return QuotationResource::getUrl('create');
+        return CreateOrder::getUrl();
+    }
+
+    /** Newest customer-submitted enquiry, for the "Order intake" card link. */
+    public function latestCustomerOrderUrl(): ?string
+    {
+        $enquiry = PortalEnquiry::query()
+            ->whereIn('source', [PortalEnquiry::SOURCE_PORTAL, PortalEnquiry::SOURCE_SALESPERSON_LINK])
+            ->when(CurrentCompany::id(), fn ($q, $id) => $q->where('company_id', $id))
+            ->latest('id')
+            ->first(['id']);
+
+        return $enquiry ? OrderDetail::urlFor('enquiry', $enquiry->id) : null;
     }
 
     /** @return list<string> */
     public function steps(): array
     {
-        return OrderListingData::STEPS;
+        return OrderStage::STEPS;
     }
 }

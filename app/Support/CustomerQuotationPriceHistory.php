@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Domains\MasterData\Models\CustomerPricing;
 use App\Domains\Quotation\Models\QuotationLine;
+use App\Filament\Pages\OrderDetail;
 
 class CustomerQuotationPriceHistory
 {
@@ -178,10 +179,11 @@ class CustomerQuotationPriceHistory
             ->take(30)
             ->map(function (array $row) use ($tenantSlug) {
                 $row['view_url'] = $tenantSlug && isset($row['quotation_id'])
-                    ? route('filament.admin.resources.quotations.view', [
+                    ? OrderDetail::getUrl([
                         'tenant' => $tenantSlug,
-                        'record' => $row['quotation_id'],
-                    ])
+                        'type' => 'order',
+                        'id' => (int) $row['quotation_id'],
+                    ], panel: 'admin')
                     : null;
 
                 return $row;

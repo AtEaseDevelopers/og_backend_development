@@ -4,7 +4,11 @@ namespace App\Providers\Filament;
 
 use App\Domains\MasterData\Models\Company;
 use App\Filament\Pages\Auth\Login;
+use App\Filament\Pages\CreateOrder;
 use App\Filament\Pages\Dashboard;
+use App\Filament\Pages\EditOrder;
+use App\Filament\Pages\OrderDetail;
+use App\Filament\Pages\Orders;
 use App\Filament\Pages\SelectBranch;
 use App\Http\Controllers\Admin\ConsignmentNotePdfController;
 use App\Http\Controllers\Admin\DeliveryOrderPdfController;
@@ -26,6 +30,8 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
@@ -46,7 +52,7 @@ class AdminPanelProvider extends PanelProvider
             ->favicon(asset('images/logo-og-circle.png'))
             ->tenant(Company::class, slugAttribute: 'code')
             ->tenantMenu(false)
-            ->homeUrl(fn (): string => route('filament.admin.select-branch'))
+            ->homeUrl(fn (): string => \App\Support\DefaultBranch::homeUrl())
             ->colors([
                 'primary' => Color::hex('#0f172a'),
                 'gray' => Color::Slate,
@@ -80,10 +86,30 @@ class AdminPanelProvider extends PanelProvider
             ->authenticatedTenantRoutes(function (): void {
                 Route::get('/quotations/{quotation}/pdf', QuotationPdfController::class)
                     ->name('quotations.pdf');
+                // Legacy "Quotation Management" links: the Quotation resource was retired in favour of the Orders workspace.
+                Route::get('/quotations', fn (): RedirectResponse => redirect()->to(Orders::getUrl()))
+                    ->name('quotations.legacy-index');
+                Route::get('/quotations/create', fn (): RedirectResponse => redirect()->to(CreateOrder::getUrl()))
+                    ->name('quotations.legacy-create');
+                Route::get('/quotations/{quotation}', fn (Request $request): RedirectResponse => redirect()->to(
+                    OrderDetail::urlFor('order', (int) $request->route('quotation')),
+                ))
+                    ->whereNumber('quotation')
+                    ->name('quotations.legacy-view');
+                Route::get('/quotations/{quotation}/edit', function (Request $request): RedirectResponse {
+                    $orderUrl = OrderDetail::urlFor('order', (int) $request->route('quotation'));
+
+                    // The edit-order page lives at orders/order/{id}/edit; fall back to the order's pricing section without it.
+                    return redirect()->to(class_exists(EditOrder::class) ? $orderUrl.'/edit' : $orderUrl.'?tab=pricing');
+                })
+                    ->whereNumber('quotation')
+                    ->name('quotations.legacy-edit');
                 Route::get('/consignment-notes/{consignmentNote}/pdf', ConsignmentNotePdfController::class)
                     ->name('consignment-notes.pdf');
                 Route::get('/invoices/{invoice}/pdf', InvoicePdfController::class)
                     ->name('invoices.pdf');
+                Route::get('/proforma-invoices/{proformaInvoice}/pdf', \App\Http\Controllers\Admin\ProformaInvoicePdfController::class)
+                    ->name('proforma-invoices.pdf');
                 Route::get('/delivery-orders/{deliveryOrder}/pdf', DeliveryOrderPdfController::class)
                     ->name('delivery-orders.pdf');
                 Route::get('/ocr-uploads/{ocrUpload}/document', OcrUploadDocumentController::class)
@@ -115,17 +141,8 @@ class AdminPanelProvider extends PanelProvider
                 fn (): View => view('filament.hooks.back-to-top'),
             )
             ->renderHook(
-                PanelsRenderHook::PAGE_START,
-                fn (): View => view('filament.hooks.enquiry-lock-heartbeat'),
-                scopes: \App\Filament\Resources\QuotationResource\Pages\CreateQuotation::class,
-            )
-            ->renderHook(
                 PanelsRenderHook::HEAD_END,
                 fn (): View => view('filament.hooks.brand-logo-theme'),
-            )
-            ->renderHook(
-                PanelsRenderHook::HEAD_END,
-                fn (): View => view('filament.hooks.quotation-theme'),
             )
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
@@ -182,6 +199,14 @@ class AdminPanelProvider extends PanelProvider
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
                 fn (): View => view('filament.hooks.order-operations-theme'),
+            )
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): View => view('filament.hooks.order-workspace-theme'),
+            )
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): View => view('filament.hooks.notification-theme'),
             )
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
