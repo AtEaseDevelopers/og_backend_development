@@ -176,38 +176,90 @@ class UpdateOrderRecords
     }
 
     /**
-     * Index of the enquiry payload destination that belongs to a record (null when none matches):
-     * by the record id stored on an earlier edit, else by consignee name, else by creation order.
+     * Index of the enquiry payload destination that belongs to a record (null when none matches).
      *
      * @param  Collection<int, Quotation>  $records
      */
     public static function payloadIndexFor(PortalEnquiry $enquiry, Quotation $order, Collection $records): ?int
     {
+        if (! $records->contains(fn (Quotation $q) => (int) $q->id === (int) $order->id)) {
+            $records = $records->push($order);
+        }
+
+        return static::payloadIndexMap($enquiry, $records)[(int) $order->id] ?? null;
+    }
+
+    /**
+     * Maps every record of the order to its own payload destination in one pass, so two records never
+     * share a destination (e.g. two consignees both named "JB Warehouse"):
+     * 1. the record id stored on an earlier edit;
+     * 2. consignee name among destinations not used yet — ties broken by the destination city matching
+     *    the record's TO location, then by the record's position;
+     * 3. creation order (position) among destinations not used yet.
+     *
+     * @param  Collection<int, Quotation>  $records
+     * @return array<int, int|null> record id → destination index
+     */
+    public static function payloadIndexMap(PortalEnquiry $enquiry, Collection $records): array
+    {
         $destinations = array_values(array_filter($enquiry->payload['destinations'] ?? [], 'is_array'));
+        $ordered = $records->sortBy(fn (Quotation $q) => $q->rootId())->values();
+        $map = $ordered->mapWithKeys(fn (Quotation $q) => [(int) $q->id => null])->all();
 
         if ($destinations === []) {
-            return null;
+            return $map;
         }
 
-        foreach ($destinations as $index => $destination) {
-            if ((int) ($destination['record_id'] ?? 0) === $order->rootId()) {
-                return $index;
-            }
-        }
+        $used = [];
+        $norm = fn ($v) => mb_strtolower(trim((string) $v));
+        $free = fn (int $i) => ! isset($used[$i]) && ! isset($destinations[$i]['record_id']);
 
-        $name = mb_strtolower(trim((string) $order->consignee_name));
-
-        if ($name !== '') {
-            foreach ($destinations as $index => $destination) {
-                if (! isset($destination['record_id']) && mb_strtolower(trim((string) ($destination['consignee_name'] ?? ''))) === $name) {
-                    return $index;
+        // 1. stored record id
+        foreach ($ordered as $q) {
+            foreach ($destinations as $i => $destination) {
+                if (! isset($used[$i]) && (int) ($destination['record_id'] ?? 0) === $q->rootId()) {
+                    $map[(int) $q->id] = $i;
+                    $used[$i] = true;
+                    break;
                 }
             }
         }
 
-        $position = $records->sortBy(fn (Quotation $q) => $q->rootId())->values()->search(fn (Quotation $q) => (int) $q->id === (int) $order->id);
+        // 2. consignee name (ties: TO location ↔ destination city, then position)
+        foreach ($ordered as $position => $q) {
+            if ($map[(int) $q->id] !== null || $norm($q->consignee_name) === '') {
+                continue;
+            }
 
-        return $position !== false && isset($destinations[$position]) && ! isset($destinations[$position]['record_id']) ? (int) $position : null;
+            $candidates = collect($destinations)
+                ->filter(fn (array $d, int $i) => $free($i) && $norm($d['consignee_name'] ?? '') === $norm($q->consignee_name))
+                ->keys();
+
+            if ($candidates->isEmpty()) {
+                continue;
+            }
+
+            $toName = $q->to_location_id
+                ? ($q->relationLoaded('toLocation') ? $q->toLocation?->name : Location::query()->whereKey($q->to_location_id)->value('name'))
+                : null;
+
+            $pick = ($toName ? $candidates->first(fn (int $i) => $norm($destinations[$i]['city'] ?? '') === $norm($toName)) : null)
+                ?? ($candidates->contains($position) ? $position : null)
+                ?? $candidates->first();
+
+            $map[(int) $q->id] = (int) $pick;
+            $used[(int) $pick] = true;
+        }
+
+        // 3. creation order
+        foreach ($ordered as $position => $q) {
+            if ($map[(int) $q->id] === null && isset($destinations[$position]) && $free($position)) {
+                $map[(int) $q->id] = $position;
+                $used[$position] = true;
+            }
+        }
+
+        return $map;
     }
 
     /**
@@ -273,7 +325,7 @@ class UpdateOrderRecords
                 'catalog_key' => $catalogKey,
                 'item_name' => (string) $line->item_name,
                 'uom' => $line->uom,
-                'quantity' => $lineType === 'uom' ? max(1, (int) round((float) $line->quantity)) : 1,
+                'quantity' => max(1, (int) round((float) $line->quantity)),
                 'unit_price' => $line->unit_price !== null ? (float) $line->unit_price : null,
             ];
         })->values();
@@ -301,7 +353,7 @@ class UpdateOrderRecords
             'catalog_key' => $catalogKey,
             'item_name' => $name,
             'uom' => filled($item['uom'] ?? null) ? strtoupper(trim((string) $item['uom'])) : $this->lookup->resolveUomCode($catalogKey, $name),
-            'quantity' => $lineType === 'uom' ? max(1, (int) round((float) ($item['quantity'] ?? 1))) : 1,
+            'quantity' => max(1, (int) round((float) ($item['quantity'] ?? 1))),
             'unit_price' => null,
         ];
     }
@@ -316,7 +368,7 @@ class UpdateOrderRecords
      * @param  array<string, mixed>  $data  validated Edit order form: customer_id, received_through, salesperson_id, order_type,
      *                                      service_type, payment_method, attachments, pairs[] (record_id, payload_index and the
      *                                      Create order pair keys with items[])
-     * @return array{enquiry: ?PortalEnquiry, records: Collection<int, Quotation>, updated: list<Quotation>, created: list<Quotation>, cancelled: list<Quotation>, locked: list<Quotation>}
+     * @return array{enquiry: ?PortalEnquiry, records: Collection<int, Quotation>, updated: list<Quotation>, created: list<Quotation>, cancelled: list<Quotation>, locked: list<Quotation>, unpriced: array<string, list<string>>}
      */
     public function execute(?PortalEnquiry $enquiry, ?Quotation $singleRecord, array $data, User $actor): array
     {
@@ -398,7 +450,7 @@ class UpdateOrderRecords
 
         // Payload destination + previous products of every record, read before anything changes
         $oldIndexes = $enquiry
-            ? $records->mapWithKeys(fn (Quotation $q) => [$q->id => static::payloadIndexFor($enquiry, $q, $records)])->all()
+            ? static::payloadIndexMap($enquiry, $records)
             : [];
         $oldItems = $records->mapWithKeys(fn (Quotation $q) => [$q->id => $this->itemsForRecord($q, $enquiry, $records)])->all();
 
@@ -471,12 +523,14 @@ class UpdateOrderRecords
             $cancelled[] = $order;
         }
 
+        $unpriced = [];
+
         if ($enquiry) {
             if ($cancelled !== [] && collect($cancelled)->contains(fn (Quotation $q) => (int) $q->id === (int) $enquiry->quotation_id)) {
                 $enquiry->update(['quotation_id' => collect($entries)->sortKeys()->pluck('record')->filter()->first()?->id]);
             }
 
-            $this->syncPayload($enquiry, $entries, $data);
+            $unpriced = $this->syncPayload($enquiry, $entries, $data);
         }
 
         $attached = $this->appendAttachments($enquiry, $enquiry ? null : $records->first(), $data['attachments'] ?? []);
@@ -517,6 +571,8 @@ class UpdateOrderRecords
             'created' => $created,
             'cancelled' => $cancelled,
             'locked' => $locked,
+            // products kept on the order form without a line because there is no price yet (per record number)
+            'unpriced' => $ownerId ? $unpriced : [],
         ];
     }
 
@@ -578,6 +634,7 @@ class UpdateOrderRecords
             'created' => [],
             'cancelled' => [],
             'locked' => [],
+            'unpriced' => [],
         ];
     }
 
@@ -590,7 +647,7 @@ class UpdateOrderRecords
     {
         $payload = $enquiry->payload ?? [];
         // portal destinations carry no DO number / delivery date of their own: they inherit the enquiry's
-        $fallback = ['customer_do_number' => $enquiry->customer_do_number, 'expected_delivery_date' => $enquiry->preferred_delivery_date?->toDateString()];
+        $fallback = ['customer_do_number' => $enquiry->customer_do_number, 'expected_delivery_date' => $enquiry->preferred_delivery_date?->toDateString(), 'drop_off_type' => DropOffType::Other->value];
         $keys = ['consignee_name', 'address', 'city', 'drop_off_type', 'customer_do_number', 'expected_delivery_date'];
 
         return [
@@ -705,7 +762,9 @@ class UpdateOrderRecords
         $toLocationId = filled($pair['to_location_id'] ?? null) ? (int) $pair['to_location_id'] : null;
         $toName = $toLocationId ? Location::query()->whereKey($toLocationId)->value('name') : null;
         $consignee = trim((string) ($pair['consignee_name'] ?? ''));
-        $column = (string) ($toName ?: ($consignee !== '' ? $consignee : 'Destination'));
+        $existingCity = trim((string) $order->destinations->sortBy('sequence')->first()?->city);
+        $existingCity = $existingCity !== '' && mb_strtolower($existingCity) !== mb_strtolower(trim((string) $order->consignee_name)) ? $existingCity : null;
+        $column = (string) ($toName ?: ($existingCity ?: ($consignee !== '' ? $consignee : 'Destination')));
         $serviceType = ServiceType::tryFrom((string) ($data['service_type'] ?? ''))?->value ?? $order->service_type?->value;
         $dropOffType = DropOffType::tryFrom((string) ($pair['drop_off_type'] ?? ''))?->value ?? DropOffType::Other->value;
 
@@ -743,7 +802,7 @@ class UpdateOrderRecords
         // a product new to the record takes the price-list rate, and only once a salesperson owns the order.
         $customerId = (int) ($fields['customer_id'] ?? $order->customer_id) ?: null;
         $productLines = static::productLines($order);
-        $existingPrices = $productLines->groupBy('item_name')->map(fn (Collection $lines) => $lines->first()->unit_price !== null ? (float) $lines->first()->unit_price : null);
+        $original = $productLines->keyBy('item_name');
         $rows = [];
         $newItems = [];
 
@@ -756,10 +815,12 @@ class UpdateOrderRecords
 
             $catalogKey = filled($item['catalog_key'] ?? null) ? (string) $item['catalog_key'] : $this->lookup->resolveCatalogKey($name);
             $lineType = filled($item['line_type'] ?? null) ? (string) $item['line_type'] : $this->lookup->inferLineType($catalogKey, $name);
-            $quantity = $lineType === 'uom' ? max(1, (int) round((float) ($item['quantity'] ?? 1))) : 1;
+            $existing = $original->get($name);
+            // whole units (the page only lets UOM products change quantity; others keep the loaded one)
+            $quantity = max(1, (int) round((float) ($item['quantity'] ?? 1)));
 
-            if ($existingPrices->has($name) && $existingPrices->get($name) !== null) {
-                $price = $existingPrices->get($name);
+            if ($existing && $existing->unit_price !== null) {
+                $price = (float) $existing->unit_price;
             } else {
                 $price = $lineType === 'lorry' || ! $ownerId
                     ? null
@@ -767,11 +828,12 @@ class UpdateOrderRecords
             }
 
             $rows[] = [
-                'line_type' => $lineType,
+                // QuotationMatrix keeps the quantity only for UOM rows
+                'line_type' => $lineType !== 'uom' && $quantity !== 1 ? 'uom' : $lineType,
                 'item_name' => $name,
                 'catalog_key' => $catalogKey,
                 'quantity' => $quantity,
-                'prices' => [$column => $price !== null ? round((float) $price, 2) : null],
+                'prices' => [$column => $price !== null ? round($price, 2) : null],
             ];
             $newItems[] = ['item_name' => $name, 'quantity' => $quantity];
         }
@@ -785,27 +847,17 @@ class UpdateOrderRecords
             ->filter(fn (array $row) => $row['prices'][$column] !== null)
             ->map(fn (array $row) => $row['item_name'].'|'.$row['quantity'].'|'.number_format((float) $row['prices'][$column], 2, '.', ''))
             ->sort()->values()->all();
+        $destination = $order->destinations->first();
+        $columnChanged = $order->destinations->count() !== 1 || trim((string) $destination?->consignee_name) !== $column;
+        $linesChanged = $currentSignature !== $newSignature;
 
-        if ($changes === [] && $currentSignature === $newSignature) {
+        if ($changes === [] && ! $linesChanged && ! $columnChanged) {
             return false;
         }
 
         if ($changes === []) {
-            $changes[] = 'product prices filled from the price list';
+            $changes[] = $linesChanged ? 'product prices filled from the price list' : 'destination renamed to '.$column;
         }
-
-        // Pickup / drop-off / other charges stay as they are
-        $chargeRows = $order->lines
-            ->filter(fn ($line) => in_array($line->item_name, CreateOrderFromEnquiry::CHARGE_LINES, true))
-            ->map(fn ($line) => [
-                'line_type' => 'item',
-                'item_name' => $line->item_name,
-                'catalog_key' => null,
-                'quantity' => 1,
-                'prices' => [$column => (float) $line->unit_price],
-            ])
-            ->values()
-            ->all();
 
         $before = Arr::only($order->getAttributes(), array_keys($fields));
         $oldTotal = (float) $order->total_amount;
@@ -813,7 +865,31 @@ class UpdateOrderRecords
         // The change is recorded below in one readable entry instead of the automatic "updated" activity
         activity()->withoutLogs(fn () => $order->update($fields));
 
-        $this->matrix->sync($order, [$column], array_merge($rows, $chargeRows));
+        if ($linesChanged || $columnChanged) {
+            // Pickup / drop-off / other charges stay as they are
+            $chargeRows = $order->lines
+                ->filter(fn ($line) => in_array($line->item_name, CreateOrderFromEnquiry::CHARGE_LINES, true))
+                ->map(fn ($line) => [
+                    'line_type' => (float) $line->quantity !== 1.0 ? 'uom' : 'item',
+                    'item_name' => $line->item_name,
+                    'catalog_key' => null,
+                    'quantity' => (float) $line->quantity ?: 1,
+                    'prices' => [$column => (float) $line->unit_price],
+                ])
+                ->values()
+                ->all();
+            $previousUom = $order->lines->filter(fn ($line) => filled($line->uom))->mapWithKeys(fn ($line) => [$line->item_name => $line->uom]);
+
+            activity()->withoutLogs(fn () => $this->matrix->sync($order, [$column], array_merge($rows, $chargeRows)));
+
+            // QuotationMatrix only knows the unit of UOM products; keep the unit other lines already had
+            foreach ($order->lines()->whereNull('uom')->get() as $line) {
+                if ($previousUom->has($line->item_name)) {
+                    $line->update(['uom' => $previousUom->get($line->item_name)]);
+                }
+            }
+        }
+
         $order->refresh();
 
         if (abs($oldTotal - (float) $order->total_amount) >= 0.005) {
@@ -1019,15 +1095,19 @@ class UpdateOrderRecords
      * Rewrites the enquiry's submitted order form (payload destinations / items) so it matches the
      * edited blocks. Locked records keep what the payload had. Each destination remembers its record.
      *
+     * Products of a record that could not become a line (no price yet) stay listed here, flagged "unpriced".
+     *
      * @param  array<int, array{record: ?Quotation, pair: ?array, old_index: ?int}>  $entries  keyed by block position
+     * @return array<string, list<string>> unpriced product names per record number
      */
-    private function syncPayload(PortalEnquiry $enquiry, array $entries, array $data): void
+    private function syncPayload(PortalEnquiry $enquiry, array $entries, array $data): array
     {
         ksort($entries);
         $payload = $enquiry->payload ?? [];
         $oldDestinations = array_values(array_filter($payload['destinations'] ?? [], 'is_array'));
         $destinations = [];
         $items = [];
+        $unpriced = [];
 
         foreach (array_values($entries) as $index => $entry) {
             $record = $entry['record'];
@@ -1043,22 +1123,32 @@ class UpdateOrderRecords
                     : array_map(fn (array $item) => Arr::except($item, ['unit_price']), $this->itemsForRecord($record, null));
             } else {
                 $destination = array_merge($base, $this->destinationFromPair($pair, $data, $base));
+                $lineNames = $record ? $record->lines()->pluck('item_name')->all() : null;
                 $ownItems = collect($pair['items'] ?? [])
                     ->filter(fn ($item) => is_array($item) && filled($item['item_name'] ?? null))
-                    ->map(function (array $item) use ($oldItems): array {
+                    ->map(function (array $item) use ($oldItems, $lineNames): array {
                         $name = trim((string) $item['item_name']);
                         $previous = collect($oldItems)->first(fn (array $old) => trim((string) ($old['item_name'] ?? '')) === $name) ?? [];
-
-                        return array_merge(Arr::except($previous, ['destination_index']), [
+                        $row = array_merge(Arr::except($previous, ['destination_index', 'unpriced']), [
                             'item_name' => $name,
                             'uom' => $this->clean($item['uom'] ?? null),
                             'quantity' => max(1, (int) round((float) ($item['quantity'] ?? 1))),
                             'catalog_key' => $this->clean($item['catalog_key'] ?? null),
                             'line_type' => $this->clean($item['line_type'] ?? null),
                         ]);
+
+                        if ($lineNames !== null && ! in_array($name, $lineNames, true)) {
+                            $row['unpriced'] = true;
+                        }
+
+                        return $row;
                     })
                     ->values()
                     ->all();
+
+                if ($record && ($names = collect($ownItems)->where('unpriced', true)->pluck('item_name')->all()) !== []) {
+                    $unpriced[(string) $record->number] = $names;
+                }
             }
 
             if ($record) {
@@ -1077,6 +1167,8 @@ class UpdateOrderRecords
         $payload['items'] = $items;
 
         $enquiry->update(['payload' => $payload]);
+
+        return $unpriced;
     }
 
     /**

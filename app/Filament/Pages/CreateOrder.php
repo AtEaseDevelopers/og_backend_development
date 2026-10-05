@@ -470,7 +470,8 @@ class CreateOrder extends Page
 
         foreach ($this->pairs as $i => $pair) {
             foreach ($pair['items'] as $j => $item) {
-                $qty = ($item['line_type'] ?? '') === 'uom' ? max(0.01, (float) ($item['quantity'] ?: 1)) : 1.0;
+                // non-UOM rows only exist when editing an order: they keep the record's quantity
+                $qty = max(0.01, (float) ($item['quantity'] ?: 1));
                 $lines[$i][$j] = $item['unit_price'] !== null ? round((float) $item['unit_price'] * $qty, 2) : 0.0;
                 $total += $lines[$i][$j];
             }

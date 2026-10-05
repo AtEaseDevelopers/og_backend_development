@@ -697,6 +697,15 @@ class EditOrder extends CreateOrder
                 ->success()
                 ->send();
 
+            if (($result['unpriced'] ?? []) !== []) {
+                Notification::make()
+                    ->title('Some products have no price yet')
+                    ->body(collect($result['unpriced'])->map(fn (array $names, $number) => $number.': '.implode(', ', $names))->implode(' · ').' · no price-list rate for the destination. Add these products with their price under Items & pricing on the order page.')
+                    ->warning()
+                    ->persistent()
+                    ->send();
+            }
+
             $this->redirect($this->returnUrl($result), navigate: false);
         } catch (Throwable $e) {
             Notification::make()->title($e->getMessage())->danger()->send();

@@ -37,8 +37,10 @@ class OrderListingData
      */
     public function for(array $filters): array
     {
-        $rows = $this->enquiryRows($filters)
-            ->merge($this->orderRows($filters))
+        // Plain collections: an empty Eloquent result stays an Eloquent collection, whose merge()
+        // expects models and fails on these array rows ("getKey() on array").
+        $rows = $this->enquiryRows($filters)->toBase()
+            ->merge($this->orderRows($filters)->toBase())
             ->sortByDesc('sort_at')
             ->values();
 
@@ -107,7 +109,8 @@ class OrderListingData
         $this->applyCommonFilters($query, $filters, 'portal_enquiries');
 
         return $query->orderByDesc('created_at')->limit(300)->get()
-            ->map(fn (PortalEnquiry $enquiry) => $this->enquiryRow($enquiry));
+            ->map(fn (PortalEnquiry $enquiry) => $this->enquiryRow($enquiry))
+            ->toBase();
     }
 
     /** @return array<string, mixed> */
@@ -209,7 +212,8 @@ class OrderListingData
         }
 
         return $query->orderByDesc('created_at')->limit(500)->get()
-            ->map(fn (Quotation $quotation) => $this->orderRow($quotation));
+            ->map(fn (Quotation $quotation) => $this->orderRow($quotation))
+            ->toBase();
     }
 
     /** @return array<string, mixed> */
