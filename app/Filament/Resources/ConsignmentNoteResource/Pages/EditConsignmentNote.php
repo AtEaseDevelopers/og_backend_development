@@ -46,6 +46,12 @@ class EditConsignmentNote extends EditRecord
         $this->pendingLines = $matrixPayload['lines'];
         $data['transport_charges'] = $matrixPayload['transport_charges'];
 
+        // a consignor left blank on purpose ('' from the order) stays blank; Filament would save it as NULL,
+        // which the CSN view / PDF read as "fall back to the customer name"
+        if (array_key_exists('consignor_name', $data) && blank($data['consignor_name']) && $this->getRecord()->getOriginal('consignor_name') === '') {
+            $data['consignor_name'] = '';
+        }
+
         $this->pendingAdditionalTask = array_merge(
             ['sub_lorry_ids' => $this->data['sub_lorry_ids'] ?? []],
             ConsignmentNoteResource::additionalTaskPayload($this->data),

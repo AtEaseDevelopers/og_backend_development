@@ -22,7 +22,7 @@ class Payment extends Model
         'company_id', 'source_branch_id', 'customer_id', 'consignment_note_id', 'invoice_id',
         'delivery_order_id', 'driver_id', 'method', 'amount', 'expected_amount',
         'shortage_amount', 'reference', 'status', 'reconciliation_status',
-        'slip_path', 'remarks', 'received_by',
+        'slip_path', 'slip_paths', 'remarks', 'received_by',
         'quotation_id', 'payment_submission_id', 'approved_by', 'approved_at',
     ];
 
@@ -54,7 +54,22 @@ class Payment extends Model
             'amount' => 'decimal:2',
             'expected_amount' => 'decimal:2',
             'shortage_amount' => 'decimal:2',
+            'slip_paths' => 'array',
         ];
+    }
+
+    /**
+     * Every uploaded file of this payment, first file first (slip_path plus the extra files in slip_paths).
+     *
+     * @return list<string>
+     */
+    public function files(): array
+    {
+        return collect([$this->slip_path, ...((array) ($this->slip_paths ?? []))])
+            ->filter(fn ($path) => is_string($path) && $path !== '')
+            ->unique()
+            ->values()
+            ->all();
     }
 
     public function sourceBranch(): BelongsTo

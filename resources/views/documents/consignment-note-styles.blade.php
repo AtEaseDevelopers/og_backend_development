@@ -61,6 +61,25 @@
         text-align: right;
     }
 
+    /* QR of the document number, top right beside the title and meta */
+    .csn-doc-qr {
+        float: right;
+        margin-left: 10px;
+        text-align: center;
+    }
+
+    .csn-doc-qr img {
+        width: 80px;
+        height: 80px;
+        display: block;
+    }
+
+    .csn-doc-qr-text {
+        font-size: 8px;
+        letter-spacing: .3px;
+        margin-top: 1px;
+    }
+
     .csn-doc-title {
         font-size: 14px;
         font-weight: bold;

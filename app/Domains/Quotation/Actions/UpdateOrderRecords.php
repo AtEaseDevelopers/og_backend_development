@@ -2,6 +2,7 @@
 
 namespace App\Domains\Quotation\Actions;
 
+use App\Domains\MasterData\Models\Branch;
 use App\Domains\MasterData\Models\Customer;
 use App\Domains\MasterData\Models\Location;
 use App\Domains\Quotation\Models\PortalEnquiry;
@@ -9,7 +10,6 @@ use App\Domains\Quotation\Models\Quotation;
 use App\Domains\Quotation\Models\QuotationStatusLog;
 use App\Enums\DropOffType;
 use App\Enums\OrderType;
-use App\Enums\PaymentMethod;
 use App\Enums\PortalEnquiryStatus;
 use App\Enums\QuotationStatus;
 use App\Enums\ServiceType;
@@ -19,6 +19,7 @@ use App\Support\QuotationMatrix;
 use App\Support\QuotationPricingLookup;
 use BackedEnum;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -40,24 +41,31 @@ class UpdateOrderRecords
 {
     public const INSTRUCTIONS_PREFIX = 'Customer instructions: ';
 
-    /** Quotation columns edited per consignor & consignee block, with the label used in the change summary. */
+    /**
+     * Quotation columns edited per consignor & consignee block, with the label used in the change summary.
+     * The billing address (customer_address) is one order-level field (see updateRecord); the consignee's
+     * own address (consignee_address) and the company numbers (consignor_brn / consignee_brn) are no longer
+     * entered and are left as they are on the record (the consignee address only while the drop-off location
+     * is unchanged). Pickup / store (service_type) is set per block too.
+     */
     private const PAIR_FIELDS = [
         'consignor_name' => 'consignor',
+        'store_branch_id' => 'store',
         'from_location_id' => 'from',
-        'consignor_brn' => 'consignor company no.',
-        'customer_address' => 'consignor billing address',
+        'consignor_pic_name' => 'consignor PIC',
+        'consignor_pic_phone' => 'consignor contact no.',
         'pickup_location' => 'pickup location',
         'consignee_name' => 'consignee',
         'to_location_id' => 'to',
-        'consignee_brn' => 'consignee company no.',
-        'consignee_address' => 'consignee billing address',
+        'consignee_pic_name' => 'consignee PIC',
+        'consignee_pic_phone' => 'consignee contact no.',
         'drop_off_location' => 'drop-off location',
         'customer_do_number' => 'DO number',
         'expected_delivery_date' => 'expected delivery',
     ];
 
     /** Fields whose old / new values are written into the change summary (the others only say "updated"). */
-    private const SHORT_FIELDS = ['consignor_name', 'from_location_id', 'consignee_name', 'to_location_id', 'customer_do_number', 'expected_delivery_date', 'customer_id', 'order_type', 'service_type', 'payment_method', 'drop_off_type'];
+    private const SHORT_FIELDS = ['consignor_name', 'store_branch_id', 'from_location_id', 'consignor_pic_name', 'consignor_pic_phone', 'consignee_name', 'to_location_id', 'consignee_pic_name', 'consignee_pic_phone', 'customer_do_number', 'expected_delivery_date', 'customer_id', 'order_type', 'service_type', 'drop_off_type'];
 
     public function __construct(
         private CreateOrderFromEnquiry $createOrders,
@@ -79,18 +87,27 @@ class UpdateOrderRecords
      */
     public static function recordsFor(PortalEnquiry $enquiry, bool $lock = false): Collection
     {
-        $query = Quotation::query()
-            ->where('portal_enquiry_id', $enquiry->id)
-            ->whereNotIn('status', [QuotationStatus::Superseded->value, QuotationStatus::Cancelled->value])
-            ->whereDoesntHave('newerVersion')
-            ->with(['destinations', 'lines', 'customer'])
-            ->orderBy('id');
+        $query = static::recordsQuery($enquiry)->with(['destinations', 'lines', 'customer']);
 
         if ($lock) {
             $query->lockForUpdate();
         }
 
         return $query->get();
+    }
+
+    /**
+     * Query of the live order records of an enquiry (same rules as recordsFor, nothing eager loaded).
+     *
+     * @return Builder<Quotation>
+     */
+    public static function recordsQuery(PortalEnquiry $enquiry): Builder
+    {
+        return Quotation::query()
+            ->where('portal_enquiry_id', $enquiry->id)
+            ->whereNotIn('status', [QuotationStatus::Superseded->value, QuotationStatus::Cancelled->value])
+            ->whereDoesntHave('newerVersion')
+            ->orderBy('id');
     }
 
     /**
@@ -132,6 +149,23 @@ class UpdateOrderRecords
             && ! $order->proformaInvoice()->exists()
             && ! $order->invoices()->exists()
             && ! $order->consignmentNotes()->exists();
+    }
+
+    /**
+     * The order's billing address as the Edit order page shows it: the first record's customer_address
+     * (an order not priced yet: the one saved on its order form), else the customer's saved address.
+     *
+     * @param  Collection<int, Quotation>  $records
+     */
+    public static function billingAddressFor(?PortalEnquiry $enquiry, Collection $records): string
+    {
+        $first = $records->first();
+        $stored = $first
+            ? $first->customer_address
+            : (collect($enquiry?->payload['destinations'] ?? [])->first(fn ($d) => is_array($d))['customer_address'] ?? null);
+        $customer = $enquiry?->customer ?? $first?->customer;
+
+        return trim((string) (filled($stored) ? $stored : ($customer?->address ?? '')));
     }
 
     /** Instructions recovered from the record notes ("Customer instructions: …" line). */
@@ -212,7 +246,10 @@ class UpdateOrderRecords
 
         $used = [];
         $norm = fn ($v) => mb_strtolower(trim((string) $v));
-        $free = fn (int $i) => ! isset($used[$i]) && ! isset($destinations[$i]['record_id']);
+        // a closure with $used by reference (an arrow function would copy the still-empty array)
+        $free = function (int $i) use (&$used, $destinations): bool {
+            return ! isset($used[$i]) && ! isset($destinations[$i]['record_id']);
+        };
 
         // 1. stored record id
         foreach ($ordered as $q) {
@@ -290,9 +327,8 @@ class UpdateOrderRecords
     }
 
     /**
-     * Products of a record as edit-form rows: its lines (existing unit price kept) plus the products saved
-     * on an earlier edit that had no price yet (a line needs a price), or, while the record has no line
-     * at all, the products the enquiry asked for (no price).
+     * Products of a record as edit-form rows: its lines (existing unit price kept; a line without a price yet
+     * has none) plus the products of its order form that never became a line (see payloadItemsWithoutLine).
      *
      * @param  Collection<int, Quotation>|null  $records
      * @return list<array{line_type: string, catalog_key: ?string, item_name: string, uom: ?string, quantity: int, unit_price: ?float}>
@@ -300,16 +336,13 @@ class UpdateOrderRecords
     public function itemsForRecord(Quotation $order, ?PortalEnquiry $enquiry, ?Collection $records = null): array
     {
         $lines = static::productLines($order);
-        $index = $enquiry ? static::payloadIndexFor($enquiry, $order, $records ?? static::recordsFor($enquiry)) : null;
-        $payloadItems = $index !== null
-            ? collect(static::payloadItemsFor($enquiry, $index))
-                ->map(fn (array $item) => $this->itemFromPayload($item) + ['unpriced' => ! empty($item['unpriced'])])
-                ->filter(fn (array $item) => $item['item_name'] !== '')
-                ->values()
-            : collect();
+        $missing = collect($enquiry ? static::payloadItemsWithoutLine($order, $enquiry, $records) : [])
+            ->map(fn (array $item) => $this->itemFromPayload($item))
+            ->filter(fn (array $item) => $item['item_name'] !== '')
+            ->values();
 
         if ($lines->isEmpty()) {
-            return $payloadItems->map(fn (array $item) => Arr::except($item, ['unpriced']))->all();
+            return $missing->all();
         }
 
         if ($order->destinations->count() > 1) {
@@ -330,12 +363,85 @@ class UpdateOrderRecords
             ];
         })->values();
 
-        $priced = $items->pluck('item_name')->all();
+        return $items->concat($missing)->values()->all();
+    }
 
-        return $items
-            ->concat($payloadItems->filter(fn (array $item) => $item['unpriced'] && ! in_array($item['item_name'], $priced, true))->map(fn (array $item) => Arr::except($item, ['unpriced'])))
+    /**
+     * Products on the order form (enquiry payload) of a record that have no line on it, raw payload items.
+     *
+     * Every product entered is kept as a line, priced or not (quotation_lines.unit_price NULL = no price yet).
+     * Records saved before that lost the products that had no price (only priced products became lines), so
+     * the order form stands in for them — mapped to the record by payloadIndexMap:
+     * - a record without any product line: every product of its order-form destination;
+     * - a first version whose lines were never rewritten since it was created (no pricing save / edit since):
+     *   the products missing from its lines;
+     * - products an earlier Edit order kept on the form as "unpriced".
+     * A product removed later under Items & pricing (lines rewritten) is not brought back.
+     *
+     * @param  Collection<int, Quotation>|null  $records  live records of the order (loaded when not given)
+     * @return list<array<string, mixed>>
+     */
+    public static function payloadItemsWithoutLine(Quotation $order, PortalEnquiry $enquiry, ?Collection $records = null): array
+    {
+        $index = static::payloadIndexFor($enquiry, $order, $records ?? static::recordsFor($enquiry));
+
+        if ($index === null) {
+            return [];
+        }
+
+        $lines = static::productLines($order);
+        $names = $lines->map(fn ($line) => trim((string) $line->item_name))->all();
+        $createdAt = $order->created_at;
+        $untouched = $lines->isEmpty() || (
+            $order->rootId() === (int) $order->id
+            && $createdAt !== null
+            && $lines->every(fn ($line) => $line->created_at !== null && $line->created_at->lte($createdAt->copy()->addSeconds(5)))
+        );
+
+        return collect(static::payloadItemsFor($enquiry, $index))
+            ->filter(function (array $item) use ($names, $untouched): bool {
+                $name = trim((string) ($item['item_name'] ?? ''));
+
+                return $name !== '' && ! in_array($name, $names, true) && ($untouched || ! empty($item['unpriced']));
+            })
             ->values()
             ->all();
+    }
+
+    /**
+     * After the Items & pricing form is saved its lines are the record's products: products the order form
+     * still flags "unpriced" (kept by an earlier Edit order) are no longer offered on top of them, so a product
+     * removed there stays removed.
+     */
+    public static function settleUnpricedPayloadItems(Quotation $order): void
+    {
+        $enquiry = $order->portal_enquiry_id ? PortalEnquiry::query()->find($order->portal_enquiry_id) : null;
+
+        if (! $enquiry) {
+            return;
+        }
+
+        $index = static::payloadIndexFor($enquiry, $order, static::recordsFor($enquiry));
+        $payload = $enquiry->payload ?? [];
+        $count = count(array_filter($payload['destinations'] ?? [], 'is_array'));
+        $changed = false;
+
+        if ($index === null || ! is_array($payload['items'] ?? null)) {
+            return;
+        }
+
+        foreach ($payload['items'] as $key => $item) {
+            $target = is_array($item) && isset($item['destination_index']) && $item['destination_index'] !== '' ? (int) $item['destination_index'] : 0;
+
+            if (is_array($item) && ! empty($item['unpriced']) && ($target === $index || $target >= $count)) {
+                unset($payload['items'][$key]['unpriced']);
+                $changed = true;
+            }
+        }
+
+        if ($changed) {
+            activity()->withoutLogs(fn () => $enquiry->update(['payload' => $payload]));
+        }
     }
 
     /**
@@ -365,9 +471,13 @@ class UpdateOrderRecords
     */
 
     /**
-     * @param  array<string, mixed>  $data  validated Edit order form: customer_id, received_through, salesperson_id, order_type,
-     *                                      service_type, payment_method, attachments, pairs[] (record_id, payload_index and the
-     *                                      Create order pair keys with items[])
+     * @param  array<string, mixed>  $data  validated Edit order form: customer_id, customer_address (the order's billing address),
+     *                                      received_through (optional), salesperson_id, order_type, service_type (the order form's:
+     *                                      the first block's pickup / store), attachments, pairs[] (record_id, payload_index and the
+     *                                      Create order pair keys — service_type, store_branch_id, PIC fields … — with items[]);
+     *                                      known_record_ids (records the page was opened with — a live record outside it means the
+     *                                      order changed since); header_changed (order_type / customer_address => whether the user
+     *                                      changed it). The payment method is not edited (captured when the payment is recorded).
      * @return array{enquiry: ?PortalEnquiry, records: Collection<int, Quotation>, updated: list<Quotation>, created: list<Quotation>, cancelled: list<Quotation>, locked: list<Quotation>, unpriced: array<string, list<string>>}
      */
     public function execute(?PortalEnquiry $enquiry, ?Quotation $singleRecord, array $data, User $actor): array
@@ -414,6 +524,16 @@ class UpdateOrderRecords
      */
     private function updateRecords(?PortalEnquiry $enquiry, Collection $records, Collection $pairs, array $data, User $actor): array
     {
+        // A record created since the page was opened (another tab, "Provide pricing") is not on the page:
+        // saving would cancel it as "removed" and duplicate it from the stale blocks.
+        if (array_key_exists('known_record_ids', $data)) {
+            $known = array_map('intval', (array) $data['known_record_ids']);
+
+            if ($records->contains(fn (Quotation $q) => ! in_array((int) $q->id, $known, true))) {
+                throw new InvalidArgumentException('This order changed since you opened it. Reload the page and try again.');
+            }
+        }
+
         $byId = $records->keyBy('id');
         $headerEditable = $records->every(fn (Quotation $q) => static::isEditable($q));
         $seen = [];
@@ -495,6 +615,7 @@ class UpdateOrderRecords
                 continue;
             }
 
+            // a product without a price yet is kept as a line without a unit price (with or without an order form)
             if ($this->updateRecord($order, $pair, $data, $headerEditable, $ownerId, $actor, $oldItems[$id] ?? [], $singleChanges)) {
                 $updated[] = $order;
             }
@@ -589,6 +710,7 @@ class UpdateOrderRecords
         }
 
         $before = $this->formSnapshot($enquiry);
+        $billingBefore = static::billingAddressFor($enquiry, collect());
         $changes = array_values($this->updateEnquiryHeader($enquiry, $data, true, $actor));
         $first = $pairs->first();
 
@@ -608,6 +730,11 @@ class UpdateOrderRecords
         $this->syncPayload($enquiry, $entries, $data);
         $enquiry->refresh();
 
+        // one entry for the order's billing address (saved on every destination of the order form)
+        if (static::billingAddressFor($enquiry, collect()) !== $billingBefore) {
+            $changes[] = 'billing address updated';
+        }
+
         if ($before !== $this->formSnapshot($enquiry)) {
             $count = $pairs->count();
             $changes[] = 'consignor & consignee details and products updated ('.$count.' '.Str::plural('block', $count).')';
@@ -617,6 +744,13 @@ class UpdateOrderRecords
 
         if ($attached > 0) {
             $changes[] = $attached.' '.Str::plural('attachment', $attached).' added';
+        }
+
+        // photos of the blocks are kept on their destination (syncPayload) until the records are created
+        $photos = (int) $pairs->sum(fn (array $pair) => count(array_filter($pair['attachments'] ?? [], fn ($file) => is_array($file) && filled($file['path'] ?? null))));
+
+        if ($photos > 0) {
+            $changes[] = $photos.' '.Str::plural('photo', $photos).' added';
         }
 
         if ($changes !== []) {
@@ -646,13 +780,14 @@ class UpdateOrderRecords
     private function formSnapshot(PortalEnquiry $enquiry): array
     {
         $payload = $enquiry->payload ?? [];
-        // portal destinations carry no DO number / delivery date of their own: they inherit the enquiry's
-        $fallback = ['customer_do_number' => $enquiry->customer_do_number, 'expected_delivery_date' => $enquiry->preferred_delivery_date?->toDateString(), 'drop_off_type' => DropOffType::Other->value];
-        $keys = ['consignee_name', 'address', 'city', 'drop_off_type', 'customer_do_number', 'expected_delivery_date'];
+        // portal destinations carry no DO number / delivery date / pickup-or-store of their own: they inherit the enquiry's
+        $fallback = ['customer_do_number' => $enquiry->customer_do_number, 'expected_delivery_date' => $enquiry->preferred_delivery_date?->toDateString(), 'drop_off_type' => DropOffType::Other->value, 'service_type' => $enquiry->service_type?->value ?? ServiceType::Pickup->value];
+        $keys = ['consignee_name', 'address', 'city', 'drop_off_type', 'customer_do_number', 'expected_delivery_date', 'service_type', 'store_branch_id', 'consignor_pic_name', 'consignor_pic_phone', 'consignee_pic_name', 'consignee_pic_phone'];
 
         return [
             collect($payload['destinations'] ?? [])->filter(fn ($d) => is_array($d))
-                ->map(fn (array $d) => collect($keys)->mapWithKeys(fn (string $k) => [$k => trim((string) ($d[$k] ?? $fallback[$k] ?? ''))])->all())
+                // a portal destination's consignee phone is what the page shows as the consignee contact number
+                ->map(fn (array $d) => collect($keys)->mapWithKeys(fn (string $k) => [$k => trim((string) ($d[$k] ?? ($k === 'consignee_pic_phone' ? ($d['consignee_phone'] ?? null) : null) ?? $fallback[$k] ?? ''))])->all())
                 ->values()->all(),
             collect($payload['items'] ?? [])->filter(fn ($i) => is_array($i))
                 ->map(fn (array $i) => [trim((string) ($i['item_name'] ?? '')), (int) round((float) ($i['quantity'] ?? 1)), (int) ($i['destination_index'] ?? 0)])
@@ -665,8 +800,9 @@ class UpdateOrderRecords
     }
 
     /**
-     * Customer, payment term and received through change only while every record is editable;
-     * service and payment method always; the salesperson through AssignEnquirySalesperson (all records follow).
+     * Customer, payment term and received through change only while every record is editable; the order
+     * form's pickup / store (the first block's) always; the salesperson through AssignEnquirySalesperson (all
+     * records follow). The payment method is not edited here (it is captured when the payment is recorded).
      *
      * @return array<string, string> change summary keyed by field
      */
@@ -678,13 +814,7 @@ class UpdateOrderRecords
         $service = ServiceType::tryFrom((string) ($data['service_type'] ?? ''));
         if ($service && $enquiry->service_type !== $service) {
             $updates['service_type'] = $service->value;
-            $changes['service_type'] = 'service → '.$service->getLabel();
-        }
-
-        $method = (string) ($data['payment_method'] ?? '');
-        if ($method !== '' && (string) $enquiry->payment_method !== $method) {
-            $updates['payment_method'] = $method;
-            $changes['payment_method'] = 'payment method → '.(PaymentMethod::tryFrom($method)?->getLabel() ?? $method);
+            $changes['service_type'] = 'pickup / store → '.$service->getLabel();
         }
 
         if ($headerEditable) {
@@ -700,18 +830,25 @@ class UpdateOrderRecords
                 $changes['customer_id'] = 'customer → '.(Customer::query()->whereKey($customerId)->value('company_name') ?? '#'.$customerId);
             }
 
+            // optional: a known channel is set, a blank one clears it (the order then shows as a plain admin entry);
+            // a portal / salesperson-link origin shown on the page is not a channel and is left alone
             $received = (string) ($data['received_through'] ?? '');
-            if ($received !== '' && $received !== (string) $enquiry->received_through && array_key_exists($received, CreateAdminOrder::RECEIVED_THROUGH)) {
+            $current = (string) ($enquiry->received_through ?: ($enquiry->payload['received_through'] ?? ''));
+            $known = $received !== '' && array_key_exists($received, CreateAdminOrder::RECEIVED_THROUGH);
+
+            if (array_key_exists('received_through', $data) && ($known || $received === '') && ($received !== $current || $received !== (string) $enquiry->received_through)) {
                 $payload = $enquiry->payload ?? [];
-                $payload['received_through'] = $received;
-                $updates['received_through'] = $received;
+                $payload['received_through'] = $known ? $received : null;
+                $updates['received_through'] = $known ? $received : null;
                 $updates['payload'] = $payload;
 
                 if (in_array($enquiry->source, [PortalEnquiry::SOURCE_ADMIN, PortalEnquiry::SOURCE_WALK_IN], true)) {
                     $updates['source'] = $received === 'walk_in' ? PortalEnquiry::SOURCE_WALK_IN : PortalEnquiry::SOURCE_ADMIN;
                 }
 
-                $changes['received_through'] = 'received through → '.CreateAdminOrder::RECEIVED_THROUGH[$received];
+                if ($received !== $current) {
+                    $changes['received_through'] = $known ? 'received through → '.CreateAdminOrder::RECEIVED_THROUGH[$received] : 'received through cleared';
+                }
             }
         }
 
@@ -753,6 +890,13 @@ class UpdateOrderRecords
     /**
      * Updates one editable record from its consignor & consignee block and rebuilds its lines.
      *
+     * Pickup / store (service_type, with the store branch) comes from the block. The payment term comes from
+     * the order header only when the user changed it there (or the record has none yet), so a value set on one
+     * record (e.g. "Change payment term") is kept. The payment method is left as it is (captured with the payment).
+     *
+     * Every product of the block becomes a line; one without a price yet (no price-list rate, no salesperson,
+     * a lorry type) is a line without a unit price until it is priced under Items & pricing.
+     *
      * @param  list<array<string, mixed>>  $oldItems  products before the edit (for the change summary)
      * @param  list<string>  $extraChanges
      * @return bool whether anything changed
@@ -765,7 +909,12 @@ class UpdateOrderRecords
         $existingCity = trim((string) $order->destinations->sortBy('sequence')->first()?->city);
         $existingCity = $existingCity !== '' && mb_strtolower($existingCity) !== mb_strtolower(trim((string) $order->consignee_name)) ? $existingCity : null;
         $column = (string) ($toName ?: ($existingCity ?: ($consignee !== '' ? $consignee : 'Destination')));
-        $serviceType = ServiceType::tryFrom((string) ($data['service_type'] ?? ''))?->value ?? $order->service_type?->value;
+        // pickup / store of this block; an older caller without one: the header value it changed, else the record's
+        $headerService = ServiceType::tryFrom((string) ($data['service_type'] ?? ''))?->value;
+        $serviceType = ServiceType::tryFrom((string) ($pair['service_type'] ?? ''))?->value
+            ?? ($this->headerChanged($data, 'service_type')
+                ? ($headerService ?? $order->service_type?->value)
+                : ($order->service_type?->value ?? $headerService));
         $dropOffType = DropOffType::tryFrom((string) ($pair['drop_off_type'] ?? ''))?->value ?? DropOffType::Other->value;
 
         $fields = [];
@@ -773,19 +922,49 @@ class UpdateOrderRecords
             $fields[$key] = $this->clean($pair[$key] ?? null);
         }
 
+        // the consignee's own address (no longer on the page) belongs to the drop-off it came with: a changed
+        // drop-off location clears it, so it cannot stand in for the new drop-off later (CSN fallback)
+        if (array_key_exists('drop_off_location', $fields) && ! array_key_exists('consignee_address', $pair)
+            && filled($order->consignee_address) && ! $this->sameText($fields['drop_off_location'], $order->drop_off_location)) {
+            $fields['consignee_address'] = null;
+        }
+
         $fields['from_location_id'] = filled($pair['from_location_id'] ?? null) ? (int) $pair['from_location_id'] : null;
         $fields['to_location_id'] = $toLocationId;
-        $fields['consignee_name'] = $consignee;
+        // a consignee left blank stays blank (the price column / destination keeps its own name)
+        $fields['consignee_name'] = $consignee !== '' ? $consignee : null;
         $fields['service_type'] = $serviceType;
+        // the store (an O&G branch) belongs to a Store record only
+        $fields['store_branch_id'] = $serviceType === ServiceType::Store->value && filled($pair['store_branch_id'] ?? null) ? (int) $pair['store_branch_id'] : null;
         $fields['destination_types'] = [['column' => $column, 'drop_off_type' => $dropOffType, 'service_type' => $serviceType]];
         $fields['notes'] = static::notesWithInstructions($order->notes, $pair['instructions'] ?? null);
 
-        if (filled($data['payment_method'] ?? null)) {
-            $fields['payment_method'] = (string) $data['payment_method'];
-        }
-
         if ($headerEditable) {
-            if ($type = OrderType::tryFrom((string) ($data['order_type'] ?? ''))) {
+            $type = OrderType::tryFrom((string) ($data['order_type'] ?? ''));
+            $current = $order->orderType();
+            $newCustomerId = filled($data['customer_id'] ?? null) ? (int) $data['customer_id'] : null;
+            // a still-editable record (draft / negotiation) that moves to another customer takes the payment term
+            // chosen for that customer (the page offers only that customer type's terms), whatever it had before
+            $customerChanged = $newCustomerId && $newCustomerId !== (int) $order->customer_id;
+
+            if ($customerChanged && ($type ?? $current) === OrderType::Term && ! Customer::query()->whereKey($newCustomerId)->value('is_credit')) {
+                throw new InvalidArgumentException($order->number.': Credit / Term needs a credit customer. Choose Cash or COD for this customer.');
+            }
+
+            if ($type && $current === null) {
+                $fields['order_type'] = $type->value;
+            } elseif ($type && $current !== $type && ($customerChanged || $this->headerChanged($data, 'order_type'))) {
+                // same customer: the transition rules of "Change payment term" (ChangeOrderType): Cash remains Cash, COD only to Cash
+                if (! $customerChanged && ! $current->canChangeTo($type)) {
+                    throw new InvalidArgumentException(sprintf(
+                        '%s: payment term %s cannot be changed to %s (allowed: %s).',
+                        $order->number,
+                        $current->getLabel(),
+                        $type->getLabel(),
+                        collect($current->allowedTransitions())->map->getLabel()->implode(', '),
+                    ));
+                }
+
                 $fields['order_type'] = $type->value;
             }
 
@@ -794,6 +973,20 @@ class UpdateOrderRecords
                 $consignor = OrderFormOptions::consignorStateForCustomer((string) $data['customer_id'], withPickupPreset: false);
                 $fields += Arr::only($consignor, ['attention', 'terms_of_payment']);
             }
+
+            // the order's billing address (one header field) lands on every record once the user changes it;
+            // blank = the customer's saved address (documents fall back to it)
+            if (array_key_exists('customer_address', $data) && $this->headerChanged($data, 'customer_address')) {
+                $fields['customer_address'] = $this->clean($data['customer_address']);
+            }
+        }
+
+        // photos uploaded for this block are added to the record's own files (none is removed)
+        $newPhotos = array_values(array_diff(CreateOrderFromEnquiry::attachmentPaths($pair['attachments'] ?? []), CreateOrderFromEnquiry::attachmentPaths($order->attachments ?? [])));
+
+        if ($newPhotos !== []) {
+            $fields['attachments'] = array_values(array_merge(CreateOrderFromEnquiry::attachmentPaths($order->attachments ?? []), $newPhotos));
+            $extraChanges[] = count($newPhotos).' '.Str::plural('photo', count($newPhotos)).' added';
         }
 
         $changes = array_merge($extraChanges, $this->fieldChanges($order, $fields, $dropOffType));
@@ -827,6 +1020,7 @@ class UpdateOrderRecords
                     : ($this->lookup->lookupForCustomer($customerId, $name, $column, (float) $quantity)['price'] ?? null);
             }
 
+            // no price yet: still a line (without a unit price), priced later under Items & pricing
             $rows[] = [
                 // QuotationMatrix keeps the quantity only for UOM rows
                 'line_type' => $lineType !== 'uom' && $quantity !== 1 ? 'uom' : $lineType,
@@ -840,12 +1034,13 @@ class UpdateOrderRecords
 
         $changes = array_merge($changes, $this->itemChanges($oldItems, $newItems));
 
+        // product|qty|price ("-" = no price yet) of the lines now and after the edit
+        $priceKey = fn ($price) => $price !== null ? number_format((float) $price, 2, '.', '') : '-';
         $currentSignature = $productLines
-            ->map(fn ($line) => $line->item_name.'|'.max(1, (int) round((float) $line->quantity)).'|'.number_format((float) $line->unit_price, 2, '.', ''))
+            ->map(fn ($line) => $line->item_name.'|'.max(1, (int) round((float) $line->quantity)).'|'.$priceKey($line->unit_price))
             ->sort()->values()->all();
         $newSignature = collect($rows)
-            ->filter(fn (array $row) => $row['prices'][$column] !== null)
-            ->map(fn (array $row) => $row['item_name'].'|'.$row['quantity'].'|'.number_format((float) $row['prices'][$column], 2, '.', ''))
+            ->map(fn (array $row) => $row['item_name'].'|'.$row['quantity'].'|'.$priceKey($row['prices'][$column]))
             ->sort()->values()->all();
         $destination = $order->destinations->first();
         $columnChanged = $order->destinations->count() !== 1 || trim((string) $destination?->consignee_name) !== $column;
@@ -856,7 +1051,12 @@ class UpdateOrderRecords
         }
 
         if ($changes === []) {
-            $changes[] = $linesChanged ? 'product prices filled from the price list' : 'destination renamed to '.$column;
+            $changes[] = match (true) {
+                ! $linesChanged => 'destination renamed to '.$column,
+                // the same products: some got a price-list rate, or a product without a price became a line again
+                collect($rows)->contains(fn (array $row) => $row['prices'][$column] !== null && ! in_array($row['item_name'].'|'.$row['quantity'].'|'.$priceKey($row['prices'][$column]), $currentSignature, true)) => 'product prices filled from the price list',
+                default => 'products without a price kept on the record',
+            };
         }
 
         $before = Arr::only($order->getAttributes(), array_keys($fields));
@@ -913,14 +1113,20 @@ class UpdateOrderRecords
         return true;
     }
 
+    /** Whether the user changed an order header field on the page (assumed changed when the page does not say). */
+    private function headerChanged(array $data, string $key): bool
+    {
+        return ! is_array($data['header_changed'] ?? null) || ! empty($data['header_changed'][$key]);
+    }
+
     /** @return list<string> */
     private function fieldChanges(Quotation $order, array $fields, string $dropOffType): array
     {
         $labels = self::PAIR_FIELDS + [
             'customer_id' => 'customer',
+            'customer_address' => 'billing address',
             'order_type' => 'payment term',
-            'service_type' => 'service',
-            'payment_method' => 'payment method',
+            'service_type' => 'pickup / store',
         ];
 
         $changes = [];
@@ -1005,7 +1211,7 @@ class UpdateOrderRecords
             }
         }
 
-        if (in_array($key, ['from_location_id', 'to_location_id', 'customer_id'], true)) {
+        if (in_array($key, ['from_location_id', 'to_location_id', 'customer_id', 'store_branch_id'], true)) {
             return filled($value) ? (string) (int) $value : '';
         }
 
@@ -1023,9 +1229,9 @@ class UpdateOrderRecords
         $text = match ($key) {
             'from_location_id', 'to_location_id' => Location::query()->whereKey($value)->value('name') ?? (string) $value,
             'customer_id' => Customer::query()->whereKey($value)->value('company_name') ?? (string) $value,
+            'store_branch_id' => Branch::query()->whereKey($value)->value('name') ?? (string) $value,
             'order_type' => OrderType::tryFrom((string) $value)?->getLabel() ?? (string) $value,
             'service_type' => ServiceType::tryFrom((string) $value)?->getLabel() ?? (string) $value,
-            'payment_method' => PaymentMethod::tryFrom((string) $value)?->getLabel() ?? (string) $value,
             'drop_off_type' => DropOffType::tryFrom((string) $value)?->getLabel() ?? ucfirst((string) $value),
             'expected_delivery_date' => $this->comparable($key, $value),
             default => (string) $value,
@@ -1056,27 +1262,36 @@ class UpdateOrderRecords
 
     /**
      * Pair spec for CreateOrderFromEnquiry (same keys the Create order page passes through CreateAdminOrder).
+     * Explicit: a blank DO number / instructions stay blank instead of taking the order-level (block 1) values.
      *
      * @return array<string, mixed>
      */
     private function pairSpec(array $pair, array $data): array
     {
         return [
+            'explicit' => true,
             'consignor_name' => $this->clean($pair['consignor_name'] ?? null),
             'consignee_name' => $this->clean($pair['consignee_name'] ?? null),
-            'consignee_brn' => $this->clean($pair['consignee_brn'] ?? null),
             'consignee_address' => $this->clean($pair['consignee_address'] ?? null),
             'drop_off_location' => $this->clean($pair['drop_off_location'] ?? null),
             'to_location_id' => $this->clean($pair['to_location_id'] ?? null),
             'from_location_id' => $this->clean($pair['from_location_id'] ?? null),
-            'consignor_brn' => $this->clean($pair['consignor_brn'] ?? null),
-            'customer_address' => $this->clean($pair['customer_address'] ?? null),
+            // the order's billing address (blank: CreateOrderFromEnquiry falls back to the customer's saved address)
+            'customer_address' => $this->billingAddress($pair, $data),
             'pickup_location' => $this->clean($pair['pickup_location'] ?? null),
             'drop_off_type' => $this->clean($pair['drop_off_type'] ?? null),
-            'service_type' => $this->clean($data['service_type'] ?? null),
+            // Pickup or Store (with the branch) per block; an older caller: the header value
+            'service_type' => $this->clean($pair['service_type'] ?? null) ?? $this->clean($data['service_type'] ?? null),
+            'store_branch_id' => $this->clean($pair['store_branch_id'] ?? null),
+            'consignor_pic_name' => $this->clean($pair['consignor_pic_name'] ?? null),
+            'consignor_pic_phone' => $this->clean($pair['consignor_pic_phone'] ?? null),
+            'consignee_pic_name' => $this->clean($pair['consignee_pic_name'] ?? null),
+            'consignee_pic_phone' => $this->clean($pair['consignee_pic_phone'] ?? null),
             'customer_do_number' => $this->clean($pair['customer_do_number'] ?? null),
             'expected_delivery_date' => $this->clean($pair['expected_delivery_date'] ?? null),
             'instructions' => $this->clean($pair['instructions'] ?? null),
+            // photos uploaded for the new block (its record's own files)
+            'attachments' => array_values(array_filter($pair['attachments'] ?? [], 'is_array')),
             'items' => collect($pair['items'] ?? [])
                 ->filter(fn ($item) => is_array($item) && filled($item['item_name'] ?? null))
                 ->map(fn (array $item) => [
@@ -1095,10 +1310,11 @@ class UpdateOrderRecords
      * Rewrites the enquiry's submitted order form (payload destinations / items) so it matches the
      * edited blocks. Locked records keep what the payload had. Each destination remembers its record.
      *
-     * Products of a record that could not become a line (no price yet) stay listed here, flagged "unpriced".
+     * Every product of a record is a line (without a unit price while it has none); a product that still has no
+     * line is flagged "unpriced" here. Photos uploaded for a block are added to its destination's attachments.
      *
      * @param  array<int, array{record: ?Quotation, pair: ?array, old_index: ?int}>  $entries  keyed by block position
-     * @return array<string, list<string>> unpriced product names per record number
+     * @return array<string, list<string>> product names without a price yet per record number
      */
     private function syncPayload(PortalEnquiry $enquiry, array $entries, array $data): array
     {
@@ -1122,8 +1338,20 @@ class UpdateOrderRecords
                     ? $oldItems
                     : array_map(fn (array $item) => Arr::except($item, ['unit_price']), $this->itemsForRecord($record, null));
             } else {
-                $destination = array_merge($base, $this->destinationFromPair($pair, $data, $base));
-                $lineNames = $record ? $record->lines()->pluck('item_name')->all() : null;
+                $destination = array_merge($base, $this->destinationFromPair($pair, $data, $base, $record));
+
+                // photos uploaded for the block are added to the ones it already had
+                $known = CreateOrderFromEnquiry::attachmentPaths($base['attachments'] ?? []);
+                $photos = array_values(array_filter($pair['attachments'] ?? [], fn ($file) => is_array($file) && filled($file['path'] ?? null) && ! in_array($file['path'], $known, true)));
+
+                if ($photos !== []) {
+                    $destination['attachments'] = array_values(array_merge(array_filter($base['attachments'] ?? [], 'is_array'), $photos));
+                }
+
+                $lines = $record ? $record->lines()->get(['item_name', 'unit_price']) : null;
+                $lineNames = $lines?->pluck('item_name')->all();
+                // products kept as a line without a price yet (reported like the ones without a line)
+                $noPrice = $lines ? $lines->whereNull('unit_price')->pluck('item_name')->all() : [];
                 $ownItems = collect($pair['items'] ?? [])
                     ->filter(fn ($item) => is_array($item) && filled($item['item_name'] ?? null))
                     ->map(function (array $item) use ($oldItems, $lineNames): array {
@@ -1146,7 +1374,11 @@ class UpdateOrderRecords
                     ->values()
                     ->all();
 
-                if ($record && ($names = collect($ownItems)->where('unpriced', true)->pluck('item_name')->all()) !== []) {
+                $names = collect($ownItems)
+                    ->filter(fn (array $item) => ! empty($item['unpriced']) || in_array($item['item_name'], $noPrice, true))
+                    ->pluck('item_name')->unique()->values()->all();
+
+                if ($record && $names !== []) {
                     $unpriced[(string) $record->number] = $names;
                 }
             }
@@ -1173,29 +1405,54 @@ class UpdateOrderRecords
 
     /**
      * @param  array<string, mixed>  $base  the destination as it was in the payload
+     * @param  Quotation|null  $record  the block's order record (none while the order is not priced)
      * @return array<string, mixed>
      */
-    private function destinationFromPair(array $pair, array $data, array $base = []): array
+    private function destinationFromPair(array $pair, array $data, array $base = [], ?Quotation $record = null): array
     {
         $toLocationId = filled($pair['to_location_id'] ?? null) ? (int) $pair['to_location_id'] : null;
         $toName = $toLocationId ? Location::query()->whereKey($toLocationId)->value('name') : null;
 
+        // The consignee's own address is no longer entered on the page: the one on file is kept (the record's; an
+        // order form not priced yet: the one saved by an earlier edit, else the submitted address). Without one the
+        // drop-off location stands in as the destination address.
+        $consigneeAddress = match (true) {
+            array_key_exists('consignee_address', $pair) => $this->clean($pair['consignee_address']),
+            $record !== null => $this->clean($record->consignee_address),
+            array_key_exists('consignee_address', $base) => $this->clean($base['consignee_address']),
+            default => $this->clean($base['address'] ?? null),
+        };
+
+        // ...but only while the drop-off location is the one the page loaded (the order form's own, else the
+        // submitted consignee / address line): a changed drop-off makes it stale and becomes the address instead
+        if ($record === null && ! array_key_exists('consignee_address', $pair)
+            && ! $this->sameText($pair['drop_off_location'] ?? null, CreateOrderFromEnquiry::dropOffLocationFor($base))) {
+            $consigneeAddress = null;
+        }
+
+        // pickup / store of this block (an older caller: the header value); the store only on a Store block
+        $serviceType = $this->clean($pair['service_type'] ?? null) ?? $this->clean($data['service_type'] ?? null);
+
         $destination = [
             'consignee_name' => $this->clean($pair['consignee_name'] ?? null),
-            'address' => $this->clean($pair['consignee_address'] ?? null) ?? $this->clean($pair['drop_off_location'] ?? null),
+            'address' => $consigneeAddress ?? $this->clean($pair['drop_off_location'] ?? null),
             'drop_off_type' => $this->clean($pair['drop_off_type'] ?? null),
-            'service_type' => $this->clean($data['service_type'] ?? null),
+            'service_type' => $serviceType,
             'customer_do_number' => $this->clean($pair['customer_do_number'] ?? null),
             'expected_delivery_date' => $this->clean($pair['expected_delivery_date'] ?? null),
-            // kept so the edit page shows the same values again
+            // kept so the edit page shows the same values again (company numbers are no longer entered:
+            // an older destination keeps its own through the merge with $base)
             'consignor_name' => $this->clean($pair['consignor_name'] ?? null),
+            'store_branch_id' => $serviceType === ServiceType::Store->value ? $this->clean($pair['store_branch_id'] ?? null) : null,
             'from_location_id' => $this->clean($pair['from_location_id'] ?? null),
-            'consignor_brn' => $this->clean($pair['consignor_brn'] ?? null),
-            'customer_address' => $this->clean($pair['customer_address'] ?? null),
+            'consignor_pic_name' => $this->clean($pair['consignor_pic_name'] ?? null),
+            'consignor_pic_phone' => $this->clean($pair['consignor_pic_phone'] ?? null),
+            'customer_address' => $this->billingAddress($pair, $data),
             'pickup_location' => $this->clean($pair['pickup_location'] ?? null),
             'to_location_id' => $toLocationId,
-            'consignee_brn' => $this->clean($pair['consignee_brn'] ?? null),
-            'consignee_address' => $this->clean($pair['consignee_address'] ?? null),
+            'consignee_pic_name' => $this->clean($pair['consignee_pic_name'] ?? null),
+            'consignee_pic_phone' => $this->clean($pair['consignee_pic_phone'] ?? null),
+            'consignee_address' => $consigneeAddress,
             'drop_off_location' => $this->clean($pair['drop_off_location'] ?? null),
             'instructions' => $this->clean($pair['instructions'] ?? null),
         ];
@@ -1224,6 +1481,11 @@ class UpdateOrderRecords
             'service_type' => $order->service_type?->value,
             'customer_do_number' => $order->customer_do_number,
             'expected_delivery_date' => $order->expected_delivery_date?->toDateString(),
+            'store_branch_id' => $order->store_branch_id,
+            'consignor_pic_name' => $order->consignor_pic_name,
+            'consignor_pic_phone' => $order->consignor_pic_phone,
+            'consignee_pic_name' => $order->consignee_pic_name,
+            'consignee_pic_phone' => $order->consignee_pic_phone,
         ], fn ($value) => $value !== null && $value !== '');
     }
 
@@ -1250,6 +1512,14 @@ class UpdateOrderRecords
         return count($files);
     }
 
+    /** The order's billing address: the order-level value of the Edit order page, else a block's own (older callers). */
+    private function billingAddress(array $pair, array $data): mixed
+    {
+        return array_key_exists('customer_address', $data)
+            ? $this->clean($data['customer_address'])
+            : $this->clean($pair['customer_address'] ?? null);
+    }
+
     private function clean(mixed $value): mixed
     {
         if (is_string($value)) {
@@ -1257,5 +1527,13 @@ class UpdateOrderRecords
         }
 
         return $value === '' ? null : $value;
+    }
+
+    /** Same text once spacing and line breaks are ignored (a textarea may send other line endings); blank = null. */
+    private function sameText(mixed $a, mixed $b): bool
+    {
+        $normalize = fn (mixed $value): string => trim((string) preg_replace('/\s+/u', ' ', is_scalar($value) ? (string) $value : ''));
+
+        return $normalize($a) === $normalize($b);
     }
 }

@@ -100,6 +100,26 @@
         min-width: 0;
     }
 
+    /* Application date range (x-og.date-range component): takes the place of the old From + To fields */
+    .fi-page-credit-customer-approval .cca-filter-field-date {
+        grid-column: span 2;
+    }
+
+    /* Same look as the other filter inputs; the filter panel stays light in dark mode too */
+    .fi-page-credit-customer-approval .og-dr {
+        min-width: 0;
+    }
+
+    .fi-page-credit-customer-approval .og-dr .og-dr-trigger {
+        border-color: rgb(209 213 219);
+        background: white;
+        color: rgb(17 24 39);
+    }
+
+    .fi-page-credit-customer-approval .og-dr .og-dr-trigger:hover {
+        border-color: rgb(156 163 175);
+    }
+
     .fi-page-credit-customer-approval .cca-table-wrap {
         overflow-x: auto;
         flex: 1;

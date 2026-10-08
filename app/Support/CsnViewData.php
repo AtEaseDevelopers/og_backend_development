@@ -88,7 +88,8 @@ class CsnViewData
     private function consignor(ConsignmentNote $csn): array
     {
         return [
-            'name' => $csn->consignor_name ?: $csn->customer_name,
+            // '' = left blank on the order (shown as "—"); not set at all (older CSNs) = the customer
+            'name' => $csn->consignor_name === '' ? null : ($csn->consignor_name ?: $csn->customer_name),
             'address' => $csn->consignor_address,
             'phone' => $csn->consignor_phone,
         ];

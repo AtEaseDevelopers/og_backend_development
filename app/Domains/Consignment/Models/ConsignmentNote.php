@@ -148,6 +148,11 @@ class ConsignmentNote extends Model
         return $this->hasMany(Subsheet::class);
     }
 
+    public function breakBulks(): HasMany
+    {
+        return $this->hasMany(\App\Domains\Delivery\Models\BreakBulk::class);
+    }
+
     public function returnedCsn(): HasOne
     {
         return $this->hasOne(ReturnedCsn::class);

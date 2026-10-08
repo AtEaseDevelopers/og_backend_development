@@ -22,6 +22,9 @@ class ReturnedCsnDesk extends Page
 
     protected static ?string $navigationLabel = 'Returned CSNs';
 
+    // menu item removed (8 Oct 2026): returns are scanned on the CSN page ("Scan returned CSN")
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?int $navigationSort = 41;
 
     protected static string $view = 'filament.pages.returned-csn-desk';

@@ -25,6 +25,9 @@ class SharedDispatch extends Page implements HasForms
 
     protected static ?string $navigationLabel = 'Shared Dispatch';
 
+    // menu item removed (user request 8 Oct 2026); the page stays reachable from links
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?int $navigationSort = 51;
 
     protected static string $view = 'filament.pages.shared-dispatch';

@@ -38,6 +38,8 @@ class Quotation extends Model
         'from_location_id', 'to_location_id',
         'consignor_brn', 'pickup_location', 'consignee_name', 'consignee_brn',
         'consignee_address', 'drop_off_location', 'customer_address',
+        // consignor picked up or brought to an O&G store (service_type + store_branch_id); person in charge per side
+        'store_branch_id', 'consignor_pic_name', 'consignor_pic_phone', 'consignee_pic_name', 'consignee_pic_phone',
         'attention', 'customer_fax', 'customer_phone_alt', 'issued_by_name', 'terms_of_payment',
         'pricing_source', 'subtotal', 'tax_amount',
         'total_amount', 'notes', 'rejection_reason', 'sent_at', 'confirmed_at',
@@ -113,6 +115,12 @@ class Quotation extends Model
     public function toLocation(): BelongsTo
     {
         return $this->belongsTo(\App\Domains\MasterData\Models\Location::class, 'to_location_id');
+    }
+
+    /** The O&G branch (store) the consignor brings the goods to, when service_type is Store. */
+    public function storeBranch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class, 'store_branch_id');
     }
 
     public function salesperson(): BelongsTo

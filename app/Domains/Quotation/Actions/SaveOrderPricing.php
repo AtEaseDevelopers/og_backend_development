@@ -106,7 +106,11 @@ class SaveOrderPricing
                 'notes' => filled($pricing['remarks'] ?? null) ? trim((string) $pricing['remarks']) : $order->notes,
             ]);
 
+            // every product row becomes a line, also one without a price yet (no unit price, left out of the total)
             $this->matrix->sync($order, $columns, array_merge($itemRows, $chargeRows));
+
+            // its lines are now the record's products: a product removed here is not offered again from the order form
+            UpdateOrderRecords::settleUnpricedPayloadItems($order);
 
             $order->refresh();
 

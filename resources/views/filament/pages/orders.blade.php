@@ -2,7 +2,7 @@
     $data = $this->getOrders();
     $rows = $data['rows'];
     $cards = $this->cards($data['summary']);
-    $latestCustomerOrder = $this->latestCustomerOrderUrl();
+    $columns = $this->columns();
 @endphp
 
 <x-filament-panels::page class="ow-page">
@@ -11,23 +11,11 @@
         <div>
             <div class="ow-crumb">Operations / Orders</div>
             <h1 class="ow-title">Order management</h1>
-            <p class="ow-sub">One workspace from enquiry to billing and dispatch.</p>
         </div>
         <a href="{{ $this->createUrl() }}" class="ow-btn ow-btn-primary">+ Create order for customer</a>
     </div>
 
     <div class="ow-stack">
-        {{-- Order intake --}}
-        <div class="ow-card ow-card-pad ow-intake">
-            <div>
-                <div class="ow-intake-title">Order intake</div>
-                <div class="ow-intake-flow">Customer submits → Admin reviews &amp; prices → Customer confirms</div>
-            </div>
-            @if ($latestCustomerOrder)
-                <a href="{{ $latestCustomerOrder }}" class="ow-btn">View latest customer-submitted order →</a>
-            @endif
-        </div>
-
         {{-- Summary cards --}}
         <div class="ow-cards">
             @foreach ($cards as $card)
@@ -45,10 +33,22 @@
             @endforeach
         </div>
 
-        {{-- Legend --}}
-        <div class="ow-legend">
-            @foreach ($this->legend() as $key => $label)
-                <span class="ow-pill ow-pill-{{ $key }}">{{ $label }}</span>
+        {{-- Order stage tags: click one to filter the table --}}
+        <div class="ow-tags" role="group" aria-label="Filter by order stage">
+            @foreach ($this->stageTags($data['stage_counts']) as $tag)
+                <button type="button"
+                        wire:key="ow-stage-{{ $tag['key'] ?: 'all' }}"
+                        wire:click="selectStage('{{ $tag['key'] }}')"
+                        aria-pressed="{{ $this->stage === $tag['key'] ? 'true' : 'false' }}"
+                        @class([
+                            'ow-tag',
+                            'ow-tag-'.$tag['color'],
+                            'ow-tag-active' => $this->stage === $tag['key'],
+                            'ow-tag-empty' => $tag['count'] === 0,
+                        ])>
+                    <span>{{ $tag['label'] }}</span>
+                    <span class="ow-tag-count">{{ $tag['count'] }}</span>
+                </button>
             @endforeach
         </div>
 
@@ -56,10 +56,23 @@
         <div class="ow-card">
             <div class="ow-filters">
                 <div class="ow-filter-top">
-                    <input type="search"
-                           wire:model.live.debounce.400ms="search"
-                           class="ow-input ow-search"
-                           placeholder="Search order, enquiry, customer or DO…">
+                    <div class="ow-field ow-search">
+                        <label for="ow-search">Search</label>
+                        <input type="search"
+                               id="ow-search"
+                               wire:model.live.debounce.400ms="search"
+                               class="ow-input"
+                               placeholder="Search order, enquiry, customer or DO…">
+                    </div>
+                    {{-- The two date ranges are used most, so they are always shown (not behind "Filters +") --}}
+                    <div class="ow-field">
+                        <label>Order created date</label>
+                        <x-og.date-range from="createdFrom" to="createdTo" :from-value="$createdFrom" :to-value="$createdTo" label="Order created date" />
+                    </div>
+                    <div class="ow-field">
+                        <label>Quotation valid until</label>
+                        <x-og.date-range from="validFrom" to="validTo" :from-value="$validFrom" :to-value="$validTo" label="Quotation valid until" />
+                    </div>
                     <div class="ow-actions">
                         <button type="button" wire:click="toggleFilters" @class(['ow-btn', 'ow-pill-dark' => $filtersOpen])>
                             Filters {{ $filtersOpen ? '−' : '+' }}
@@ -68,7 +81,7 @@
                     </div>
                 </div>
 
-                <div class="ow-fgrid">
+                <div class="ow-fgrid ow-fgrid-5">
                     <div class="ow-field">
                         <label>Customer</label>
                         <select wire:model.live="customer" class="ow-select">
@@ -78,9 +91,9 @@
                         </select>
                     </div>
                     <div class="ow-field">
-                        <label>Order stage</label>
-                        <select wire:model.live="stage" class="ow-select">
-                            @foreach ($this->stageOptions() as $value => $label)
+                        <label>Customer type</label>
+                        <select wire:model.live="customerType" class="ow-select">
+                            @foreach ($this->customerTypeOptions() as $value => $label)
                                 <option value="{{ $value }}">{{ $label }}</option>
                             @endforeach
                         </select>
@@ -89,6 +102,14 @@
                         <label>Order type</label>
                         <select wire:model.live="orderType" class="ow-select">
                             @foreach ($this->orderTypeOptions() as $value => $label)
+                                <option value="{{ $value }}">{{ $label }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="ow-field">
+                        <label>Service</label>
+                        <select wire:model.live="serviceType" class="ow-select">
+                            @foreach ($this->serviceTypeOptions() as $value => $label)
                                 <option value="{{ $value }}">{{ $label }}</option>
                             @endforeach
                         </select>
@@ -156,24 +177,6 @@
                             </select>
                         </div>
                         <div class="ow-field">
-                            <label>Created date · From</label>
-                            <input type="date" wire:model.live="createdFrom" class="ow-input">
-                        </div>
-                        <div class="ow-field">
-                            <label>Created date · Until</label>
-                            <input type="date" wire:model.live="createdTo" class="ow-input">
-                        </div>
-                    </div>
-                    <div class="ow-fgrid">
-                        <div class="ow-field">
-                            <label>Valid until · From</label>
-                            <input type="date" wire:model.live="validFrom" class="ow-input">
-                        </div>
-                        <div class="ow-field">
-                            <label>Valid until · Until</label>
-                            <input type="date" wire:model.live="validTo" class="ow-input">
-                        </div>
-                        <div class="ow-field">
                             <label>Amount · Min (MYR)</label>
                             <input type="number" min="0" step="0.01" wire:model.live.debounce.500ms="amountMin" class="ow-input">
                         </div>
@@ -186,15 +189,29 @@
             </div>
 
             <div class="ow-table-wrap">
-                <table class="ow-table">
+                <table class="ow-table ow-orders-table">
+                    {{-- Order / Customer carries the most information, so it gets the widest column --}}
+                    <colgroup>
+                        <col class="ow-col-order">
+                        <col class="ow-col-route">
+                        <col class="ow-col-stage">
+                        <col class="ow-col-payment">
+                        <col class="ow-col-amount">
+                        <col class="ow-col-next">
+                    </colgroup>
                     <thead>
+                        {{-- Click a header to sort: ascending, descending, then back to newest first --}}
                         <tr>
-                            <th>Order / Customer</th>
-                            <th>Route / Service</th>
-                            <th>Order stage</th>
-                            <th>Payment</th>
-                            <th class="ow-num">Amount</th>
-                            <th>Next step</th>
+                            @foreach ($columns as $column)
+                                @php $sorted = $sort === $column['key']; @endphp
+                                <th @class(['ow-num' => $column['num'], 'ow-th-sorted' => $sorted])
+                                    @if ($sorted) aria-sort="{{ $dir === 'desc' ? 'descending' : 'ascending' }}" @endif>
+                                    <button type="button" wire:click="sortBy('{{ $column['key'] }}')" class="ow-th-sort">
+                                        {{ $column['label'] }}
+                                        <span class="ow-sort-ind" aria-hidden="true">{{ $sorted ? ($dir === 'desc' ? '▼' : '▲') : '↕' }}</span>
+                                    </button>
+                                </th>
+                            @endforeach
                         </tr>
                     </thead>
                     <tbody>
@@ -204,7 +221,12 @@
                                 x-on:click="if (! $event.target.closest('a, button')) window.location.href = @js($row['url'])">
                                 <td>
                                     <a href="{{ $row['url'] }}" class="ow-order-no">{{ $row['order_number'] }}</a>
-                                    <div class="ow-l2">{{ $row['customer'] }}</div>
+                                    <div class="ow-l2">
+                                        {{ $row['customer'] }}
+                                        @if ($row['customer_type'])
+                                            <span class="ow-ctype ow-ctype-{{ $row['customer_type']['key'] }}" title="Customer type">{{ $row['customer_type']['label'] }}</span>
+                                        @endif
+                                    </div>
                                     <div class="ow-l3">
                                         {{ $row['document_number'] ?? $row['enquiry_ref'] }}@if ($row['order_type']) · {{ $row['order_type'] }}@endif
                                         @if ($row['version'] && $row['version'] > 1) · v{{ $row['version'] }}@endif

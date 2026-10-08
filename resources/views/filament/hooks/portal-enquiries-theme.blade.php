@@ -62,15 +62,23 @@
         min-width: 0;
     }
 
-    .fi-page-portal-enquiries .cor-date-range {
-        display: flex;
-        align-items: center;
-        gap: 0.375rem;
+    /* Submitted date range (x-og.date-range component): same look as the other toolbar inputs; the toolbar stays light in dark mode too */
+    .fi-page-portal-enquiries .cor-toolbar-date {
+        flex: 0 1 16.5rem;
     }
 
-    .fi-page-portal-enquiries .cor-date-sep {
-        color: rgb(156 163 175);
-        font-size: 0.875rem;
+    .fi-page-portal-enquiries .og-dr {
+        min-width: 0;
+    }
+
+    .fi-page-portal-enquiries .og-dr .og-dr-trigger {
+        border-color: rgb(209 213 219);
+        background: white;
+        color: rgb(17 24 39);
+    }
+
+    .fi-page-portal-enquiries .og-dr .og-dr-trigger:hover {
+        border-color: rgb(156 163 175);
     }
 
     .fi-page-portal-enquiries .cor-layout {
@@ -562,6 +570,20 @@
         .fi-page-portal-enquiries .cor-pickup-delivery,
         .fi-page-portal-enquiries .cor-bottom-cards {
             grid-template-columns: 1fr;
+        }
+    }
+
+    /* Phones: one toolbar field per row so nothing runs off the screen */
+    @media (max-width: 640px) {
+        .fi-page-portal-enquiries .cor-toolbar {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .fi-page-portal-enquiries .cor-toolbar-field,
+        .fi-page-portal-enquiries .cor-toolbar-search {
+            flex: 1 1 100%;
+            min-width: 0;
         }
     }
 </style>

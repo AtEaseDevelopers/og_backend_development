@@ -6,10 +6,10 @@
 <x-filament-panels::page>
     <x-filament::section>
         <div class="flex flex-wrap items-end gap-4">
-            <div class="flex items-end gap-2">
+            <div class="flex flex-wrap items-end gap-2">
                 <div>
-                    <label class="fi-fo-field-wrp-label text-sm font-medium text-gray-950 dark:text-white" for="schedule-date">Operating date</label>
-                    <input id="schedule-date" type="date" wire:model.live="date" class="fi-input block w-48 rounded-lg border-gray-300 text-sm shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-white" />
+                    <span class="fi-fo-field-wrp-label text-sm font-medium text-gray-950 dark:text-white">Operating date</span>
+                    <x-og.date-range single from="date" :from-value="$date" label="Operating date" style="min-width: 0; width: 12.5rem" />
                 </div>
                 <x-filament::button color="gray" outlined size="sm" wire:click="shiftDate(-1)" title="Previous day">‹</x-filament::button>
                 <x-filament::button color="gray" outlined size="sm" wire:click="today">Today</x-filament::button>

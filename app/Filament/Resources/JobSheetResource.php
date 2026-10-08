@@ -97,18 +97,25 @@ class JobSheetResource extends Resource
                     ->label('Operating Date')
                     ->date('d/m/Y')
                     ->sortable(),
+                // Relationship columns sort on a correlated subselect of the related name, so no join and no duplicate rows
                 Tables\Columns\TextColumn::make('operatingBranch.name')
-                    ->label('Operating Branch'),
+                    ->label('Operating Branch')
+                    ->sortable(),
                 Tables\Columns\TextColumn::make('lorry.registration_no')
-                    ->label('Lorry'),
+                    ->label('Lorry')
+                    ->sortable(),
                 Tables\Columns\TextColumn::make('driver.name')
-                    ->label('Driver'),
-                Tables\Columns\TextColumn::make('deliveryOrders_count')
+                    ->label('Driver')
+                    ->sortable(),
+                // Named after Laravel's withCount alias (delivery_orders_count), or the cell stays empty and the sort has no column
+                Tables\Columns\TextColumn::make('delivery_orders_count')
                     ->counts('deliveryOrders')
-                    ->label('Task Count'),
+                    ->label('Task Count')
+                    ->sortable(),
                 Tables\Columns\TextColumn::make('status')
                     ->label('Status')
-                    ->badge(),
+                    ->badge()
+                    ->sortable(),
             ])
             ->actions([
                 Tables\Actions\Action::make('viewDetails')

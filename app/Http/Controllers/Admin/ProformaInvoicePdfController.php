@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Domains\Billing\Models\ProformaInvoice;
 use App\Support\CurrentCompany;
+use App\Support\QuantityLabel;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Filament\Facades\Filament;
 use Symfony\Component\HttpFoundation\Response;
@@ -36,7 +37,7 @@ class ProformaInvoicePdfController
         $lines = ($quotation?->lines ?? collect())->map(fn ($line) => [
             'item' => $line->item_name,
             'route' => $destinations->get($line->quotation_destination_id)?->consignee_name,
-            'qty' => rtrim(rtrim(number_format((float) $line->quantity, 3, '.', ''), '0'), '.').($line->uom ? ' '.strtoupper($line->uom) : ''),
+            'qty' => QuantityLabel::format($line->quantity, $line->uom),
             'unit' => number_format((float) $line->unit_price, 2),
             'total' => number_format((float) $line->line_total, 2),
         ])->values()->all();

@@ -68,6 +68,14 @@ class DailyLorrySchedule extends Page
             ->all();
     }
 
+    /** The schedule is always for one day: clearing the date picker goes back to today. */
+    public function updatedDate(): void
+    {
+        if ($this->date === '' || ! strtotime($this->date)) {
+            $this->date = now()->toDateString();
+        }
+    }
+
     public function shiftDate(int $days): void
     {
         $this->date = Carbon::parse($this->date)->addDays($days)->toDateString();

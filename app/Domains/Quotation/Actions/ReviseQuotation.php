@@ -89,7 +89,7 @@ class ReviseQuotation
                 'from_status' => $from,
                 'to_status' => QuotationStatus::Superseded->value,
                 'user_id' => $actor->id,
-                'remarks' => 'Superseded by version '.$nextVersion.($reason ? ' — '.$reason : ''),
+                'remarks' => 'Replaced by version '.$nextVersion.($reason ? ' — '.$reason : ''),
             ]);
 
             QuotationStatusLog::query()->create([

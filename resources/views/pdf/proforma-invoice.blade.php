@@ -14,10 +14,10 @@
         .meta { width: 100%; margin-bottom: 14px; border-collapse: collapse; }
         .meta td { padding: 2px 0; vertical-align: top; }
         .label { color: #6b7280; width: 110px; }
-        table.lines { width: 100%; border-collapse: collapse; margin-top: 6px; }
+        table.lines { width: 100%; border-collapse: collapse; margin-top: 6px; table-layout: fixed; }
         table.lines th { background: #f3f4f6; text-align: left; padding: 6px; font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; color: #374151; border-bottom: 1px solid #d1d5db; }
         table.lines td { padding: 6px; border-bottom: 1px solid #e5e7eb; }
-        .num { text-align: right; white-space: nowrap; }
+        .num, table.lines th.num { text-align: right; white-space: nowrap; }
         .totals { width: 45%; margin-left: 55%; margin-top: 10px; border-collapse: collapse; }
         .totals td { padding: 4px 6px; }
         .totals .grand td { border-top: 2px solid #111827; font-weight: bold; font-size: 12px; }
@@ -70,11 +70,11 @@
         <thead>
             <tr>
                 <th style="width:4%">#</th>
-                <th>Item / service</th>
-                <th>Route</th>
-                <th class="num">Qty</th>
-                <th class="num">Unit (RM)</th>
-                <th class="num">Amount (RM)</th>
+                <th style="width:52%">Item / service</th>
+                <th style="width:15%">Route</th>
+                <th class="num" style="width:6%">Qty</th>
+                <th class="num" style="width:11%">Unit (RM)</th>
+                <th class="num" style="width:12%">Amount (RM)</th>
             </tr>
         </thead>
         <tbody>

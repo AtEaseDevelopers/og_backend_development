@@ -723,6 +723,12 @@ class ConsignmentNoteForm
 
         $set('customer_id', (string) $quotation->customer_id);
         static::fillFromCustomer((string) $quotation->customer_id, $set);
+
+        // the CSN date of an order's CSN is the order's expected delivery date
+        if ($quotation->expected_delivery_date) {
+            $set('issued_at', $quotation->expected_delivery_date->toDateString());
+        }
+
         static::applyMatrixWithTotals(
             app(CsnTransportMatrix::class)->fromQuotation($quotation),
             null,
@@ -753,8 +759,9 @@ class ConsignmentNoteForm
         }
 
         $set('consignee_name', $destination->consignee_name);
-        $set('consignee_pic', $destination->consignee_pic);
-        $set('consignee_phone', $destination->consignee_phone);
+        // an order record keeps the consignee's person in charge and contact number on the record itself
+        $set('consignee_pic', $destination->consignee_pic ?: $quotation->consignee_pic_name);
+        $set('consignee_phone', $destination->consignee_phone ?: $quotation->consignee_pic_phone);
         $set('delivery_address', $destination->address);
         $set('delivery_postcode', $destination->postcode);
         $set('delivery_state', $destination->state);

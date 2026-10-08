@@ -85,18 +85,42 @@
         align-items: center;
         justify-content: flex-end;
         gap: 0.625rem;
-        grid-column: 1 / -1;
+        grid-column: span 3;
         padding-top: 0.125rem;
         padding-right: 1.25rem;
         padding-left: 1.25rem;
     }
 
-    .fi-resource-job-sheets.fi-resource-list-records-page .js-filter-field:nth-child(1) {
+    /* Desktop filter rows: number, trip, date (2 columns wide), branch, lorry / driver, task count, status, then the buttons (3 columns) */
+    .fi-resource-job-sheets.fi-resource-list-records-page .js-filter-field-wide {
+        grid-column: span 2;
+    }
+
+    /* The card has no side padding (its columns line up with the panels below), so the fields at each row's edge carry it */
+    .fi-resource-job-sheets.fi-resource-list-records-page .js-filter-field-start {
         padding-left: 1.25rem;
     }
 
-    .fi-resource-job-sheets.fi-resource-list-records-page .js-filter-field:nth-child(6) {
+    .fi-resource-job-sheets.fi-resource-list-records-page .js-filter-field-end {
         padding-right: 1.25rem;
+    }
+
+    /* Operating date range picker: same size as the other filter inputs; the filter card stays light in dark mode too */
+    .fi-resource-job-sheets.fi-resource-list-records-page .js-filter-field .og-dr {
+        min-width: 0;
+    }
+
+    .fi-resource-job-sheets.fi-resource-list-records-page .js-filter-field .og-dr .og-dr-trigger {
+        min-height: 2.375rem;
+        border-color: rgb(209 213 219);
+        background: white;
+        color: rgb(17 24 39);
+        font-size: 0.875rem;
+        box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.02);
+    }
+
+    .fi-resource-job-sheets.fi-resource-list-records-page .js-filter-field .og-dr .og-dr-trigger:hover {
+        border-color: rgb(156 163 175);
     }
 
     .fi-resource-job-sheets.fi-resource-list-records-page .js-filter-label {
@@ -415,18 +439,35 @@
             grid-column: 1 / -1;
         }
 
+        /* Own 3-column grid here (3 x 3 with the buttons in the last cell), so the side padding moves onto the grid itself */
         .fi-resource-job-sheets.fi-resource-list-records-page .js-filter-grid {
             grid-template-columns: repeat(3, minmax(0, 1fr));
+            padding-inline: 1.25rem;
+        }
+
+        .fi-resource-job-sheets.fi-resource-list-records-page .js-filter-field-wide {
+            grid-column: auto;
+        }
+
+        .fi-resource-job-sheets.fi-resource-list-records-page .js-filter-field-start,
+        .fi-resource-job-sheets.fi-resource-list-records-page .js-filter-field-end {
+            padding-inline: 0.125rem;
         }
 
         .fi-resource-job-sheets.fi-resource-list-records-page .js-filter-actions {
-            grid-column: 1 / -1;
+            grid-column: auto;
+            padding-inline: 0.125rem;
         }
     }
 
     @media (max-width: 767px) {
         .fi-resource-job-sheets.fi-resource-list-records-page .js-filter-grid {
             grid-template-columns: 1fr;
+            padding-inline: 1rem;
+        }
+
+        .fi-resource-job-sheets.fi-resource-list-records-page .js-filter-actions {
+            grid-column: 1 / -1;
         }
     }
 

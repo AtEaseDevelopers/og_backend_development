@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Domains\Quotation\Actions\UpdateOrderRecords;
 use App\Domains\Quotation\Models\PortalEnquiry;
 use App\Enums\PortalEnquiryStatus;
 use App\Filament\Pages\OrderDetail;
@@ -159,7 +160,7 @@ class PortalEnquiryListingData
                 return [
                     'index' => $index + 1,
                     'item_name' => $item['item_name'] ?? '—',
-                    'packaging' => strtoupper((string) ($item['uom'] ?? 'UNIT')),
+                    'packaging' => QuantityLabel::unit($item['uom'] ?? null) ?? 'UNIT',
                     'quantity' => $this->formatQuantity($item['quantity'] ?? null),
                     'weight' => filled($item['weight'] ?? null)
                         ? number_format((float) $item['weight'], 0).' KG'
@@ -177,7 +178,8 @@ class PortalEnquiryListingData
             'payment' => $this->paymentPanel($enquiry),
             'traceability' => $this->traceabilitySteps($enquiry),
             'notifications' => $this->notificationItems($enquiry),
-            // one enquiry may create several order records; another order can be started while quoted
+            // pricing creates every order record once; afterwards the button opens Edit order (add / change blocks there)
+            'has_order_records' => UpdateOrderRecords::recordsQuery($enquiry)->exists(),
             'can_create_quotation' => ! $lockedByOther && in_array($this->statusValue($enquiry->status), [
                 PortalEnquiryStatus::Pending->value,
                 PortalEnquiryStatus::InReview->value,
@@ -315,7 +317,7 @@ class PortalEnquiryListingData
         }
 
         $first = $items->first();
-        $label = trim($this->formatQuantity($first['quantity'] ?? null).' '.strtoupper((string) ($first['uom'] ?? 'UNIT')));
+        $label = trim($this->formatQuantity($first['quantity'] ?? null).' '.(QuantityLabel::unit($first['uom'] ?? null) ?? ''));
         $more = $items->count() > 1 ? ' · +'.($items->count() - 1).' more' : '';
 
         return $label.$more;

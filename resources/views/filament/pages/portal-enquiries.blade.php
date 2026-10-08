@@ -8,13 +8,9 @@
 <x-filament-panels::page class="fi-page-portal-enquiries cor-page">
     <div class="cor-toolbar">
         <div class="cor-toolbar-filters">
-            <div class="cor-toolbar-field">
-                <label class="cor-toolbar-label" for="filterDateFrom">Date range</label>
-                <div class="cor-date-range">
-                    <input id="filterDateFrom" type="date" wire:model.live="filterDateFrom" class="cor-toolbar-input" />
-                    <span class="cor-date-sep">–</span>
-                    <input id="filterDateTo" type="date" wire:model.live="filterDateTo" class="cor-toolbar-input" />
-                </div>
+            <div class="cor-toolbar-field cor-toolbar-date">
+                <span class="cor-toolbar-label">Submitted date</span>
+                <x-og.date-range from="filterDateFrom" to="filterDateTo" :from-value="$filterDateFrom" :to-value="$filterDateTo" label="Submitted date" />
             </div>
             <div class="cor-toolbar-field">
                 <label class="cor-toolbar-label" for="filterStatus">Status</label>

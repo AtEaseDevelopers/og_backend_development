@@ -5,11 +5,12 @@
     $can = $d['can'];
     $ov = $d['overview'];
     $pr = $d['pricing'];
-    $pay = $d['payment_tab'];
     $banner = $d['banner'];
     $hasOwner = (bool) ($order?->salesperson_id ?? $enquiry?->salesperson_id);
     $needsHeartbeat = $enquiry && ! $d['lock']['locked_by_other'] && in_array($d['stage']['key'], ['enquiry', 'pending_salesperson', 'quotation'], true);
-    $activeTab = $this->tab === 'overview' ? ($this->focus ?? 'overview') : $this->tab;
+    // payment summary / linked records (documents) / customer confirmation are cards of the overview: keep Overview highlighted
+    $activeTab = $this->tab === 'overview' ? ($this->focus === 'pricing' ? 'pricing' : 'overview') : $this->tab;
+    $hasDocuments = $order || ($ov['mode'] === 'enquiry' && $ov['form']['attachments'] !== []);
 @endphp
 
 <x-filament-panels::page class="ow-page">
@@ -42,7 +43,9 @@
                 @if ($d['urls']['full_editor'])
                     <a href="{{ $d['urls']['full_editor'] }}" class="ow-btn">Edit order</a>
                 @endif
-                <button type="button" wire:click="setTab('documents')" class="ow-btn">View documents</button>
+                @if ($hasDocuments)
+                    <button type="button" wire:click="setTab('documents')" class="ow-btn">View documents</button>
+                @endif
             </div>
         </div>
 
@@ -109,10 +112,6 @@
         <div class="ow-tabs">
             <button type="button" wire:click="setTab('overview')" @class(['ow-tab', 'ow-tab-active' => $activeTab === 'overview'])>Overview</button>
             <button type="button" wire:click="setTab('pricing')" @class(['ow-tab', 'ow-tab-active' => $activeTab === 'pricing'])>Items &amp; pricing</button>
-            @if ($order && $d['cash_flow'] && $d['show_payment'])
-                <button type="button" wire:click="setTab('payment')" @class(['ow-tab', 'ow-tab-active' => $activeTab === 'payment'])>Payment summary</button>
-            @endif
-            <button type="button" wire:click="setTab('documents')" @class(['ow-tab', 'ow-tab-active' => $activeTab === 'documents'])>Documents</button>
             <button type="button" wire:click="setTab('activity')" @class(['ow-tab', 'ow-tab-active' => $activeTab === 'activity'])>Activity</button>
         </div>
 
@@ -121,7 +120,8 @@
                 {{-- ============================== OVERVIEW ============================== --}}
                 @if ($ov['mode'] === 'enquiry')
                     @php $f = $ov['form']; @endphp
-                    <div class="ow-grid-main">
+                    <div class="ow-grid-overview">
+                        <div class="ow-stack">
                         <div class="ow-card ow-card-pad">
                             <div class="ow-card-title">
                                 Submitted order form
@@ -133,6 +133,7 @@
                                 <div><div class="ow-dt">Customer</div><div class="ow-dd">{{ $f['customer'] }}</div></div>
                                 <div><div class="ow-dt">Salesperson</div><div class="ow-dd">{!! $f['salesperson'] ? e($f['salesperson']) : '<span class="ow-pill ow-pill-action">Pending salesperson</span>' !!}</div></div>
                                 <div><div class="ow-dt">Enquiry</div><div class="ow-dd">{{ $f['enquiry_ref'] }}</div></div>
+                                <div><div class="ow-dt">Received through</div><div class="ow-dd">{{ $f['received_through'] }}</div></div>
                                 <div><div class="ow-dt">DO number</div><div class="ow-dd">{{ $f['do_number'] }}</div></div>
                                 <div><div class="ow-dt">Requested delivery</div><div class="ow-dd">{{ $f['requested_delivery'] }}</div></div>
                                 <div><div class="ow-dt">Order type</div><div class="ow-dd">{{ $f['order_type'] }}@if ($f['service_type']) · {{ $f['service_type'] }}@endif</div></div>
@@ -156,7 +157,7 @@
                                 <p style="margin-top:.6rem">{{ $f['instructions'] }}</p>
                             @endif
                             @if ($f['attachments'] !== [])
-                                <details style="margin-top:.6rem">
+                                <details style="margin-top:.6rem" id="og-section-documents" class="ow-anchor" @if ($this->focus === 'documents') open @endif>
                                     <summary class="ow-link" style="cursor:pointer">Attachments ({{ count($f['attachments']) }})</summary>
                                     <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.5rem">
                                         @foreach ($f['attachments'] as $file)
@@ -169,7 +170,26 @@
                             @endif
                         </div>
 
+                            {{-- Items & pricing sits under the order form (left column) --}}
+                            <div>
+                                <h2 class="ow-section-title" id="og-section-pricing">Items &amp; pricing</h2>
+                                @include('filament.pages.partials.order-pricing', ['d' => $d, 'pr' => $pr, 'can' => $can, 'order' => $order, 'hasOwner' => $hasOwner])
+                            </div>
+                        </div>
+
                         <div class="ow-stack">
+                            {{-- right column: ownership first (assign the salesperson), then the admin action --}}
+                            <div class="ow-card ow-card-pad">
+                                <div class="ow-card-title">Ownership &amp; source</div>
+                                <div class="ow-dl">
+                                    <div><div class="ow-dt">Form origin</div><div class="ow-dd">{{ $ov['ownership']['origin'] }}</div></div>
+                                    <div><div class="ow-dt">Entered by</div><div class="ow-dd">{{ $ov['ownership']['entered_by'] }}</div></div>
+                                    <div><div class="ow-dt">Editing</div><div class="ow-dd">{{ $ov['ownership']['editing'] }}</div></div>
+                                    <div><div class="ow-dt">Customer acceptance</div><div class="ow-dd">{{ $ov['ownership']['acceptance'] }}</div></div>
+                                </div>
+                                @include('filament.pages.partials.order-assign-salesperson', ['can' => $can, 'current' => $f['salesperson']])
+                            </div>
+
                             <div class="ow-card ow-card-pad" id="og-admin-action" style="scroll-margin-top:6rem">
                                 <div class="ow-card-title">Admin action</div>
                                 <span class="ow-pill ow-pill-{{ $ov['admin_action']['status_color'] }}">{{ $ov['admin_action']['status_label'] }}</span>
@@ -194,34 +214,25 @@
                                         @else
                                             <span></span>
                                         @endif
-                                        @if ($can['start_pricing'])
+                                        @if (! empty($d['pricing']['records_url']))
+                                            <a href="{{ $d['pricing']['records_url'] }}" class="ow-btn ow-btn-primary">Open order →</a>
+                                        @elseif ($can['start_pricing'])
                                             <button type="button" wire:click="startPricing" wire:loading.attr="disabled" class="ow-btn ow-btn-primary">Provide pricing →</button>
                                         @elseif (! $hasOwner && $d['stage']['key'] !== 'closed')
                                             <button type="button" class="ow-btn ow-btn-primary" disabled title="Assign a salesperson first">Provide pricing →</button>
                                         @endif
                                     </div>
                                     @if (! $hasOwner && $d['stage']['key'] !== 'closed')
-                                        <div class="ow-note" style="margin-top:.4rem">Assign a salesperson below to see prices and continue.</div>
+                                        <div class="ow-note" style="margin-top:.4rem">Assign a salesperson under Ownership &amp; source to see prices and continue.</div>
                                     @endif
                                 @endif
                                 <div class="ow-note" style="margin-top:.75rem">{{ $ov['admin_action']['note'] }}</div>
                             </div>
-
-                            <div class="ow-card ow-card-pad">
-                                <div class="ow-card-title">Ownership &amp; source</div>
-                                <div class="ow-dl">
-                                    <div><div class="ow-dt">Form origin</div><div class="ow-dd">{{ $ov['ownership']['origin'] }}</div></div>
-                                    <div><div class="ow-dt">Entered by</div><div class="ow-dd">{{ $ov['ownership']['entered_by'] }}</div></div>
-                                    <div><div class="ow-dt">Editing</div><div class="ow-dd">{{ $ov['ownership']['editing'] }}</div></div>
-                                    <div><div class="ow-dt">Customer acceptance</div><div class="ow-dd">{{ $ov['ownership']['acceptance'] }}</div></div>
-                                </div>
-                                @include('filament.pages.partials.order-assign-salesperson', ['can' => $can, 'current' => $f['salesperson']])
-                            </div>
                         </div>
                     </div>
                 @else
-                    @php $co = $ov['customer_order']; $pc = $ov['payment_card']; @endphp
-                    <div class="ow-grid-main">
+                    @php $co = $ov['customer_order']; @endphp
+                    <div class="ow-grid-overview">
                         <div class="ow-stack">
                             <div class="ow-card ow-card-pad">
                                 <div class="ow-card-title">Customer &amp; order</div>
@@ -229,11 +240,21 @@
                                     <div><div class="ow-dt">Customer</div><div class="ow-dd">{{ $co['customer'] }}</div></div>
                                     <div><div class="ow-dt">Salesperson / SA location</div><div class="ow-dd">{{ $co['salesperson_sa'] }}</div></div>
                                     <div><div class="ow-dt">Enquiry</div><div class="ow-dd">@if ($co['enquiry_url'])<a href="{{ $co['enquiry_url'] }}" class="ow-link">{{ $co['enquiry_ref'] }}</a>@else {{ $co['enquiry_ref'] }} @endif</div></div>
+                                    <div><div class="ow-dt">Received through</div><div class="ow-dd">{{ $co['received_through'] }}</div></div>
                                     <div><div class="ow-dt">DO number</div><div class="ow-dd">{{ $co['do_number'] }}</div></div>
-                                    <div><div class="ow-dt">Payment term</div><div class="ow-dd">{{ $co['order_type'] }}@if ($co['service_type']) · {{ $co['service_type'] }}@endif</div></div>
+                                    <div><div class="ow-dt">Payment term</div><div class="ow-dd">{{ $co['order_type'] }}</div></div>
                                     <div><div class="ow-dt">Pricing consent</div><div class="ow-dd">{{ $co['consent'] }}</div></div>
                                     @if ($co['expected_delivery'])
                                         <div><div class="ow-dt">Expected delivery</div><div class="ow-dd">{{ $co['expected_delivery'] }}</div></div>
+                                    @endif
+                                    @if ($co['consignor_mode'] ?? null)
+                                        <div><div class="ow-dt">Consignor</div><div class="ow-dd">{{ $co['consignor_mode'] }}</div></div>
+                                    @endif
+                                    @if ($co['consignor_pic'] ?? null)
+                                        <div><div class="ow-dt">Consignor PIC</div><div class="ow-dd">{{ $co['consignor_pic'] }}</div></div>
+                                    @endif
+                                    @if ($co['consignee_pic'] ?? null)
+                                        <div><div class="ow-dt">Consignee PIC</div><div class="ow-dd">{{ $co['consignee_pic'] }}</div></div>
                                     @endif
                                 </div>
                                 <div class="ow-stop">
@@ -248,51 +269,18 @@
                                 @endforeach
                             </div>
 
-                            <div class="ow-card ow-card-pad">
-                                <div class="ow-card-title">Linked records</div>
-                                @foreach ($ov['linked'] as $link)
-                                    <div class="ow-linked">
-                                        <div>
-                                            <div>@if ($link['url'])<a href="{{ $link['url'] }}" target="_blank" class="ow-link">{{ $link['title'] }}</a>@else {{ $link['title'] }} @endif</div>
-                                            <div class="ow-note">{{ $link['sub'] }}</div>
-                                        </div>
-                                        <span class="ow-pill ow-pill-{{ $link['color'] }}">{{ $link['status'] }}</span>
-                                    </div>
-                                @endforeach
-                                @if ($ov['other_orders'] !== [])
-                                    <details style="margin-top:.6rem">
-                                        <summary class="ow-link" style="cursor:pointer">Other orders from this enquiry ({{ count($ov['other_orders']) }})</summary>
-                                        @foreach ($ov['other_orders'] as $other)
-                                            <div class="ow-linked">
-                                                <div><a href="{{ $other['url'] }}" class="ow-link ow-mono">{{ $other['number'] }}</a><div class="ow-note">→ {{ $other['consignee'] }} · {{ $other['total'] }}</div></div>
-                                                <span class="ow-pill ow-pill-{{ $other['color'] }}">{{ $other['status'] }}</span>
-                                            </div>
-                                        @endforeach
-                                    </details>
-                                @endif
+                            {{-- Items & pricing sits under Customer & order (left column) --}}
+                            <div>
+                                <h2 class="ow-section-title" id="og-section-pricing">Items &amp; pricing</h2>
+                                @include('filament.pages.partials.order-pricing', ['d' => $d, 'pr' => $pr, 'can' => $can, 'order' => $order, 'hasOwner' => $hasOwner])
                             </div>
+
+                            {{-- Payment summary under Items & pricing --}}
+                            @include('filament.pages.partials.order-payment', ['d' => $d, 'can' => $can, 'order' => $order])
                         </div>
 
+                        {{-- right column: Record ownership → Linked records --}}
                         <div class="ow-stack">
-                            <div class="ow-card ow-card-pad">
-                                <div class="ow-card-title">
-                                    {{ $d['cash_flow'] ? 'Payment & release' : 'Payment term' }}
-                                </div>
-                                <div class="ow-actions-split" style="margin-bottom:.4rem">
-                                    <span class="ow-pill ow-pill-{{ $pc['color'] }}">{{ $pc['label'] }}</span>
-                                    <span class="ow-pill ow-pill-dark">{{ $pc['order_type'] }}</span>
-                                </div>
-                                <div class="ow-kv"><span>Total</span><strong>{{ $pc['total'] }}</strong></div>
-                                @if ($d['cash_flow'])
-                                    <div class="ow-kv"><span>Paid</span><strong>{{ $pc['paid'] }}</strong></div>
-                                    <div class="ow-kv"><span>Outstanding</span><strong>{{ $pc['outstanding'] }}</strong></div>
-                                @endif
-                                <div class="ow-note" style="margin-top:.4rem">{{ $pc['note'] }}</div>
-                                @if ($d['cash_flow'] && $d['show_payment'])
-                                    <button type="button" wire:click="setTab('payment')" class="ow-btn-link" style="margin-top:.4rem">View payment details →</button>
-                                @endif
-                            </div>
-
                             <div class="ow-card ow-card-pad">
                                 <div class="ow-card-title">Record ownership</div>
                                 <div class="ow-dl">
@@ -310,13 +298,11 @@
                                     </div>
                                 @endif
                             </div>
+
+                            @include('filament.pages.partials.order-linked-records', ['ov' => $ov, 'can' => $can, 'order' => $order])
                         </div>
                     </div>
                 @endif
-
-                {{-- ============================== ITEMS & PRICING ============================== --}}
-                <h2 class="ow-section-title" id="og-section-pricing">Items &amp; pricing</h2>
-                @include('filament.pages.partials.order-pricing', ['d' => $d, 'pr' => $pr, 'can' => $can, 'order' => $order, 'hasOwner' => $hasOwner])
 
                 {{-- ============================== CUSTOMER CONFIRMATION ============================== --}}
                 @if ($d['show_decision'])
@@ -354,40 +340,6 @@
                         </div>
                     </div>
                 @endif
-
-                {{-- ============================== PAYMENT SUMMARY ============================== --}}
-                @if ($order && $d['show_payment'])
-                    <h2 class="ow-section-title" id="og-section-payment">{{ $d['cash_flow'] ? 'Payment summary' : 'Payment term' }}</h2>
-                    @include('filament.pages.partials.order-payment', ['d' => $d, 'pay' => $pay, 'can' => $can, 'order' => $order])
-                @endif
-            </div>
-        @elseif ($this->tab === 'documents')
-            {{-- ============================== DOCUMENTS ============================== --}}
-            <div class="ow-card ow-card-pad">
-                <div class="ow-card-title">Documents &amp; attachments</div>
-                @forelse ($d['documents'] as $doc)
-                    <div class="ow-doc">
-                        <div>
-                            <div class="ow-l1">{{ $doc['title'] }}</div>
-                            <div class="ow-note ow-mono">{{ $doc['sub'] }}</div>
-                        </div>
-                        <div class="ow-actions">
-                            @if ($doc['status'] && ! $doc['url'])
-                                <span class="ow-pill ow-pill-{{ $doc['color'] }}">{{ $doc['status'] }}</span>
-                            @endif
-                            @if ($doc['url'])
-                                <a href="{{ $doc['url'] }}" target="_blank" rel="noopener" class="ow-btn ow-btn-sm">{{ $doc['action'] ?? 'Open' }}</a>
-                            @endif
-                        </div>
-                    </div>
-                @empty
-                    <p class="ow-note">No documents yet. The quotation is created when pricing starts.</p>
-                @endforelse
-                @if ($can['send_invoice'])
-                    <div class="ow-actions" style="margin-top:.75rem">
-                        <button type="button" wire:click="mountAction('sendInvoice')" class="ow-btn">Email invoice / cash bill</button>
-                    </div>
-                @endif
             </div>
         @else
             {{-- ============================== ACTIVITY ============================== --}}
@@ -411,13 +363,9 @@
                         <span class="ow-note" style="font-weight:400">{{ count($activityItems) }} of {{ count($act['items']) }} · newest first</span>
                     </div>
                     <div class="ow-activity-filter">
-                        <div class="ow-field">
-                            <label>From</label>
-                            <input type="date" wire:model.live="activityFrom" class="ow-input">
-                        </div>
-                        <div class="ow-field">
-                            <label>Until</label>
-                            <input type="date" wire:model.live="activityTo" class="ow-input">
+                        <div class="ow-field" style="width:100%;max-width:17rem">
+                            <label>Activity date</label>
+                            <x-og.date-range from="activityFrom" to="activityTo" :from-value="$from" :to-value="$to" label="Activity date" style="min-width:0" />
                         </div>
                         @if ($from !== '' || $to !== '')
                             <button type="button" wire:click="resetActivityFilter" class="ow-btn-link" style="margin-bottom:.5rem">Reset</button>
@@ -430,6 +378,28 @@
                             @foreach ($activityItems as $item)
                                 <li @class(['ow-tl-'.$item['kind']]) title="{{ $item['by'] }}">
                                     <div class="ow-tl-title">{{ $item['title'] }}</div>
+                                    @if (! empty($item['lines']))
+                                        <div class="ow-tl-offer">
+                                            <table>
+                                                <thead><tr><th>Product</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Amount</th></tr></thead>
+                                                <tbody>
+                                                    @foreach ($item['lines'] as $line)
+                                                        <tr>
+                                                            <td>{{ $line['item'] }}@if ($line['destination'])<span class="ow-tl-dest"> · {{ $line['destination'] }}</span>@endif</td>
+                                                            <td class="num">{{ $line['qty'] }}</td>
+                                                            <td class="num">{{ $line['unit'] }}</td>
+                                                            <td class="num">{{ $line['amount'] }}</td>
+                                                        </tr>
+                                                    @endforeach
+                                                </tbody>
+                                                @if ($item['total'])
+                                                    <tfoot><tr><td colspan="3">Price offered</td><td class="num">{{ $item['total'] }}</td></tr></tfoot>
+                                                @endif
+                                            </table>
+                                        </div>
+                                    @elseif (! empty($item['total']))
+                                        <div class="ow-tl-sub">Price offered {{ $item['total'] }}</div>
+                                    @endif
                                     <div class="ow-tl-sub">{{ $item['date'] }}</div>
                                 </li>
                             @endforeach

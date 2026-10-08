@@ -46,6 +46,7 @@ enum QuotationStatus: string implements HasColor, HasLabel
             self::Sent => 'Quotation Issued',
             self::Accepted => 'Customer Confirmed',
             self::Closed => 'Closed Case',
+            self::Superseded => 'Old version',
             default => ucfirst(str_replace('_', ' ', $this->value)),
         };
     }

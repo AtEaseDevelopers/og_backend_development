@@ -6,6 +6,7 @@ use App\Domains\Notification\Models\NotificationLog;
 use App\Mail\SystemNotificationMail;
 use App\Support\CurrentBranch;
 use App\Support\CurrentCompany;
+use App\Support\MailSettings;
 use App\Support\SystemSettings;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
@@ -98,6 +99,8 @@ class SendNotification
         }
 
         try {
+            // the SMTP account set up under System Settings (falls back to the .env mailer)
+            MailSettings::apply();
             Mail::to($email)->send(new SystemNotificationMail($log->subject, $log->message, $attachment));
             $log->fill(['status' => NotificationLog::STATUS_SENT, 'sent_at' => now()]);
         } catch (Throwable $e) {

@@ -123,4 +123,65 @@ class OrderFormOptions
             $address->state,
         ])->filter()->implode(', '));
     }
+
+    /** Pickup location picker value for "type a new address" (saved addresses use their id). */
+    public const NEW_ADDRESS = 'new';
+
+    /**
+     * Pickup / drop-off location picker value for an address text: the saved customer address it was taken
+     * from, else "new address" when there is text, else nothing.
+     */
+    public static function pickupPresetFor(?string $customerId, ?string $text): string
+    {
+        $text = trim((string) $text);
+
+        if ($text === '') {
+            return '';
+        }
+
+        if ($customerId) {
+            $match = CustomerAddress::query()->where('customer_id', $customerId)->get()
+                ->first(fn (CustomerAddress $address) => static::formatAddress($address) === $text);
+
+            if ($match) {
+                return (string) $match->id;
+            }
+        }
+
+        return self::NEW_ADDRESS;
+    }
+
+    /**
+     * O&G stores a consignor can bring the goods to: the active branches, plus the given ids so a record
+     * keeps showing a branch that was deactivated since.
+     *
+     * @param  list<int|string|null>  $keep
+     * @return array<int, string>
+     */
+    public static function storeOptions(array $keep = []): array
+    {
+        $keep = array_values(array_filter(array_map('intval', $keep)));
+
+        return Branch::query()
+            ->where(fn ($query) => $query->where('is_active', true)->when($keep !== [], fn ($q) => $q->orWhereIn('id', $keep)))
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->mapWithKeys(fn (Branch $branch) => [$branch->id => $branch->name])
+            ->all();
+    }
+
+    /**
+     * The address saved on a Store record (its pickup location): the branch name and the branch address
+     * on one line. Without an address on the branch it is the branch name alone.
+     */
+    public static function storeAddress(?Branch $branch): string
+    {
+        if (! $branch) {
+            return '';
+        }
+
+        $address = trim((string) preg_replace('/\s*\R\s*/', ', ', trim((string) $branch->address)));
+
+        return trim(collect([$branch->name, $address])->filter()->implode(', '));
+    }
 }

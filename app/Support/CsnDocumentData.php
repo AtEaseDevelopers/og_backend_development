@@ -41,7 +41,8 @@ class CsnDocumentData
                 'do_number' => $csn->do_number ?: $csn->deliveryOrder?->number,
                 'invoice_number' => $csn->invoice?->number ?: $csn->proformaInvoice?->number,
                 'lorry_number' => $csn->deliveryOrder?->lorry?->registration_no,
-                'consignor_name' => $csn->consignor_name ?: $csn->customer_name,
+                // '' = left blank on the order (shown as "—"); not set at all (older CSNs) = the customer
+                'consignor_name' => $csn->consignor_name === '' ? null : ($csn->consignor_name ?: $csn->customer_name),
                 'consignor_address' => $csn->consignor_address,
                 'consignee_name' => $csn->consignee_name,
                 'consignee_pic' => $csn->consignee_pic,

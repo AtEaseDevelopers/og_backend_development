@@ -8,6 +8,7 @@ use App\Domains\Quotation\Models\Quotation;
 use App\Domains\Quotation\Models\QuotationStatusLog;
 use App\Enums\QuotationStatus;
 use App\Models\User;
+use App\Support\QuotationMatrix;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -38,6 +39,11 @@ class SendQuotation
 
         if ((float) $quotation->total_amount <= 0) {
             throw new InvalidArgumentException('Enter pricing before sending the quotation.');
+        }
+
+        // a product kept on the order without a price yet would go out unpriced
+        if (($unpriced = QuotationMatrix::unpricedItems($quotation)) !== []) {
+            throw new InvalidArgumentException('Enter a price for '.implode(', ', $unpriced).' under Items & pricing before sending the quotation.');
         }
 
         if (! $quotation->customer) {

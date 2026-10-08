@@ -26,13 +26,8 @@
         <form wire:submit="applyFilters" class="fd-filter-form">
             <div class="fd-filter-grid fd-filter-grid-top">
                 <div class="fd-filter-field">
-                    <label class="fd-filter-label" for="filterDeliveryDate">Delivery Date</label>
-                    <input
-                        id="filterDeliveryDate"
-                        type="date"
-                        wire:model.defer="filterDeliveryDate"
-                        class="fd-filter-input"
-                    />
+                    <span class="fd-filter-label">Delivery Date</span>
+                    <x-og.date-range single :live="false" from="filterDeliveryDate" :from-value="$filterDeliveryDate" label="Delivery date" />
                 </div>
                 <div class="fd-filter-field">
                     <label class="fd-filter-label" for="filterBranchId">Branch</label>

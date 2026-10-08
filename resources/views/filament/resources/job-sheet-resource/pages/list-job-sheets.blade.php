@@ -1,8 +1,6 @@
 @php
     $selected = $this->getSelectedJobSheetPanel();
-    $operatingDateLabel = filled($filterOperatingDate)
-        ? \Illuminate\Support\Carbon::parse($filterOperatingDate)->format('d/m/Y')
-        : now()->format('d/m/Y');
+    $operatingDateLabel = $this->getOperatingDateLabel();
 @endphp
 
 <x-filament-panels::page
@@ -21,8 +19,9 @@
 
     <div class="js-page-layout">
     <div class="js-filter-card">
+        {{-- One filter per table column, in column order; desktop rows: number, trip, date (2 wide), branch, lorry / driver, task count, status, buttons --}}
         <form wire:submit="applyFilters" class="js-filter-grid">
-            <div class="js-filter-field">
+            <div class="js-filter-field js-filter-field-start">
                 <label class="js-filter-label" for="filterNumber">Job Sheet Number</label>
                 <input
                     id="filterNumber"
@@ -33,13 +32,19 @@
                 />
             </div>
             <div class="js-filter-field">
-                <label class="js-filter-label" for="filterOperatingDate">Operating Date</label>
+                <label class="js-filter-label" for="filterTripNo">Trip</label>
                 <input
-                    id="filterOperatingDate"
-                    type="date"
-                    wire:model.defer="filterOperatingDate"
+                    id="filterTripNo"
+                    type="text"
+                    inputmode="numeric"
+                    wire:model.defer="filterTripNo"
                     class="js-filter-input"
+                    placeholder="e.g. 2"
                 />
+            </div>
+            <div class="js-filter-field js-filter-field-wide">
+                <span class="js-filter-label">Operating Date</span>
+                <x-og.date-range :live="false" from="filterOperatingFrom" to="filterOperatingTo" :from-value="$filterOperatingFrom" :to-value="$filterOperatingTo" label="Operating date" />
             </div>
             <div class="js-filter-field">
                 <label class="js-filter-label" for="filterBranchId">Branch</label>
@@ -50,7 +55,7 @@
                     @endforeach
                 </select>
             </div>
-            <div class="js-filter-field">
+            <div class="js-filter-field js-filter-field-end">
                 <label class="js-filter-label" for="filterLorryId">Lorry</label>
                 <select id="filterLorryId" wire:model.defer="filterLorryId" class="js-filter-input">
                     <option value="">All Lorries</option>
@@ -59,11 +64,20 @@
                     @endforeach
                 </select>
             </div>
-            <div class="js-filter-field">
+            <div class="js-filter-field js-filter-field-start">
                 <label class="js-filter-label" for="filterDriverId">Driver</label>
                 <select id="filterDriverId" wire:model.defer="filterDriverId" class="js-filter-input">
                     <option value="">All Drivers</option>
                     @foreach ($this->driverFilterOptions() as $value => $label)
+                        <option value="{{ $value }}">{{ $label }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="js-filter-field">
+                <label class="js-filter-label" for="filterTaskCount">Task Count</label>
+                <select id="filterTaskCount" wire:model.defer="filterTaskCount" class="js-filter-input">
+                    <option value="">Any</option>
+                    @foreach ($this->taskCountFilterOptions() as $value => $label)
                         <option value="{{ $value }}">{{ $label }}</option>
                     @endforeach
                 </select>

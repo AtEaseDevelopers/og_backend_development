@@ -23,6 +23,16 @@ enum OrderType: string implements HasColor, HasLabel
         };
     }
 
+    /** Compact label for badges: Cash, COD or Credit. */
+    public function shortLabel(): string
+    {
+        return match ($this) {
+            self::Cash => 'Cash',
+            self::Cod => 'COD',
+            self::Term => 'Credit',
+        };
+    }
+
     public function getColor(): string | array | null
     {
         return match ($this) {

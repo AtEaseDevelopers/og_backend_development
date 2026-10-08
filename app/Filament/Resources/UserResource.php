@@ -12,7 +12,6 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Hash;
-use Spatie\Permission\Models\Role;
 
 class UserResource extends Resource
 {
@@ -58,14 +57,17 @@ class UserResource extends Resource
                 ->dehydrated(false)
                 ->visible(fn (string $operation) => $operation === 'create'),
             Forms\Components\Select::make('roles')
-                ->relationship('roles', 'name')
-                ->options(fn () => Role::query()
-                    ->whereNotIn('name', ['customer', 'driver'])
-                    ->orderBy('name')
-                    ->pluck('name', 'name'))
+                // Filter inside the relationship so options, search results, the loaded state and
+                // the pivot sync are all keyed by role id. A separate name-keyed ->options() list
+                // disagreed with the id-keyed search results and synced names as role_id 0.
+                ->relationship('roles', 'name', fn (Builder $query) => $query
+                    ->whereNotIn($query->qualifyColumn('name'), ['customer', 'driver']))
                 ->multiple()
                 ->preload()
-                ->required(),
+                // The filter also applies to the loaded state, so a driver-only account loads with no
+                // roles. Its hidden role is never detached on save, so it keeps one: only accounts
+                // without a hidden role have to pick one here.
+                ->required(fn (?User $record): bool => ! $record?->hasAnyRole(['customer', 'driver'])),
             Forms\Components\Toggle::make('is_active')->default(true),
             Forms\Components\Section::make('Sales ownership (section A)')
                 ->description('Each salesperson belongs to one SA location; the SA location carries the CSN prefix. The ordering link fixes the salesperson on every order a customer submits through it.')

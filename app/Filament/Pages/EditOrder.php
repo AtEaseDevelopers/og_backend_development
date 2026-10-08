@@ -8,7 +8,6 @@ use App\Domains\Quotation\Models\PortalEnquiry;
 use App\Domains\Quotation\Models\Quotation;
 use App\Enums\DropOffType;
 use App\Enums\OrderType;
-use App\Enums\PaymentMethod;
 use App\Enums\PortalEnquiryStatus;
 use App\Enums\ServiceType;
 use App\Models\User;
@@ -56,7 +55,7 @@ class EditOrder extends CreateOrder
     #[Locked]
     public bool $enquiryOnly = false;
 
-    /** Customer, received through and payment term are read-only (a record is no longer editable). */
+    /** Customer, billing address, received through and payment term are read-only (a record is no longer editable). */
     #[Locked]
     public bool $headerLocked = false;
 
@@ -71,9 +70,27 @@ class EditOrder extends CreateOrder
     #[Locked]
     public array $removableRecordIds = [];
 
+    /**
+     * Records the page was opened with (none while the enquiry is not priced): a record created since then
+     * makes the save stop instead of cancelling it as removed.
+     *
+     * @var list<int>
+     */
+    #[Locked]
+    public array $knownRecordIds = [];
+
     /** Header values when the page opened (read-only fields are restored from it). */
     #[Locked]
     public array $originalForm = [];
+
+    /**
+     * Payment terms of the order's records when the page opened: while the order keeps its customer, a new
+     * term must be one every record may change to (OrderType::allowedTransitions, as the save enforces).
+     *
+     * @var list<string>
+     */
+    #[Locked]
+    public array $recordOrderTypes = [];
 
     public static function getRelativeRouteName(): string
     {
@@ -132,10 +149,14 @@ class EditOrder extends CreateOrder
         $this->headerLocked = ! $records->every(fn (Quotation $q) => UpdateOrderRecords::isEditable($q));
         $this->lockedRecordIds = $records->reject(fn (Quotation $q) => UpdateOrderRecords::isEditable($q))->map(fn (Quotation $q) => (int) $q->id)->values()->all();
         $this->removableRecordIds = $enquiry ? $records->filter(fn (Quotation $q) => UpdateOrderRecords::isRemovable($q))->map(fn (Quotation $q) => (int) $q->id)->values()->all() : [];
-        $this->salespersonLocked = $enquiry && $enquiry->salesperson_locked && $enquiry->salesperson_id && ! $user?->isSuperadmin();
+        $this->knownRecordIds = $records->map(fn (Quotation $q) => (int) $q->id)->values()->all();
+        $this->recordOrderTypes = $records->map(fn (Quotation $q) => $q->orderType()?->value)->filter()->unique()->values()->all();
+        $this->salespersonLocked =$enquiry && $enquiry->salesperson_locked && $enquiry->salesperson_id && ! $user?->isSuperadmin();
 
         $this->form = $this->formFrom($enquiry, $records);
         $this->originalForm = $this->form;
+        // switching the customer away and back brings the order's own billing address back
+        $this->billingAddresses = filled($this->form['customer_id']) ? [$this->form['customer_id'] => $this->form['customer_address']] : [];
         $this->pairs = $this->enquiryOnly ? $this->pairsFromPayload($enquiry) : $this->pairsFromRecords($records, $enquiry);
 
         if ($this->pairs === []) {
@@ -191,24 +212,52 @@ class EditOrder extends CreateOrder
     protected function formFrom(?PortalEnquiry $enquiry, Collection $records): array
     {
         $first = $records->first();
-        $editable = $records->first(fn (Quotation $q) => UpdateOrderRecords::isEditable($q)) ?? $first;
 
+        // optional: an admin entry without a channel stays blank
         $receivedThrough = $enquiry?->received_through
             ?: ($enquiry?->payload['received_through'] ?? null)
             ?: match ($enquiry?->source) {
                 PortalEnquiry::SOURCE_PORTAL => 'portal',
                 PortalEnquiry::SOURCE_SALESPERSON_LINK => 'salesperson_link',
                 PortalEnquiry::SOURCE_WALK_IN => 'walk_in',
-                default => 'phone_call',
+                default => '',
             };
 
+        // pickup / store is per block and the payment method is captured with the payment: neither is a header field
         return [
             'customer_id' => (string) ($enquiry?->customer_id ?? $first?->customer_id ?? ''),
+            'customer_address' => UpdateOrderRecords::billingAddressFor($enquiry, $records),
             'received_through' => (string) $receivedThrough,
             'salesperson_id' => (string) ($enquiry?->salesperson_id ?? $first?->salesperson_id ?? ''),
             'order_type' => ($first?->orderType() ?? $enquiry?->order_type)?->value ?? OrderType::Cash->value,
-            'service_type' => ($editable?->service_type ?? $enquiry?->service_type)?->value ?? ServiceType::Pickup->value,
-            'payment_method' => (string) ($editable?->payment_method ?: ($enquiry?->payment_method ?: PaymentMethod::BankTransfer->value)),
+        ];
+    }
+
+    /**
+     * Pickup / store state of a block: a Store block shows its store (an older Store record without one: the
+     * order's branch) and keeps the customer's default pickup address ready for a switch to Pickup; a Pickup
+     * block shows its pickup location (the saved address it came from, else typed as a new address).
+     *
+     * @return array{service_type: string, store_branch_id: string, pickup_preset: string, pickup_location: string}
+     */
+    protected function consignorModeState(?string $customerId, ?string $serviceType, mixed $storeBranchId, ?string $pickupLocation, mixed $fallbackBranchId): array
+    {
+        if ($serviceType === ServiceType::Store->value) {
+            $default = $customerId ? OrderFormOptions::consignorStateForCustomer($customerId) : [];
+
+            return [
+                'service_type' => ServiceType::Store->value,
+                'store_branch_id' => (string) ($storeBranchId ?: ($fallbackBranchId ?: '')),
+                'pickup_preset' => (string) ($default['pickup_location_preset'] ?? ''),
+                'pickup_location' => (string) ($default['pickup_location'] ?? ''),
+            ];
+        }
+
+        return [
+            'service_type' => ServiceType::Pickup->value,
+            'store_branch_id' => '',
+            'pickup_preset' => OrderFormOptions::pickupPresetFor($customerId, $pickupLocation),
+            'pickup_location' => trim((string) $pickupLocation),
         ];
     }
 
@@ -234,6 +283,7 @@ class EditOrder extends CreateOrder
             $type = collect($q->destination_types ?? [])->first()['drop_off_type'] ?? $q->destinations->sortBy('sequence')->first()?->drop_off_type;
             $type = $type instanceof \BackedEnum ? $type->value : $type;
             $items = array_map(fn (array $item) => $this->formItem($item), $service->itemsForRecord($q, $enquiry, $records));
+            $mode = $this->consignorModeState($q->customer_id ? (string) $q->customer_id : null, $q->service_type?->value, $q->store_branch_id, $q->pickup_location, $q->branch_id);
 
             return [
                 'record_id' => (int) $q->id,
@@ -243,25 +293,73 @@ class EditOrder extends CreateOrder
                 'lock_note' => $lock['note'] ?? null,
                 'existing_prices' => $existing,
                 'payload_index' => null,
-                'consignor_name' => (string) ($q->consignor_name ?: ($q->customer?->company_name ?? '')),
+                // blank on the record stays blank (no customer name filled in)
+                'consignor_name' => (string) ($q->consignor_name ?? ''),
+                'service_type' => $mode['service_type'],
+                'store_branch_id' => $mode['store_branch_id'],
                 'from_location_id' => (string) ($q->from_location_id ?? ''),
-                'consignor_brn' => (string) ($q->consignor_brn ?? ''),
-                'customer_address' => (string) ($q->customer_address ?? ''),
-                'pickup_preset' => '',
-                'pickup_location' => (string) ($q->pickup_location ?? ''),
+                'consignor_pic_name' => (string) ($q->consignor_pic_name ?? ''),
+                'consignor_pic_phone' => (string) ($q->consignor_pic_phone ?? ''),
+                'pickup_preset' => $mode['pickup_preset'],
+                'pickup_location' => $mode['pickup_location'],
                 'consignee_name' => (string) ($q->consignee_name ?? ''),
                 'to_location_id' => (string) ($q->to_location_id ?? ''),
-                'consignee_brn' => (string) ($q->consignee_brn ?? ''),
-                'consignee_address' => (string) ($q->consignee_address ?? ''),
-                'drop_off_preset' => '',
-                'drop_off_location' => (string) ($q->drop_off_location ?? ''),
+                'consignee_pic_name' => (string) ($q->consignee_pic_name ?? ''),
+                'consignee_pic_phone' => (string) ($q->consignee_pic_phone ?? ''),
+                // the saved address it was taken from, else typed as a new address
+                'drop_off_preset' => OrderFormOptions::pickupPresetFor($q->customer_id ? (string) $q->customer_id : null, $q->drop_off_location),
+                'drop_off_location' => trim((string) ($q->drop_off_location ?? '')),
                 'customer_do_number' => (string) ($q->customer_do_number ?? ''),
                 'expected_delivery_date' => $q->expected_delivery_date?->toDateString() ?? '',
                 'drop_off_type' => DropOffType::tryFrom((string) $type)?->value ?? DropOffType::Other->value,
+                'photos' => [],
+                'existing_photos' => $this->recordPhotos($q, $enquiry),
                 'instructions' => UpdateOrderRecords::instructionsFromNotes($q->notes),
                 'items' => $items !== [] ? $items : [$this->itemTemplate()],
             ];
         })->all();
+    }
+
+    /**
+     * Photos saved with a record: its own files (the order's shared files are listed once, see
+     * existingAttachments), named as uploaded where the order form knows the name.
+     *
+     * @return list<array{name: string, url: ?string, is_image: bool}>
+     */
+    protected function recordPhotos(Quotation $q, ?PortalEnquiry $enquiry): array
+    {
+        $shared = CreateOrderFromEnquiry::attachmentPaths($enquiry?->attachments ?? []);
+        $known = collect($enquiry?->payload['destinations'] ?? [])
+            ->filter(fn ($destination) => is_array($destination))
+            ->flatMap(fn (array $destination) => array_values(array_filter($destination['attachments'] ?? [], 'is_array')))
+            ->keyBy('path');
+
+        return $this->photoList(collect(CreateOrderFromEnquiry::attachmentPaths($q->attachments ?? []))
+            ->reject(fn (string $path) => in_array($path, $shared, true))
+            ->map(fn (string $path) => $known->get($path, ['path' => $path]))
+            ->values()
+            ->all());
+    }
+
+    /**
+     * Saved files as the page shows them (thumbnail for an image, file link otherwise).
+     *
+     * @param  list<array<string, mixed>|string>  $files  {path, name, mime, …} or bare paths
+     * @return list<array{name: string, url: ?string, is_image: bool}>
+     */
+    protected function photoList(array $files): array
+    {
+        return collect($files)
+            ->map(fn ($file) => is_array($file) ? $file : ['path' => $file])
+            ->filter(fn (array $file) => is_string($file['path'] ?? null) && $file['path'] !== '')
+            ->map(fn (array $file) => [
+                'name' => (string) (($file['name'] ?? null) ?: basename($file['path'])),
+                'url' => Storage::disk('public')->url($file['path']),
+                'is_image' => str_starts_with((string) ($file['mime'] ?? ''), 'image/')
+                    || in_array(strtolower(pathinfo($file['path'], PATHINFO_EXTENSION)), ['jpg', 'jpeg', 'png', 'webp', 'gif'], true),
+            ])
+            ->values()
+            ->all();
     }
 
     /**
@@ -286,6 +384,14 @@ class EditOrder extends CreateOrder
                 ->map(fn (array $item) => $this->formItem($item))
                 ->values()
                 ->all();
+            $mode = $this->consignorModeState(
+                $enquiry->customer_id ? (string) $enquiry->customer_id : null,
+                (string) (($d['service_type'] ?? null) ?: ($enquiry->service_type?->value ?? ServiceType::Pickup->value)),
+                $d['store_branch_id'] ?? null,
+                (string) ($d['pickup_location'] ?? $enquiry->pickup_address ?? ''),
+                $enquiry->branch_id,
+            );
+            $dropOff = trim((string) ($d['drop_off_location'] ?? $p['drop_off_location'] ?? ''));
 
             return [
                 'record_id' => null,
@@ -295,21 +401,29 @@ class EditOrder extends CreateOrder
                 'lock_note' => null,
                 'existing_prices' => [],
                 'payload_index' => $i,
-                'consignor_name' => (string) ($d['consignor_name'] ?? $customerName),
+                // saved on the order form (blank stays blank); a portal destination has none: starts as the customer
+                'consignor_name' => (string) (array_key_exists('consignor_name', $d) ? ($d['consignor_name'] ?? '') : $customerName),
+                'service_type' => $mode['service_type'],
+                'store_branch_id' => $mode['store_branch_id'],
                 'from_location_id' => (string) ($d['from_location_id'] ?? $consignor['from_location_id'] ?? ''),
-                'consignor_brn' => (string) ($d['consignor_brn'] ?? $consignor['consignor_brn'] ?? ''),
-                'customer_address' => (string) ($d['customer_address'] ?? $consignor['customer_address'] ?? ''),
-                'pickup_preset' => '',
-                'pickup_location' => (string) ($d['pickup_location'] ?? $enquiry->pickup_address ?? ''),
+                'consignor_pic_name' => (string) ($d['consignor_pic_name'] ?? ''),
+                'consignor_pic_phone' => (string) ($d['consignor_pic_phone'] ?? ''),
+                'pickup_preset' => $mode['pickup_preset'],
+                'pickup_location' => $mode['pickup_location'],
                 'consignee_name' => (string) ($d['consignee_name'] ?? ''),
                 'to_location_id' => (string) ($d['to_location_id'] ?? $p['to_location_id'] ?? ''),
-                'consignee_brn' => (string) ($d['consignee_brn'] ?? ''),
-                'consignee_address' => (string) ($d['consignee_address'] ?? $d['address'] ?? ''),
-                'drop_off_preset' => '',
-                'drop_off_location' => (string) ($d['drop_off_location'] ?? $p['drop_off_location'] ?? ''),
+                'consignee_pic_name' => (string) ($d['consignee_pic_name'] ?? ''),
+                // a portal destination has the consignee's phone only (until an edit saves the contact number)
+                'consignee_pic_phone' => (string) (array_key_exists('consignee_pic_phone', $d) ? ($d['consignee_pic_phone'] ?? '') : ($d['consignee_phone'] ?? '')),
+                // the saved address it was taken from, else typed as a new address
+                'drop_off_preset' => OrderFormOptions::pickupPresetFor($enquiry->customer_id ? (string) $enquiry->customer_id : null, $dropOff),
+                'drop_off_location' => $dropOff,
                 'customer_do_number' => (string) ($d['customer_do_number'] ?? $enquiry->customer_do_number ?? ''),
                 'expected_delivery_date' => (string) ($d['expected_delivery_date'] ?? $enquiry->preferred_delivery_date?->toDateString() ?? ''),
                 'drop_off_type' => DropOffType::tryFrom((string) ($d['drop_off_type'] ?? ''))?->value ?? DropOffType::Other->value,
+                'photos' => [],
+                // photos saved for this block on the order form (they go to its record when pricing starts)
+                'existing_photos' => $this->photoList(array_values(array_filter($d['attachments'] ?? [], 'is_array'))),
                 'instructions' => (string) (array_key_exists('instructions', $d) ? ($d['instructions'] ?? '') : ($i === 0 ? ($enquiry->special_requirements ?? '') : '')),
                 'items' => $items !== [] ? $items : [$this->itemTemplate()],
             ];
@@ -348,6 +462,7 @@ class EditOrder extends CreateOrder
             'lock_note' => null,
             'existing_prices' => [],
             'payload_index' => null,
+            'existing_photos' => [],
         ];
     }
 
@@ -403,6 +518,17 @@ class EditOrder extends CreateOrder
         return $this->enquiryId !== null;
     }
 
+    /**
+     * "— Not specified —" only where a save can clear it: a portal / salesperson-link origin shown on the page
+     * is not a channel and is never cleared (UpdateOrderRecords::updateEnquiryHeader leaves it alone).
+     */
+    public function receivedThroughClearable(): bool
+    {
+        $original = (string) ($this->originalForm['received_through'] ?? '');
+
+        return $original === '' || array_key_exists($original, parent::receivedThroughOptions());
+    }
+
     /** New consignor & consignee blocks need an order number (enquiry) to be created under. */
     public function canAddPair(): bool
     {
@@ -443,25 +569,43 @@ class EditOrder extends CreateOrder
         }
     }
 
-    /** @return list<array{name: string, url: ?string}> */
+    /**
+     * Files saved for the whole order (the customer's portal upload, or the order-level upload used before
+     * photos were kept per block): every record of the order shows them. A record without an order number
+     * has its files on its own block instead.
+     *
+     * @return list<array{name: string, url: ?string, is_image: bool}>
+     */
     public function existingAttachments(): array
     {
-        if ($this->enquiryId) {
-            return collect(PortalEnquiry::query()->find($this->enquiryId)?->attachments ?? [])
-                ->filter(fn ($file) => is_array($file))
-                ->map(fn (array $file) => [
-                    'name' => (string) ($file['name'] ?? basename((string) ($file['path'] ?? ''))),
-                    'url' => isset($file['path']) ? Storage::disk('public')->url($file['path']) : null,
-                ])
-                ->values()
-                ->all();
+        if (! $this->enquiryId) {
+            return [];
         }
 
-        $record = $this->singleRecordId ? Quotation::query()->find($this->singleRecordId) : null;
+        return $this->photoList(array_values(array_filter(PortalEnquiry::query()->find($this->enquiryId)?->attachments ?? [], 'is_array')));
+    }
 
-        return collect($record?->attachments ?? [])
-            ->filter(fn ($path) => is_string($path) && $path !== '')
-            ->map(fn (string $path) => ['name' => basename($path), 'url' => Storage::disk('public')->url($path)])
+    /**
+     * Every version of this order's records (cancelled ones too): a product's previous records are other orders.
+     *
+     * @return list<int>
+     */
+    public function historyExcludedQuotationIds(): array
+    {
+        $roots = $this->enquiryId
+            ? Quotation::query()->where('portal_enquiry_id', $this->enquiryId)->pluck('id')->all()
+            : ($this->singleRecordId ? [(int) (Quotation::query()->whereKey($this->singleRecordId)->value('root_quotation_id') ?? $this->singleRecordId)] : []);
+
+        if ($roots === []) {
+            return [];
+        }
+
+        return Quotation::query()
+            ->whereIn('id', $roots)
+            ->orWhereIn('root_quotation_id', $roots)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
             ->values()
             ->all();
     }
@@ -500,14 +644,32 @@ class EditOrder extends CreateOrder
         return $options;
     }
 
+    /**
+     * The payment terms of the customer's type. While the order keeps its customer they are limited to the
+     * terms every record may change to (Cash stays Cash, COD only to Cash: UpdateOrderRecords enforces the
+     * same), and the order's own term is always listed (read-only when the header is locked), so an order
+     * whose term the customer type would not offer now can keep it. An order moved to another customer
+     * takes one of that customer's terms.
+     */
     public function orderTypeOptions(): array
     {
         $options = parent::orderTypeOptions();
-        $current = (string) ($this->form['order_type'] ?? '');
+        $current = (string) ($this->originalForm['order_type'] ?? ($this->form['order_type'] ?? ''));
+        $sameCustomer = (string) ($this->form['customer_id'] ?? '') === (string) ($this->originalForm['customer_id'] ?? '');
 
-        // read-only: show the order's own payment term even when the customer could not pick it now
-        if ($this->headerLocked && $current !== '' && ! array_key_exists($current, $options) && ($type = OrderType::tryFrom($current))) {
-            $options[$type->value] = $type->getLabel();
+        if ($sameCustomer && ! $this->headerLocked && $this->recordOrderTypes !== []) {
+            $allowed = null;
+
+            foreach ($this->recordOrderTypes as $value) {
+                $transitions = array_map(fn (OrderType $type) => $type->value, OrderType::tryFrom((string) $value)?->allowedTransitions() ?? []);
+                $allowed = $allowed === null ? $transitions : array_values(array_intersect($allowed, $transitions));
+            }
+
+            $options = array_intersect_key($options, array_flip($allowed ?? []));
+        }
+
+        if (($this->headerLocked || $sameCustomer) && $current !== '' && ! array_key_exists($current, $options) && ($type = OrderType::tryFrom($current))) {
+            $options[$type->value] = $type->getLabel().' (current)';
         }
 
         return $options;
@@ -521,7 +683,7 @@ class EditOrder extends CreateOrder
 
     public function updatedForm($value, string $key): void
     {
-        $readOnly = ($this->headerLocked && in_array($key, ['customer_id', 'received_through', 'order_type'], true))
+        $readOnly = ($this->headerLocked && in_array($key, ['customer_id', 'customer_address', 'received_through', 'order_type'], true))
             || ($key === 'salesperson_id' && ($this->salespersonLocked || (blank($value) && ! $this->allowNoSalesperson())));
 
         if ($readOnly) {
@@ -531,6 +693,11 @@ class EditOrder extends CreateOrder
         }
 
         parent::updatedForm($value, $key);
+
+        // back on the order's own customer: its own payment term again (not the customer type's default)
+        if ($key === 'customer_id' && (string) $value === (string) ($this->originalForm['customer_id'] ?? '') && filled($this->originalForm['order_type'] ?? null)) {
+            $this->form['order_type'] = $this->originalForm['order_type'];
+        }
     }
 
     public function updatedPairs($value, string $key): void
@@ -540,6 +707,20 @@ class EditOrder extends CreateOrder
         }
 
         parent::updatedPairs($value, $key);
+    }
+
+    public function clearConsignor(int $index): void
+    {
+        if (! $this->isPairLocked($index)) {
+            parent::clearConsignor($index);
+        }
+    }
+
+    public function useCustomerAsConsignor(int $index): void
+    {
+        if (! $this->isPairLocked($index)) {
+            parent::useCustomerAsConsignor($index);
+        }
     }
 
     /** Products already on the record keep their price; others take the price-list rate (shown once a salesperson owns the order). */
@@ -612,7 +793,8 @@ class EditOrder extends CreateOrder
 
             foreach (array_keys($this->pairs) as $index) {
                 if (! $this->isPairLocked($index)) {
-                    $rules['pairs.'.$index.substr($key, strlen('pairs.*'))] = $rule;
+                    // a rule naming another field of the block (required_if:pairs.*.service_type,…) names this block's
+                    $rules['pairs.'.$index.substr($key, strlen('pairs.*'))] = is_string($rule) ? str_replace('pairs.*.', 'pairs.'.$index.'.', $rule) : $rule;
                 }
             }
         }
@@ -626,7 +808,7 @@ class EditOrder extends CreateOrder
     {
         // read-only header fields always keep their original value
         if ($this->headerLocked) {
-            foreach (['customer_id', 'received_through', 'order_type'] as $key) {
+            foreach (['customer_id', 'customer_address', 'received_through', 'order_type'] as $key) {
                 $this->form[$key] = $this->originalForm[$key] ?? '';
             }
         }
@@ -648,39 +830,34 @@ class EditOrder extends CreateOrder
         $user = auth()->user();
 
         try {
+            // same block data as Create order (pickup / store, drop-off), plus the record / order-form position and
+            // the photos picked for the block (stored now, added to its record / order-form destination); a locked
+            // block cannot take photos
+            $blocks = array_values($this->pairs);
+            $pairs = array_map(fn (array $pair, int $index) => [
+                'record_id' => filled($pair['record_id'] ?? null) ? (int) $pair['record_id'] : null,
+                'payload_index' => $pair['payload_index'] ?? null,
+            ] + $this->pairData($pair, $index) + [
+                'attachments' => $this->isPairLocked($index) ? [] : $this->storePairPhotos($pair),
+            ], $blocks, array_keys($blocks));
+
             $result = app(UpdateOrderRecords::class)->execute($enquiry, $single, [
                 'customer_id' => $this->form['customer_id'],
-                'received_through' => $this->form['received_through'],
+                // the order's billing address (every record's customer_address)
+                'customer_address' => trim((string) ($this->form['customer_address'] ?? '')),
+                'received_through' => (string) ($this->form['received_through'] ?? ''),
                 'salesperson_id' => $this->form['salesperson_id'] ?: null,
                 'order_type' => $this->form['order_type'],
-                'service_type' => $this->form['service_type'],
-                'payment_method' => $this->form['payment_method'],
-                'attachments' => $this->storeAttachments(),
-                'pairs' => array_map(fn (array $pair) => [
-                    'record_id' => filled($pair['record_id'] ?? null) ? (int) $pair['record_id'] : null,
-                    'payload_index' => $pair['payload_index'] ?? null,
-                    'consignor_name' => $pair['consignor_name'] ?: null,
-                    'from_location_id' => $pair['from_location_id'] ?: null,
-                    'consignor_brn' => $pair['consignor_brn'] ?: null,
-                    'customer_address' => $pair['customer_address'] ?: null,
-                    'pickup_location' => $pair['pickup_location'] ?: null,
-                    'consignee_name' => $pair['consignee_name'],
-                    'to_location_id' => $pair['to_location_id'] ?: null,
-                    'consignee_brn' => $pair['consignee_brn'] ?: null,
-                    'consignee_address' => $pair['consignee_address'] ?: null,
-                    'drop_off_location' => $pair['drop_off_location'] ?: null,
-                    'customer_do_number' => $pair['customer_do_number'] ?: null,
-                    'expected_delivery_date' => $pair['expected_delivery_date'] ?: null,
-                    'drop_off_type' => $pair['drop_off_type'] ?: null,
-                    'instructions' => $pair['instructions'] ?: null,
-                    'items' => array_map(fn (array $item) => [
-                        'line_type' => $item['line_type'] ?? null,
-                        'catalog_key' => ($item['catalog_key'] ?? null) ?: null,
-                        'item_name' => $item['item_name'] ?? '',
-                        'uom' => ($item['uom'] ?? null) ?: null,
-                        'quantity' => $item['quantity'] ?? 1,
-                    ], $pair['items'] ?? []),
-                ], array_values($this->pairs)),
+                // the order form's pickup / store (the first block's); each record takes its own block's
+                'service_type' => $pairs[0]['service_type'] ?? null,
+                // only a header value the user changed is applied to every record (one set per record is kept)
+                'header_changed' => collect(['order_type', 'customer_address'])
+                    ->mapWithKeys(fn (string $key) => [$key => trim((string) ($this->form[$key] ?? '')) !== trim((string) ($this->originalForm[$key] ?? ''))])
+                    ->all(),
+                'known_record_ids' => $this->knownRecordIds,
+                // photos are kept per block (pairs.*.attachments); nothing new for the whole order
+                'attachments' => [],
+                'pairs' => $pairs,
             ], $user);
 
             $result['enquiry']?->releaseLock($user);
@@ -700,7 +877,7 @@ class EditOrder extends CreateOrder
             if (($result['unpriced'] ?? []) !== []) {
                 Notification::make()
                     ->title('Some products have no price yet')
-                    ->body(collect($result['unpriced'])->map(fn (array $names, $number) => $number.': '.implode(', ', $names))->implode(' · ').' · no price-list rate for the destination. Add these products with their price under Items & pricing on the order page.')
+                    ->body(collect($result['unpriced'])->map(fn (array $names, $number) => $number.': '.implode(', ', $names))->implode(' · ').' · no price-list rate for the destination. They are kept on the order: enter their price under Items & pricing on the order page.')
                     ->warning()
                     ->persistent()
                     ->send();
@@ -712,13 +889,16 @@ class EditOrder extends CreateOrder
         }
     }
 
-    /** Back to the page the editor was opened from (or the first remaining record when that one was removed). */
+    /**
+     * Back to the page the editor was opened from; the first remaining record when that one was removed,
+     * or when it was opened from the enquiry of an order that has records (that page would offer pricing again).
+     */
     protected function returnUrl(array $result): string
     {
         $openedRecordRemoved = $this->recordType === 'order'
             && collect($result['cancelled'] ?? [])->contains(fn (Quotation $q) => (int) $q->id === $this->recordId);
 
-        if ($openedRecordRemoved && ($first = collect($result['records'] ?? [])->first())) {
+        if (($openedRecordRemoved || $this->recordType === 'enquiry') && ($first = collect($result['records'] ?? [])->first())) {
             return OrderDetail::urlFor('order', (int) $first->id);
         }
 

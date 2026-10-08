@@ -28,6 +28,9 @@ class BreakBulkResource extends Resource
 
     protected static ?string $navigationLabel = 'Break-Bulk Record';
 
+    // menu item removed (user request 8 Oct 2026); the page stays reachable from links
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?int $navigationSort = 53;
 
     protected static ?string $modelLabel = 'Break-Bulk';

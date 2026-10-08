@@ -289,6 +289,23 @@
         color: rgb(17 24 39);
     }
 
+    /* Monitoring date (x-og.date-range component): same size as the other filter inputs; the filter card stays light in dark mode too */
+    .fi-resource-missing-csn-logs.fi-resource-list-records-page .og-dr {
+        min-width: 0;
+    }
+
+    .fi-resource-missing-csn-logs.fi-resource-list-records-page .og-dr .og-dr-trigger {
+        min-height: 2.375rem;
+        border-color: rgb(209 213 219);
+        background: white;
+        color: rgb(17 24 39);
+        font-size: 0.875rem;
+    }
+
+    .fi-resource-missing-csn-logs.fi-resource-list-records-page .og-dr .og-dr-trigger:hover {
+        border-color: rgb(156 163 175);
+    }
+
     .fi-resource-missing-csn-logs.fi-resource-list-records-page .mc-filter-actions {
         display: flex;
         align-items: center;

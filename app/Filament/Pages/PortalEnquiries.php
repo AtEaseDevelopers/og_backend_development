@@ -4,6 +4,7 @@ namespace App\Filament\Pages;
 
 use App\Domains\Quotation\Actions\AssignEnquirySalesperson;
 use App\Domains\Quotation\Actions\CreateOrderFromEnquiry;
+use App\Domains\Quotation\Actions\UpdateOrderRecords;
 use App\Domains\Quotation\Models\PortalEnquiry;
 use App\Enums\PortalEnquiryStatus;
 use App\Models\User;
@@ -25,7 +26,7 @@ class PortalEnquiries extends Page
 
     protected static ?int $navigationSort = 12;
 
-    /** Superseded in the sidebar by the Orders page (App\Filament\Pages\Orders), which extends this one. */
+    /** Superseded in the sidebar by the Orders workspace (App\Filament\Pages\Orders / OrderDetail); kept routed for old links. */
     protected static bool $shouldRegisterNavigation = false;
 
     protected static string $view = 'filament.pages.portal-enquiries';
@@ -253,6 +254,13 @@ class PortalEnquiries extends Page
 
         if ($enquiry->isLockedByOther(auth()->user())) {
             Notification::make()->title('This enquiry is being attended by '.$enquiry->locker?->name)->warning()->send();
+
+            return;
+        }
+
+        // Already priced: open the order in the Create order layout (Edit order) instead of creating every record again
+        if (UpdateOrderRecords::recordsQuery($enquiry)->exists()) {
+            $this->redirect(EditOrder::urlFor('enquiry', (int) $enquiry->id), navigate: false);
 
             return;
         }

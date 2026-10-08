@@ -28,9 +28,10 @@ class ConsolidateTermInvoices
     {
         [$year, $month] = explode('-', $billingMonth);
 
+        // a CSN already invoiced in any month (or through its order's invoice) is not invoiced again
         $invoicedCsnIds = Invoice::query()
             ->where('type', 'term')
-            ->where('billing_month', $billingMonth)
+            ->where('status', '!=', 'cancelled')
             ->with('lines')
             ->get()
             ->flatMap(fn (Invoice $invoice) => $invoice->lines->pluck('consignment_note_id'))

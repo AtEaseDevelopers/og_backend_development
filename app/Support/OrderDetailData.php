@@ -2,12 +2,17 @@
 
 namespace App\Support;
 
+use App\Domains\Billing\Actions\EditRecordedPayment;
+use App\Domains\Billing\Actions\RefreshOrderPaidAmount;
+use App\Domains\Billing\Models\Payment;
 use App\Domains\Billing\Models\PaymentSubmission;
+use App\Domains\Quotation\Actions\CreateAdminOrder;
 use App\Domains\Quotation\Actions\CreateOrderFromEnquiry;
 use App\Domains\Quotation\Actions\UpdateOrderRecords;
 use App\Domains\Quotation\Models\CreditApprovalRequest;
 use App\Domains\Quotation\Models\PortalEnquiry;
 use App\Domains\Quotation\Models\Quotation;
+use App\Domains\Quotation\Models\QuotationStatusLog;
 use App\Enums\BillingStatus;
 use App\Enums\DropOffType;
 use App\Enums\OrderType;
@@ -15,10 +20,12 @@ use App\Enums\PaymentMethod;
 use App\Enums\PaymentSubmissionStatus;
 use App\Enums\PortalEnquiryStatus;
 use App\Enums\QuotationStatus;
+use App\Enums\ServiceType;
 use App\Filament\Pages\EditOrder;
 use App\Filament\Pages\OrderDetail;
 use App\Filament\Resources\ConsignmentNoteResource;
 use App\Filament\Resources\PaymentSubmissionResource;
+use App\Filament\Resources\RefundNoteResource;
 use Filament\Facades\Filament;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
@@ -26,7 +33,7 @@ use Spatie\Activitylog\Models\Activity;
 
 /**
  * View model for the order detail page (header, 7-step progress, action banner and the
- * Overview / Items & pricing / Payment & billing / Documents / Activity tabs).
+ * Overview / Items & pricing / Activity tabs; the overview carries the Payment summary and Linked records cards).
  *
  * Works for an enquiry that has not been priced yet ("customer-submitted order") and for an
  * order record (quotation) at any later stage.
@@ -43,7 +50,7 @@ class OrderDetailData
 
         if ($type === 'order') {
             $order = Quotation::query()
-                ->with(['customer', 'branch', 'salesperson', 'saLocation', 'creator', 'destinations', 'lines', 'proformaInvoice', 'invoices', 'payments', 'paymentSubmissions.submitter', 'consignmentNotes.deliveryOrder.lorry', 'portalEnquiry.user', 'portalEnquiry.salesperson', 'portalEnquiry.attendee', 'fromLocation', 'toLocation', 'releaser', 'refundNotes', 'notificationLogs', 'statusLogs.user', 'root'])
+                ->with(['customer', 'branch', 'salesperson', 'saLocation', 'creator', 'destinations', 'lines', 'proformaInvoice', 'invoices', 'payments', 'paymentSubmissions.submitter', 'consignmentNotes.deliveryOrder.lorry', 'portalEnquiry.user', 'portalEnquiry.salesperson', 'portalEnquiry.attendee', 'fromLocation', 'toLocation', 'storeBranch', 'releaser', 'refundNotes', 'notificationLogs', 'statusLogs.user', 'root'])
                 ->find($id);
 
             if (! $order || ($companyId = CurrentCompany::id()) && (int) $order->company_id !== (int) $companyId) {
@@ -68,6 +75,9 @@ class OrderDetailData
         $siblings = $this->siblings($enquiry, $order);
         $viewer = auth()->user();
         $lockedByOther = $enquiry ? $enquiry->isLockedByOther($viewer) : false;
+        // enquiry view of an order that already has records: pricing has started and is not offered again
+        $firstRecordId = ! $order && $enquiry ? UpdateOrderRecords::recordsQuery($enquiry)->value('id') : null;
+        $firstRecordId = $firstRecordId !== null ? (int) $firstRecordId : null;
 
         return [
             'type' => $order ? 'order' : 'enquiry',
@@ -86,15 +96,14 @@ class OrderDetailData
             'show_payment' => $order && ($order->status->isConfirmedOrLater() || $order->paymentSubmissions->isNotEmpty()),
             'show_decision' => $order && in_array($order->status, [QuotationStatus::Sent, QuotationStatus::PendingReview], true) && $order->isLatestVersion(),
             'steps' => OrderStage::steps($stage, $order, $cashFlow),
-            'banner' => $this->banner($stage, $payment, $order, $enquiry),
+            'banner' => $this->banner($stage, $payment, $order, $enquiry, $firstRecordId),
             'siblings' => $siblings,
             'lock' => ['locked_by_other' => $lockedByOther, 'locked_by' => $lockedByOther ? ($enquiry?->locker?->name ?? 'another user') : null],
             'overview' => $order ? $this->orderOverview($order, $enquiry, $stage, $payment, $siblings) : $this->enquiryOverview($enquiry, $stage, $payment),
-            'pricing' => $this->pricingTab($order, $enquiry, $stage),
-            'payment_tab' => $this->paymentTab($order, $enquiry, $stage, $payment),
-            'documents' => $this->documents($order, $enquiry),
+            'pricing' => $this->pricingTab($order, $enquiry, $stage, $firstRecordId),
+            'payment_summary' => $order ? $this->paymentSummary($order, $payment) : null,
             'activity' => $this->activity($order, $enquiry),
-            'can' => $this->permissions($order, $enquiry, $stage, $lockedByOther),
+            'can' => $this->permissions($order, $enquiry, $stage, $lockedByOther, $firstRecordId),
             'urls' => [
                 'index' => \App\Filament\Pages\Orders::getUrl(),
                 'enquiry' => $enquiry ? OrderDetail::urlFor('enquiry', $enquiry->id) : null,
@@ -116,9 +125,14 @@ class OrderDetailData
     */
 
     /** @return array<string, mixed>|null */
-    private function banner(array $stage, array $payment, ?Quotation $order, ?PortalEnquiry $enquiry): ?array
+    private function banner(array $stage, array $payment, ?Quotation $order, ?PortalEnquiry $enquiry, ?int $firstRecordId = null): ?array
     {
         $total = (float) ($order?->total_amount ?? 0);
+
+        // the enquiry of an order that already has records: continue on the records instead of pricing again
+        if (! $order && $firstRecordId && in_array($stage['key'], ['enquiry', 'quotation'], true)) {
+            return $this->b('info', 'Order records created', 'Pricing has started for this order. Continue on its order records.', 'Open order →', 'url', OrderDetail::urlFor('order', $firstRecordId));
+        }
 
         return match ($stage['key']) {
             'enquiry' => $this->b('info', 'Review submitted order', 'Customer submitted the form. Admin must review the details and provide pricing.', 'Review submitted order →', 'scroll', 'og-admin-action'),
@@ -135,25 +149,51 @@ class OrderDetailData
                 : $this->b('customer', 'Awaiting customer confirmation', 'Quotation sent · customer has not confirmed. Record the confirmation if it arrives by WhatsApp or email.', 'Record customer confirmation', 'action', 'accept'),
             'confirmation' => $order?->status === QuotationStatus::PendingApproval
                 ? $this->b('warning', 'Credit approval required', 'Customer confirmed. This term order awaits branch manager credit approval.', 'Review credit approval →', 'action', 'creditDecision')
-                : $this->b('info', 'Customer confirmed', 'Confirmation recorded · the proforma invoice is being issued.', 'Open payment & billing →', 'tab', 'payment'),
+                : $this->b('info', 'Customer confirmed', 'Confirmation recorded · the proforma invoice is being issued.', 'Open payment summary →', 'tab', 'payment'),
             'payment' => match ($stage['color']) {
                 'issue' => $order?->cod_blocked
                     ? $this->b('danger', 'COD order blocked', $stage['hint'], 'Unblock COD →', 'action', 'unblockCod')
                     : $this->b('danger', 'Billing generation failed', $order?->billing_error ?: $stage['hint'], 'Retry billing →', 'action', 'generateBilling'),
                 'action' => $order?->paymentSubmissions->contains(fn ($s) => $s->status->isOpen())
-                    ? $this->b('warning', 'Review payment', 'Payment proof submitted · verify it under Payment & billing or obtain Admin release to continue.', 'Review payment →', 'tab', 'payment')
+                    ? $this->b('warning', 'Review payment', 'Payment proof submitted · verify it under Payment summary or obtain Admin release to continue.', 'Review payment →', 'tab', 'payment')
                     : $this->b('warning', 'Review admin release', 'Resolve payment review or obtain Admin release to continue.', 'Review admin release →', 'action', 'release'),
                 'released' => $this->b('success', 'Ready to bill', 'Admin released · issue the Invoice / Cash Bill to create the CSN.', 'Generate billing →', 'action', 'generateBilling'),
-                default => $this->b('info', 'Awaiting customer payment', 'Proforma issued · waiting for payment proof. Submissions appear under Payment & billing.', 'Review payment →', 'tab', 'payment'),
+                default => $this->b('info', 'Awaiting customer payment', 'Proforma issued · waiting for payment proof. Submissions appear under Payment summary.', 'Review payment →', 'tab', 'payment'),
             },
             'billed' => $this->b('success', 'Billing issued', 'Invoice / Cash Bill issued · create the CSN to continue to dispatch.', 'Create CSN →', 'action', 'generateBilling'),
             'csn' => $this->b('success', 'CSN created', 'Invoice issued · continue in CSN management.', 'View CSN →', 'url', $order ? ConsignmentNoteResource::getUrl('index', ['tableFilters' => ['quotation_id' => ['value' => $order->id]]]) : null),
-            'closed' => $this->b('danger', $stage['label'], $stage['hint'], $order?->status === QuotationStatus::Closed ? 'Reopen case' : null, 'action', 'reopen'),
+            'closed' => $order?->status === QuotationStatus::Superseded
+                ? $this->oldVersionBanner($order)
+                : $this->b('danger', $stage['label'], $stage['hint'], $order?->status === QuotationStatus::Closed ? 'Reopen case' : null, 'action', 'reopen'),
             default => null,
         };
     }
 
     /** @return array<string, mixed> */
+    /** An older version of an order (replaced by a revision): read-only, with a link to the latest version. */
+    private function oldVersionBanner(Quotation $order): array
+    {
+        $rootId = $order->rootId();
+        $latest = Quotation::query()
+            ->where(fn ($q) => $q->where('root_quotation_id', $rootId)->orWhere('id', $rootId))
+            ->orderByDesc('version')
+            ->first();
+        $reason = $order->statusLogs
+            ->filter(fn ($log) => $log->to_status === QuotationStatus::Superseded->value)
+            ->sortByDesc('id')
+            ->first()?->remarks;
+        $reason = $reason ? trim((string) preg_replace('/^(Superseded|Replaced) by version \d+( — )?/u', '', $reason)) : '';
+
+        return $this->b(
+            'info',
+            'Old version'.($latest && $latest->id !== $order->id ? ' · replaced by version '.$latest->version : ''),
+            'This version is kept for reference only and can no longer be edited.'.($reason !== '' ? ' Reason: '.$reason : ''),
+            $latest && $latest->id !== $order->id ? 'Open latest version →' : null,
+            'url',
+            $latest && $latest->id !== $order->id ? $this->resourceUrl(fn () => OrderDetail::urlFor('order', $latest->id)) : null,
+        );
+    }
+
     private function b(string $tone, string $title, string $text, ?string $ctaLabel, string $ctaKind, ?string $ctaValue): array
     {
         return ['tone' => $tone, 'title' => $title, 'text' => $text, 'cta_label' => $ctaLabel, 'cta_kind' => $ctaKind, 'cta_value' => $ctaValue];
@@ -215,6 +255,7 @@ class OrderDetailData
                 'customer' => $enquiry->customer?->company_name ?? '—',
                 'salesperson' => $enquiry->salesperson?->name,
                 'enquiry_ref' => $enquiry->reference_no,
+                'received_through' => $this->receivedThrough($enquiry),
                 'do_number' => $enquiry->customer_do_number ?: '—',
                 'requested_delivery' => $enquiry->preferred_delivery_date?->format('Y-m-d') ?? '—',
                 'order_type' => $enquiry->order_type?->getLabel() ?? '—',
@@ -227,7 +268,7 @@ class OrderDetailData
                 ])->all(),
                 'items' => $items->map(fn (array $item) => [
                     'name' => $item['item_name'] ?? '—',
-                    'qty' => rtrim(rtrim(number_format((float) ($item['quantity'] ?? 1), 3, '.', ''), '0'), '.').' '.strtoupper((string) ($item['uom'] ?? '')),
+                    'qty' => QuantityLabel::format($item['quantity'] ?? 1, $item['uom'] ?? null),
                 ])->all(),
                 'instructions' => $enquiry->special_requirements,
                 'attachments' => $this->attachments($enquiry->attachments ?? []),
@@ -254,38 +295,35 @@ class OrderDetailData
         ];
     }
 
+    /**
+     * How the order reached us: the channel picked on an admin-entered order (phone call, WhatsApp, …),
+     * otherwise where the form came from (customer portal, salesperson link, walk-in).
+     */
+    private function receivedThrough(?PortalEnquiry $enquiry): string
+    {
+        if (! $enquiry) {
+            return 'Admin entry';
+        }
+
+        $channel = (string) ($enquiry->received_through ?: ($enquiry->payload['received_through'] ?? ''));
+
+        return CreateAdminOrder::RECEIVED_THROUGH[$channel]
+            ?? ($enquiry->source === PortalEnquiry::SOURCE_ADMIN ? '—' : $enquiry->sourceLabel());
+    }
+
+    /** "Ahmad · 012-345 6789" — a person in charge and contact number (null when neither is entered). */
+    private function contactLine(?string $name, ?string $phone): ?string
+    {
+        $line = collect([trim((string) $name), trim((string) $phone)])->filter()->implode(' · ');
+
+        return $line !== '' ? $line : null;
+    }
+
     /** @return array<string, mixed> */
     private function orderOverview(Quotation $order, ?PortalEnquiry $enquiry, array $stage, array $payment, array $siblings): array
     {
-        $total = (float) $order->total_amount;
-        $paid = (float) $order->paid_amount;
         $destinations = $order->destinations->sortBy('sequence')->values();
         $types = collect($order->destination_types ?? [])->keyBy('column');
-
-        $linked = [];
-        $linked[] = ['title' => $order->number, 'sub' => 'Quotation · Version '.$order->version, 'status' => $order->sent_at ? 'Issued' : ($order->status === QuotationStatus::Draft ? 'Draft' : $order->status->getLabel()), 'color' => $order->sent_at ? 'progress' : 'gray', 'url' => $this->pdfUrl('quotations', 'quotation', $order)];
-        $linked[] = $order->proformaInvoice
-            ? ['title' => 'Proforma Invoice', 'sub' => $order->proformaInvoice->number, 'status' => 'Issued', 'color' => 'progress', 'url' => $this->pdfUrl('proforma-invoices', 'proformaInvoice', $order->proformaInvoice)]
-            : ['title' => 'Proforma Invoice', 'sub' => 'Issued on customer confirmation', 'status' => 'Not issued', 'color' => 'gray', 'url' => null];
-
-        if ($order->invoices->isEmpty()) {
-            $linked[] = ['title' => 'Invoice / Cash Bill', 'sub' => 'Required before CSN creation', 'status' => 'Not issued', 'color' => 'gray', 'url' => null];
-        } else {
-            foreach ($order->invoices as $invoice) {
-                $linked[] = ['title' => $invoice->isCashBill() ? 'Cash Bill' : 'Invoice', 'sub' => $invoice->number, 'status' => 'Issued', 'color' => 'done', 'url' => $this->pdfUrl('invoices', 'invoice', $invoice)];
-            }
-        }
-
-        foreach ($order->consignmentNotes as $csn) {
-            $linked[] = ['title' => 'CSN', 'sub' => $csn->number.($csn->deliveryOrder ? ' · DO '.$csn->deliveryOrder->number : ''), 'status' => $csn->status?->getLabel() ?? '—', 'color' => 'progress', 'url' => ConsignmentNoteResource::getUrl('view', ['record' => $csn])];
-        }
-
-        $note = match (true) {
-            $order->consignmentNotes->isNotEmpty() => 'CSN created · continue in CSN management',
-            $order->billingStatus() === BillingStatus::Generated => 'Billing issued · CSN pending',
-            $order->isReleased() => 'Released by '.($order->releaser?->name ?? 'Admin').' on '.$order->released_at?->format('d/m/Y H:i'),
-            default => 'CSN not created · Billing must be issued first',
-        };
 
         return [
             'mode' => 'order',
@@ -294,12 +332,26 @@ class OrderDetailData
                 'salesperson_sa' => trim(($order->salesperson?->name ?? 'Not assigned').' / '.($order->saLocation?->code ?? $order->branch?->code ?? '—')),
                 'enquiry_ref' => $enquiry?->reference_no ?? ($order->orderNumber()),
                 'enquiry_url' => $enquiry ? OrderDetail::urlFor('enquiry', $enquiry->id) : null,
+                'received_through' => $this->receivedThrough($enquiry),
                 'do_number' => $order->customer_do_number ?: '—',
                 'order_type' => $order->orderType()?->getLabel() ?? '—',
                 'service_type' => $order->service_type?->getLabel(),
                 'consent' => $order->customer?->consentSkipsReconfirmation() ? 'Consent letter on file' : 'Pricing reconfirmation required',
                 'expected_delivery' => $order->expected_delivery_date?->format('d M Y'),
-                'pickup' => ['title' => 'Pickup · '.($order->fromLocation?->name ?? app(OrderListingData::class)->cityFromAddress($order->pickup_location) ?? ($order->branch?->name ?? '—')), 'sub' => trim(($order->consignor_name ?: $order->customer?->company_name).' · '.($order->pickup_location ?: ($order->customer_address ?: '—')), ' ·')],
+                // the consignor is picked up or brings the goods to an O&G store; a person in charge on each side
+                'consignor_mode' => match ($order->service_type) {
+                    ServiceType::Store => 'Store · '.($order->storeBranch?->name ?? 'not selected'),
+                    ServiceType::Pickup => 'Pickup',
+                    default => null,
+                },
+                'consignor_pic' => $this->contactLine($order->consignor_pic_name, $order->consignor_pic_phone),
+                'consignee_pic' => $this->contactLine($order->consignee_pic_name, $order->consignee_pic_phone),
+                'pickup' => [
+                    'title' => $order->service_type === ServiceType::Store
+                        ? 'Store · '.($order->storeBranch?->name ?? $order->fromLocation?->name ?? '—')
+                        : 'Pickup · '.($order->fromLocation?->name ?? app(OrderListingData::class)->cityFromAddress($order->pickup_location) ?? ($order->branch?->name ?? '—')),
+                    'sub' => trim(($order->consignor_name ?: ($order->portal_enquiry_id ? '—' : $order->customer?->company_name)).' · '.($order->pickup_location ?: ($order->customer_address ?: '—')), ' ·'),
+                ],
                 'dropoffs' => $destinations->map(function ($d) use ($types, $order) {
                     $type = $types->get($d->consignee_name)['drop_off_type'] ?? null;
 
@@ -309,17 +361,9 @@ class OrderDetailData
                     ];
                 })->all(),
             ],
-            'linked' => $linked,
+            'linked' => $this->linkedRecords($order),
+            'attachments' => $this->orderAttachments($order, $enquiry),
             'other_orders' => array_values(array_filter($siblings, fn ($s) => ! $s['current'])),
-            'payment_card' => [
-                'label' => $payment['label'],
-                'color' => $payment['color'],
-                'order_type' => $order->orderType()?->getLabel() ?? '—',
-                'total' => 'RM '.number_format($total, 2),
-                'paid' => 'RM '.number_format($paid, 2),
-                'outstanding' => 'RM '.number_format(max(0, $total - $paid), 2),
-                'note' => $note,
-            ],
             'ownership' => [
                 'handled_by' => $order->salesperson?->name ?? 'Not assigned',
                 'editing' => $order->status->isEditable() ? 'Available' : 'Locked (version '.$order->version.' · '.$order->status->getLabel().')',
@@ -329,6 +373,113 @@ class OrderDetailData
         ];
     }
 
+    /**
+     * Linked records card: every document of the order (what the former Documents tab listed) —
+     * quotation, proforma, invoice / cash bill (+ AutoCount sync), CSN and DO (page + PDF) and refund notes.
+     *
+     * @return list<array{title: string, sub: string, status: string, color: string, url: ?string, links: list<array{label: string, url: string}>}>
+     */
+    private function linkedRecords(Quotation $order): array
+    {
+        $item = fn (string $title, string $sub, string $status, string $color, ?string $url, array $links = []) => [
+            'title' => $title, 'sub' => $sub, 'status' => $status, 'color' => $color, 'url' => $url,
+            'links' => array_values(array_filter($links, fn (array $l) => filled($l['url']))),
+        ];
+        $sync = fn ($doc) => 'AutoCount: '.ucfirst(str_replace('_', ' ', (string) ($doc->autocount_sync_status ?: 'not_synced')));
+
+        $linked = [];
+        $linked[] = $item($order->number, 'Quotation · Version '.$order->version, $order->sent_at ? 'Issued' : ($order->status === QuotationStatus::Draft ? 'Draft' : (string) $order->status->getLabel()), $order->sent_at ? 'progress' : 'gray', $this->pdfUrl('quotations', 'quotation', $order));
+        $linked[] = $order->proformaInvoice
+            ? $item('Proforma Invoice', $order->proformaInvoice->number, 'Issued', 'progress', $this->pdfUrl('proforma-invoices', 'proformaInvoice', $order->proformaInvoice))
+            : $item('Proforma Invoice', 'Issued on customer confirmation', 'Not issued', 'gray', null);
+
+        if ($order->invoices->isEmpty()) {
+            $linked[] = $item('Invoice / Cash Bill', 'Required before CSN creation', 'Not issued', 'gray', null);
+        }
+
+        foreach ($order->invoices as $invoice) {
+            $linked[] = $item(
+                $invoice->isCashBill() ? 'Cash Bill' : 'Invoice',
+                $invoice->number.' · RM '.number_format((float) $invoice->total_amount, 2).' · '.$sync($invoice),
+                'Issued',
+                'done',
+                $this->pdfUrl('invoices', 'invoice', $invoice),
+            );
+        }
+
+        foreach ($order->consignmentNotes as $csn) {
+            $linked[] = $item('CSN', $csn->number, $csn->status?->getLabel() ?? '—', 'progress', ConsignmentNoteResource::getUrl('view', ['record' => $csn]), [
+                ['label' => 'PDF', 'url' => $this->pdfUrl('consignment-notes', 'consignmentNote', $csn)],
+            ]);
+
+            if ($do = $csn->deliveryOrder) {
+                $doStatus = $do->status;
+                $linked[] = $item(
+                    'DO',
+                    $do->number.($do->lorry ? ' · '.$do->lorry->registration_no : '').' · CSN '.$csn->number,
+                    $doStatus instanceof \BackedEnum ? (method_exists($doStatus, 'getLabel') ? (string) $doStatus->getLabel() : (string) $doStatus->value) : ucfirst((string) $doStatus),
+                    'progress',
+                    $this->pdfUrl('delivery-orders', 'deliveryOrder', $do),
+                );
+            }
+        }
+
+        foreach ($order->refundNotes as $refund) {
+            $linked[] = $item('Refund Note', $refund->number.' · RM '.number_format((float) $refund->amount, 2).' · '.$sync($refund), ucfirst((string) $refund->status), 'action', $this->resourceUrl(fn () => RefundNoteResource::getUrl('index')));
+        }
+
+        // earlier versions of this record (kept as superseded when it was revised / rejected and re-priced)
+        foreach ($this->earlierVersions($order) as $version) {
+            $linked[] = $item(
+                $version->number,
+                'Earlier version '.$version->version.' · RM '.number_format((float) $version->total_amount, 2),
+                (string) $version->status->getLabel(),
+                'gray',
+                $this->resourceUrl(fn () => OrderDetail::urlFor('order', $version->id)),
+                [['label' => 'PDF', 'url' => $this->pdfUrl('quotations', 'quotation', $version)]],
+            );
+        }
+
+        return $linked;
+    }
+
+    /** @return \Illuminate\Support\Collection<int, Quotation> older versions of the order, newest first */
+    private function earlierVersions(Quotation $order): \Illuminate\Support\Collection
+    {
+        $rootId = $order->rootId();
+
+        return Quotation::query()
+            ->where(fn ($q) => $q->where('root_quotation_id', $rootId)->orWhere('id', $rootId))
+            ->where('id', '!=', $order->id)
+            ->where('version', '<', (int) $order->version)
+            ->with('statusLogs.user', 'creator')
+            ->orderByDesc('version')
+            ->get();
+    }
+
+    /**
+     * Files uploaded with the order (customer form uploads and order uploads), shown under Linked records.
+     *
+     * @return list<array{name: string, url: ?string, is_image: bool, source: string}>
+     */
+    private function orderAttachments(Quotation $order, ?PortalEnquiry $enquiry): array
+    {
+        $files = collect($this->attachments($enquiry?->attachments ?? []))->map(fn (array $f) => $f + ['source' => 'Customer upload']);
+        $enquiryPaths = collect($enquiry?->attachments ?? [])->pluck('path')->filter()->all();
+
+        foreach (collect($order->attachments ?? [])->filter() as $path) {
+            $path = is_array($path) ? (string) ($path['path'] ?? '') : (string) $path;
+
+            if ($path === '' || in_array($path, $enquiryPaths, true)) {
+                continue;
+            }
+
+            $files->push(['name' => basename($path), 'url' => Storage::disk('public')->url($path), 'is_image' => $this->isImagePath($path), 'source' => 'Order upload']);
+        }
+
+        return $files->values()->all();
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Items & pricing
@@ -336,7 +487,7 @@ class OrderDetailData
     */
 
     /** @return array<string, mixed> */
-    private function pricingTab(?Quotation $order, ?PortalEnquiry $enquiry, array $stage): array
+    private function pricingTab(?Quotation $order, ?PortalEnquiry $enquiry, array $stage, ?int $firstRecordId = null): array
     {
         if (! $order) {
             $payload = $enquiry?->payload ?? [];
@@ -345,8 +496,14 @@ class OrderDetailData
             return [
                 'mode' => 'start',
                 'destinations_count' => max(1, $destinations->count()),
-                'can_start' => $enquiry && $enquiry->salesperson_id && ! in_array($stage['key'], ['closed'], true),
-                'why_not' => ! $enquiry?->salesperson_id ? 'Assign a salesperson before pricing.' : ($stage['key'] === 'closed' ? 'This enquiry is closed.' : null),
+                'can_start' => $enquiry && $enquiry->salesperson_id && ! $firstRecordId && ! in_array($stage['key'], ['closed'], true),
+                'why_not' => match (true) {
+                    (bool) $firstRecordId => 'Pricing has already started: the order records exist. Price them on the order page.',
+                    ! $enquiry?->salesperson_id => 'Assign a salesperson before pricing.',
+                    $stage['key'] === 'closed' => 'This enquiry is closed.',
+                    default => null,
+                },
+                'records_url' => $firstRecordId ? OrderDetail::urlFor('order', $firstRecordId) : null,
             ];
         }
 
@@ -361,16 +518,26 @@ class OrderDetailData
             $column = $destination?->consignee_name ?? '—';
             $tier = $this->lookup->matchedUomTier($line->item_name, $column, (float) $line->quantity);
 
+            // a product kept on the order without a price yet shows no amount
+            $priced = $line->unit_price !== null;
+
             return [
                 'item' => $line->item_name,
-                'sub' => null,
+                'sub' => $priced ? null : 'No price yet',
                 'qty_range' => rtrim(rtrim(number_format((float) $line->quantity, 3, '.', ''), '0'), '.').' unit(s)',
                 'range' => $tier ? 'Range: '.($tier->max_qty ? number_format((float) $tier->min_qty, 0).'–'.number_format((float) $tier->max_qty, 0) : number_format((float) $tier->min_qty, 0).'+') : null,
                 'route' => ($order->fromLocation?->name ?? app(OrderListingData::class)->cityFromAddress($order->pickup_location) ?? $order->branch?->name ?? 'Pickup').' → '.$column,
-                'unit' => 'RM '.number_format((float) $line->unit_price, 2),
-                'charge' => 'RM '.number_format((float) $line->line_total, 2),
+                'unit' => $priced ? 'RM '.number_format((float) $line->unit_price, 2) : '—',
+                'charge' => $priced ? 'RM '.number_format((float) $line->line_total, 2) : '—',
             ];
         })->values()->all();
+
+        // products of the order form that never became a line on this record (saved before products without a
+        // price were kept): listed with the form's products while it can still be priced
+        $formEnquiry = $enquiry ?? $order->portalEnquiry;
+        $missing = $editable && $formEnquiry
+            ? collect(UpdateOrderRecords::payloadItemsWithoutLine($order, $formEnquiry))
+            : collect();
 
         foreach ($charges as $charge) {
             $rows[] = ['item' => $charge->item_name, 'sub' => 'Additional charge', 'qty_range' => '1', 'range' => null, 'route' => '—', 'unit' => 'RM '.number_format((float) $charge->unit_price, 2), 'charge' => 'RM '.number_format((float) $charge->line_total, 2)];
@@ -415,7 +582,9 @@ class OrderDetailData
                 'status' => $order->status->getLabel(),
                 'customer' => $order->customer?->company_name ?? '—',
                 'route' => ($order->fromLocation?->name ?? app(OrderListingData::class)->cityFromAddress($order->pickup_location) ?? $order->branch?->name ?? 'Pickup').' → '.implode(', ', $columns),
-                'items' => $itemLines->unique('item_name')->map(fn ($l) => $l->item_name.' × '.rtrim(rtrim(number_format((float) $l->quantity, 3, '.', ''), '0'), '.'))->implode('; ') ?: '—',
+                'items' => $itemLines->unique('item_name')->map(fn ($l) => $l->item_name.' × '.rtrim(rtrim(number_format((float) $l->quantity, 3, '.', ''), '0'), '.'))
+                    ->concat($missing->map(fn (array $item) => trim((string) ($item['item_name'] ?? '')).' × '.max(1, (int) round((float) ($item['quantity'] ?? 1)))))
+                    ->implode('; ') ?: '—',
                 'order_type' => $order->orderType()?->getLabel() ?? '—',
                 'total' => 'RM '.number_format((float) $order->total_amount, 2),
                 'remarks' => $order->notes,
@@ -460,7 +629,32 @@ class OrderDetailData
             }
 
             if ($column !== null) {
-                $rows[$key]['prices'][$column] = (float) $line->unit_price;
+                // a product kept without a price yet: empty price box
+                $rows[$key]['prices'][$column] = $line->unit_price !== null ? (float) $line->unit_price : null;
+            }
+        }
+
+        // products of the order form that never became a line (saved before products without a price were kept,
+        // e.g. one with no price-list rate): shown with an empty price so they can be priced
+        if ($order->portal_enquiry_id && ($enquiry = $order->portalEnquiry)) {
+            $updater = app(UpdateOrderRecords::class);
+
+            foreach (UpdateOrderRecords::payloadItemsWithoutLine($order, $enquiry) as $payloadItem) {
+                $item = $updater->itemFromPayload($payloadItem);
+
+                if ($item['item_name'] === '' || isset($rows[$item['item_name']])) {
+                    continue;
+                }
+
+                $rows[$item['item_name']] = [
+                    'line_type' => $item['line_type'],
+                    'catalog_key' => $item['catalog_key'],
+                    'item_name' => $item['item_name'],
+                    'uom' => $item['uom'],
+                    'quantity' => (float) $item['quantity'],
+                    'prices' => array_fill_keys($columns, null),
+                    'list' => [],
+                ];
             }
         }
 
@@ -515,39 +709,41 @@ class OrderDetailData
 
     /*
     |--------------------------------------------------------------------------
-    | Payment & billing
+    | Payment summary (overview card)
     |--------------------------------------------------------------------------
     */
 
-    /** @return array<string, mixed> */
-    private function paymentTab(?Quotation $order, ?PortalEnquiry $enquiry, array $stage, array $payment): array
+    /**
+     * Payment summary card: status, Total / Paid / Outstanding, the payment history (each submission and each payment
+     * recorded without one, with its uploaded slip / receipt), add / edit rights and the admin release state.
+     *
+     * @return array<string, mixed>
+     */
+    private function paymentSummary(Quotation $order, array $payment): array
     {
-        if (! $order) {
-            return ['mode' => 'none', 'text' => 'Payment is requested after the customer confirms the quotation. No proforma, payment or billing exists at this stage.'];
-        }
-
-        if (in_array($order->orderType(), [OrderType::Term, OrderType::Cod], true)) {
-            $invoice = $order->invoices->sortByDesc('id')->first();
-
-            return [
-                'mode' => 'non_cash',
-                'text' => $order->orderType() === OrderType::Term
-                    ? 'Credit term order · no payment is collected at this stage. Once the customer confirms (and credit approval passes) the invoice is issued and the CSN is created.'
-                    : 'COD order · payment is collected on delivery. Once the customer confirms the invoice is issued and the CSN is created, unless Admin blocks the order.',
-                'invoice' => $invoice?->number,
-                'csn' => $order->consignmentNotes->pluck('number')->implode(', ') ?: null,
-                'cod_blocked' => (bool) $order->cod_blocked,
-            ];
-        }
+        $order->loadMissing(['paymentSubmissions.payment.receipt', 'paymentSubmissions.payment.cashBill', 'paymentSubmissions.level2Approver', 'payments.receiver', 'payments.receipt', 'payments.cashBill']);
 
         $total = (float) $order->total_amount;
-        $paid = (float) $order->paid_amount;
-        $method = PaymentMethod::tryFrom((string) $order->payment_method);
+        // live sum of completed payments: quotations.paid_amount was not refreshed for payments recorded outside the
+        // submission flow (driver COD collection, CSN "Collect Payment") before RecordPayment started doing so
+        $paid = round((float) $order->payments->where('status', 'completed')->sum('amount'), 2);
+        // admin-entered orders no longer carry a payment method: it is the one of the latest payment recorded
+        $method = PaymentMethod::tryFrom((string) $order->payment_method)
+            ?? $order->paymentSubmissions->sortByDesc('id')->first()?->method();
         $type = $order->orderType();
         $open = $order->paymentSubmissions->filter(fn ($s) => $s->status->isOpen());
+        $user = auth()->user();
+        $canEdit = EditRecordedPayment::allows($user) && $order->isLatestVersion();
+        $billed = $order->billingStatus() === BillingStatus::Generated;
+        // credit term orders are released automatically on confirmation (ProceedNonCashOrderToCsn): not an Admin release
+        $autoReleased = $order->isReleased() && $type === OrderType::Term
+            && ($order->released_by === null || str_starts_with((string) $order->release_reason, 'Credit term order · released automatically'));
+        $adminReleased = $order->isReleased() && ! $autoReleased;
+        $codPending = RefreshOrderPaidAmount::codCollectionPending($order);
 
         $reviewStatus = match (true) {
             $order->consignmentNotes->isNotEmpty() || $order->billingStatus() === BillingStatus::Generated => 'Billing issued',
+            $autoReleased => 'Released on confirmation',
             $order->isReleased() => 'Admin released',
             $open->isNotEmpty() => 'Verification pending',
             $type === OrderType::Term => 'Admin release required',
@@ -565,118 +761,241 @@ class OrderDetailData
             default => null,
         };
 
-        $invoice = $order->invoices->sortByDesc('id')->first();
+        $statusNote = match (true) {
+            $order->consignmentNotes->isNotEmpty() => 'CSN created · continue in CSN management',
+            $billed => 'Billing issued · CSN pending',
+            $autoReleased => 'Credit term · released for invoice and CSN on confirmation',
+            $order->isReleased() => 'Released · billing can be issued',
+            default => 'CSN not created · Billing must be issued first',
+        };
 
-        return [
-            'mode' => 'order',
-            'review' => [
-                'label' => $payment['label'],
-                'color' => $payment['color'],
-                'total' => 'RM '.number_format($total, 2),
-                'paid' => 'RM '.number_format($paid, 2),
-                'outstanding' => 'RM '.number_format(max(0, $total - $paid), 2),
-                'method' => $method?->getLabel() ?? '—',
-                'order_type' => $type?->getLabel() ?? '—',
-                'review_status' => $reviewStatus,
-                'approval_levels' => $method?->requiresTwoApprovals() ? 'Two-level (verify + approve)' : 'Standard review',
-                'note' => $note,
-                'proforma' => $order->proformaInvoice?->number,
-            ],
-            'submissions' => $order->paymentSubmissions->sortByDesc('id')->map(fn (PaymentSubmission $s) => [
+        // last editor of each payment entry (EditRecordedPayment writes a payment_edit status log), shown next to
+        // "Approved by" so an edited amount is not read as the approver's
+        $editedSub = [];
+        $editedPay = [];
+
+        foreach ($order->statusLogs->sortBy('id') as $log) {
+            $edit = $log->meta['payment_edit'] ?? null;
+
+            if (! is_array($edit)) {
+                continue;
+            }
+
+            $editor = $edit['edited_by']['name'] ?? $log->user?->name ?? 'Unknown user';
+
+            if (! empty($edit['payment_submission_id'])) {
+                $editedSub[(int) $edit['payment_submission_id']] = $editor;
+            }
+
+            if (! empty($edit['payment_id'])) {
+                $editedPay[(int) $edit['payment_id']] = $editor;
+            }
+        }
+
+        $entries = $order->paymentSubmissions->map(function (PaymentSubmission $s) use ($canEdit, $editedSub, $editedPay) {
+            $p = $s->payment;
+
+            return [
+                'key' => 'sub-'.$s->id,
+                'kind' => 'submission',
                 'id' => $s->id,
+                'sort' => $s->created_at?->getTimestamp() ?? 0,
                 'date' => $s->payment_date?->format('d/m/Y') ?? $s->created_at?->format('d/m/Y'),
                 'amount' => 'RM '.number_format((float) $s->amount, 2),
                 'method' => $s->method()?->getLabel() ?? '—',
-                'reference' => $s->reference ?: '—',
-                'status' => $s->status->getLabel(),
+                'reference' => $s->reference,
+                'status' => (string) $s->status->getLabel(),
                 'color' => match ($s->status) {
                     PaymentSubmissionStatus::Approved => 'done',
                     PaymentSubmissionStatus::Verified => 'released',
                     PaymentSubmissionStatus::Rejected, PaymentSubmissionStatus::Cancelled => 'issue',
                     default => 'action',
                 },
-                'receipt_url' => $s->receipt_path ? Storage::disk('public')->url($s->receipt_path) : null,
+                'recorded_by' => $s->submitter?->name ?? ($s->submitted_channel === 'portal' ? 'Customer (portal)' : ucfirst((string) ($s->submitted_channel ?: 'system'))),
+                'approved_by' => $s->status === PaymentSubmissionStatus::Approved ? $s->level2Approver?->name : null,
+                'edited_by' => $editedSub[$s->id] ?? ($p ? ($editedPay[$p->id] ?? null) : null),
                 'remarks' => $s->rejection_reason ?: $s->remarks,
+                'documents' => $this->paymentDocuments($p),
+                'attachments' => $this->fileLinks(array_values(array_unique([...$s->files(), ...($p?->files() ?? [])]))),
                 'can_verify' => $s->status === PaymentSubmissionStatus::Submitted && ($s->method()?->requiresTwoApprovals() ?? false),
                 'can_approve' => in_array($s->status, [PaymentSubmissionStatus::Submitted, PaymentSubmissionStatus::Verified], true),
                 'can_reject' => $s->status->isOpen(),
-            ])->values()->all(),
-            'billing' => [
-                'billing_type' => match ($type) {
-                    OrderType::Cash => 'Cash Bill',
-                    OrderType::Cod => 'Invoice (COD)',
-                    OrderType::Term => 'Invoice (credit term)',
-                    default => 'Invoice',
-                },
-                'invoice' => $invoice ? $invoice->number.' · '.ucfirst((string) $invoice->status) : 'Not issued',
-                'dispatch_release' => $order->isReleased() ? 'Released '.$order->released_at?->format('d/m/Y') : ($order->consignmentNotes->isNotEmpty() ? 'CSN created' : 'Not released'),
-                'eod' => $order->consignmentNotes->contains(fn ($c) => (string) ($c->status?->value ?? '') === 'delivered') ? 'Done' : 'Pending',
-                'autocount' => $invoice ? ($invoice->autocount_sync_status ? ucfirst(str_replace('_', ' ', (string) $invoice->autocount_sync_status)) : 'Waiting for completed EOD') : 'Not applicable yet',
-                'refund' => $order->refundNotes->isNotEmpty() ? $order->refundNotes->pluck('number')->implode(', ') : 'Not applicable',
-                'note' => 'Term may change to Cash or COD. COD may change to Cash. Cash remains Cash.',
+                'can_edit' => $canEdit && in_array($s->status, [PaymentSubmissionStatus::Submitted, PaymentSubmissionStatus::Verified, PaymentSubmissionStatus::Approved], true),
+            ];
+        });
+
+        // payments recorded without a submission (COD collection on delivery, CSN / counter payments)
+        $direct = $order->payments->whereNull('payment_submission_id')->map(fn (Payment $p) => [
+            'key' => 'pay-'.$p->id,
+            'kind' => 'payment',
+            'id' => $p->id,
+            'sort' => $p->created_at?->getTimestamp() ?? 0,
+            'date' => $p->created_at?->format('d/m/Y'),
+            'amount' => 'RM '.number_format((float) $p->amount, 2),
+            'method' => PaymentMethod::tryFrom((string) $p->method)?->getLabel() ?? ucfirst(str_replace('_', ' ', (string) $p->method)),
+            'reference' => $p->reference,
+            'status' => ucfirst(str_replace('_', ' ', (string) $p->status)),
+            'color' => $p->status === 'completed' ? 'done' : 'gray',
+            'recorded_by' => $p->receiver?->name ?? 'System',
+            'approved_by' => null,
+            'edited_by' => $editedPay[$p->id] ?? null,
+            'remarks' => $p->remarks,
+            'documents' => $this->paymentDocuments($p),
+            'attachments' => $this->fileLinks($p->files()),
+            'can_verify' => false,
+            'can_approve' => false,
+            'can_reject' => false,
+            'can_edit' => $canEdit && $p->status === 'completed',
+        ]);
+
+        return [
+            'label' => $payment['label'],
+            'color' => $payment['color'],
+            'order_type' => $type?->getLabel() ?? '—',
+            'cash_flow' => ! in_array($type, [OrderType::Term, OrderType::Cod], true),
+            'total' => 'RM '.number_format($total, 2),
+            'paid' => 'RM '.number_format($paid, 2),
+            'outstanding' => 'RM '.number_format(max(0, $total - $paid), 2),
+            'outstanding_value' => round(max(0, $total - $paid), 2),
+            'method' => $method?->getLabel(),
+            'review_status' => $reviewStatus,
+            'approval_levels' => $method ? ($method->requiresTwoApprovals() ? 'Two-level (verify + approve)' : 'Single approval') : null,
+            'proforma' => $order->proformaInvoice?->number,
+            'note' => $note,
+            'term_text' => match ($type) {
+                OrderType::Term => 'Credit term order · no payment is collected here. Once the customer confirms (and credit approval passes) the CSN is created; Admin generates the invoice when ready (e.g. once the CSN is returned) and payments are recorded against the invoice.',
+                OrderType::Cod => $order->cod_blocked
+                    ? 'COD order blocked by Admin'.($order->cod_block_reason ? ': '.$order->cod_block_reason : '').'.'
+                    : 'COD order · the CSN is created once the customer confirms (unless Admin blocks the order). Record payments here or let the driver collect on delivery; the COD invoice is issued once the order is fully paid.',
+                default => null,
+            },
+            'cod_blocked' => (bool) $order->cod_blocked,
+            'status_note' => $statusNote,
+            'release' => [
+                // only a real Admin release: a credit term order released automatically on confirmation shows no callout
+                'released' => $adminReleased,
+                'by' => $order->releaser?->name ?? 'Admin',
+                'at' => $order->released_at?->format('d M Y · H:i'),
+                'reason' => $order->release_reason,
+                // a cash order still short of payment needs an Admin release before billing and the CSN
+                'required' => ! $order->isReleased() && ! $billed && $order->status === QuotationStatus::Confirmed
+                    && $type === OrderType::Cash && $paid + 0.005 < $total,
+                // ...as does a credit term order that was not released on confirmation (term orders are normally released automatically)
+                'applies' => ! $order->isReleased() && ! $billed && $order->status === QuotationStatus::Confirmed
+                    && ($type === OrderType::Term || (in_array($type, [OrderType::Cash, null], true) && $paid + 0.005 < $total)),
             ],
+            'entries' => $entries->concat($direct)->sortByDesc('sort')->values()->all(),
+            // payments can be added once the customer has confirmed, also after billing and CSN (SubmitPaymentEvidence);
+            // cash and COD only: a credit term order is paid against its invoice (Invoices / AR)
+            'can_add' => $total > 0 && $type !== OrderType::Term && in_array($order->status, [QuotationStatus::Accepted, QuotationStatus::PendingApproval, QuotationStatus::Confirmed, QuotationStatus::Converted], true),
+            'cod_pending' => $codPending && $total > 0 && in_array($order->status, [QuotationStatus::Accepted, QuotationStatus::PendingApproval, QuotationStatus::Confirmed, QuotationStatus::Converted], true),
+            'can_edit' => $canEdit,
+            'billed' => $billed,
         ];
+    }
+
+    /** "Receipt OR-0001 · Cash Bill CB-0001" — documents issued for a recorded payment. */
+    private function paymentDocuments(?Payment $payment): ?string
+    {
+        if (! $payment) {
+            return null;
+        }
+
+        $docs = collect([
+            $payment->receipt ? 'Receipt '.$payment->receipt->number : null,
+            $payment->cashBill ? 'Cash Bill '.$payment->cashBill->number : null,
+        ])->filter();
+
+        return $docs->isNotEmpty() ? $docs->implode(' · ') : null;
+    }
+
+    /**
+     * Links to uploaded files on the public disk (payment slips / receipts), one per distinct path.
+     *
+     * @param  list<?string>  $paths
+     * @return list<array{name: string, url: string, is_image: bool, ext: string, missing: bool}>
+     */
+    private function fileLinks(array $paths): array
+    {
+        return collect($paths)
+            ->filter(fn ($p) => filled($p))
+            ->unique()
+            ->map(fn (string $path) => [
+                'name' => basename($path),
+                'url' => Storage::disk('public')->url($path),
+                'is_image' => $this->isImagePath($path),
+                'ext' => strtoupper(pathinfo($path, PATHINFO_EXTENSION) ?: 'file'),
+                'missing' => ! Storage::disk('public')->exists($path),
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function isImagePath(string $path): bool
+    {
+        return in_array(strtolower(pathinfo($path, PATHINFO_EXTENSION)), ['jpg', 'jpeg', 'png', 'webp', 'gif'], true);
+    }
+
+    /** A Filament resource URL, or null when the resource / page is not available in this panel. */
+    private function resourceUrl(\Closure $url): ?string
+    {
+        try {
+            return $url();
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /*
     |--------------------------------------------------------------------------
-    | Documents & activity
+    | Activity
     |--------------------------------------------------------------------------
     */
 
-    /** @return list<array<string, mixed>> */
-    private function documents(?Quotation $order, ?PortalEnquiry $enquiry): array
+    /** @return array<string, mixed> */
+    /**
+     * A "price offered" log (sent / accepted) reads as one long sentence; split it into a short title plus the
+     * offered total and its product lines (from the log meta) so the timeline can show them as a small table.
+     *
+     * @return array{0: string, 1: array{total?: string, lines?: list<array{item: string, qty: string, unit: string, amount: string, destination: ?string}>}}
+     */
+    private function offerEntry(QuotationStatusLog $log, string $title): array
     {
-        $docs = [];
+        $meta = is_array($log->meta) ? $log->meta : [];
+        // older logs used "Superseded by version N"
+        $title = (string) preg_replace('/^Superseded by version/u', 'Replaced by version', $title);
 
-        if ($order) {
-            $docs[] = ['title' => 'Quotation', 'sub' => $order->number.' · Version '.$order->version, 'status' => $order->sent_at ? 'Issued' : 'Draft', 'color' => $order->sent_at ? 'progress' : 'gray', 'url' => $this->pdfUrl('quotations', 'quotation', $order), 'action' => 'Preview'];
-            $docs[] = $order->proformaInvoice
-                ? ['title' => 'Proforma Invoice', 'sub' => $order->proformaInvoice->number, 'status' => 'Issued', 'color' => 'progress', 'url' => $this->pdfUrl('proforma-invoices', 'proformaInvoice', $order->proformaInvoice), 'action' => 'Preview']
-                : ['title' => 'Proforma Invoice', 'sub' => 'Issued when the customer confirms', 'status' => 'Not issued', 'color' => 'gray', 'url' => null, 'action' => null];
-
-            if ($order->invoices->isEmpty()) {
-                $docs[] = ['title' => 'Invoice / Cash Bill', 'sub' => 'Not issued', 'status' => 'Not issued', 'color' => 'gray', 'url' => null, 'action' => null];
-            }
-
-            foreach ($order->invoices as $invoice) {
-                $docs[] = ['title' => $invoice->isCashBill() ? 'Cash Bill' : 'Invoice', 'sub' => $invoice->number, 'status' => 'Issued', 'color' => 'done', 'url' => $this->pdfUrl('invoices', 'invoice', $invoice), 'action' => 'Preview'];
-            }
-
-            foreach ($order->consignmentNotes as $csn) {
-                $docs[] = ['title' => 'CSN', 'sub' => $csn->number, 'status' => $csn->status?->getLabel() ?? '—', 'color' => 'progress', 'url' => $this->pdfUrl('consignment-notes', 'consignmentNote', $csn), 'action' => 'Preview'];
-
-                if ($csn->deliveryOrder) {
-                    $doStatus = $csn->deliveryOrder->status;
-                    $docs[] = ['title' => 'DO', 'sub' => $csn->deliveryOrder->number.($csn->deliveryOrder->lorry ? ' · '.$csn->deliveryOrder->lorry->registration_no : ''), 'status' => $doStatus instanceof \BackedEnum ? (method_exists($doStatus, 'getLabel') ? $doStatus->getLabel() : $doStatus->value) : ucfirst((string) $doStatus), 'color' => 'progress', 'url' => $this->pdfUrl('delivery-orders', 'deliveryOrder', $csn->deliveryOrder), 'action' => 'Preview'];
-                }
-            }
+        if (empty($meta['offer_event']) || ! str_contains($title, ' · price offered ')) {
+            return [$title, []];
         }
 
-        foreach ($this->attachments($enquiry?->attachments ?? []) as $file) {
-            $docs[] = ['title' => 'Attachment', 'sub' => $file['name'], 'status' => 'Customer upload', 'color' => 'gray', 'url' => $file['url'], 'action' => 'Open'];
-        }
+        $short = strstr($title, ' · price offered ', true) ?: $title;
+        // "via email, whatsapp" -> "via Email, WhatsApp"
+        $short = preg_replace_callback('/ via (.+?)( \(|$)/u', fn ($m) => ' via '.collect(explode(',', $m[1]))
+            ->map(fn ($c) => match (strtolower(trim($c))) { 'whatsapp' => 'WhatsApp', 'email' => 'Email', 'portal' => 'Customer portal', default => ucfirst(trim($c)) })
+            ->implode(', ').$m[2], $short) ?? $short;
 
-        if ($order) {
-            foreach (collect($order->attachments ?? [])->filter() as $path) {
-                if ($enquiry && collect($enquiry->attachments ?? [])->pluck('path')->contains($path)) {
-                    continue;
-                }
-                $docs[] = ['title' => 'Attachment', 'sub' => basename((string) $path), 'status' => 'Order upload', 'color' => 'gray', 'url' => Storage::disk('public')->url($path), 'action' => 'Open'];
-            }
-        }
+        $money = fn ($v) => 'RM '.number_format((float) $v, 2);
 
-        return $docs;
+        return [$short, [
+            'total' => isset($meta['total']) ? $money($meta['total']) : null,
+            'lines' => collect($meta['lines'] ?? [])->filter(fn ($l) => is_array($l))->map(fn (array $l) => [
+                'item' => (string) ($l['item'] ?? ''),
+                'qty' => (string) ($l['qty'] ?? ''),
+                'unit' => $money($l['unit'] ?? 0),
+                'amount' => $money($l['amount'] ?? 0),
+                'destination' => filled($l['destination'] ?? null) ? (string) $l['destination'] : null,
+            ])->values()->all(),
+        ]];
     }
 
-    /** @return array<string, mixed> */
     private function activity(?Quotation $order, ?PortalEnquiry $enquiry): array
     {
         $items = collect();
         $seq = 0;
-        $push = function ($at, string $title, string $sub, string $kind = 'info') use ($items, &$seq): void {
+        $push = function ($at, string $title, string $sub, string $kind = 'info', array $extra = []) use ($items, &$seq): void {
             if ($at) {
-                $items->push(['at' => $at, 'title' => $title, 'sub' => $sub, 'kind' => $kind, 'seq' => $seq++]);
+                $items->push(['at' => $at, 'title' => $title, 'sub' => $sub, 'kind' => $kind, 'seq' => $seq++] + $extra);
             }
         };
 
@@ -703,7 +1022,18 @@ class OrderDetailData
                     str_contains(strtolower($title), 'price offered'), str_contains(strtolower($title), 'pricing saved') => 'price',
                     default => 'info',
                 };
-                $push($log->created_at, $title, $log->user?->name ?? 'System', $kind);
+                [$title, $extra] = $this->offerEntry($log, $title);
+                $push($log->created_at, $title, $log->user?->name ?? 'System', $kind, $extra);
+            }
+
+            foreach ($this->earlierVersions($order) as $version) {
+                $push($version->created_at, 'V'.$version->version.' · Order record created · '.$version->number, $version->creator?->name ?? 'System', 'start');
+
+                foreach ($version->statusLogs as $log) {
+                    $title = $log->remarks ?: ('Status changed to '.(QuotationStatus::tryFrom((string) $log->to_status)?->getLabel() ?? $log->to_status));
+                    [$title, $extra] = $this->offerEntry($log, $title);
+                    $push($log->created_at, 'V'.$version->version.' · '.$title, $log->user?->name ?? 'System', str_contains(strtolower($title), 'rejected') ? 'issue' : 'info', $extra);
+                }
             }
 
             foreach ($order->notificationLogs as $log) {
@@ -770,7 +1100,7 @@ class OrderDetailData
         $sorted = $items
             ->sort(fn ($a, $b) => [$b['at']->getTimestamp(), $b['seq']] <=> [$a['at']->getTimestamp(), $a['seq']])
             ->values()
-            ->map(fn ($i) => ['title' => $i['title'], 'date' => $i['at']->format('d M Y · H:i'), 'day' => $i['at']->format('Y-m-d'), 'by' => $i['sub'], 'kind' => $i['kind']])
+            ->map(fn ($i) => ['title' => $i['title'], 'date' => $i['at']->format('d M Y · H:i'), 'day' => $i['at']->format('Y-m-d'), 'by' => $i['sub'], 'kind' => $i['kind'], 'total' => $i['total'] ?? null, 'lines' => $i['lines'] ?? []])
             ->all();
 
         return [
@@ -809,7 +1139,7 @@ class OrderDetailData
     */
 
     /** @return array<string, bool> */
-    private function permissions(?Quotation $order, ?PortalEnquiry $enquiry, array $stage, bool $lockedByOther): array
+    private function permissions(?Quotation $order, ?PortalEnquiry $enquiry, array $stage, bool $lockedByOther, ?int $firstRecordId = null): array
     {
         $user = auth()->user();
         $isManager = (bool) ($user?->is_hq || $user?->hasAnyRole(['hq_admin', 'branch_manager', 'finance']));
@@ -817,11 +1147,11 @@ class OrderDetailData
         $status = $order?->status;
         $latest = $order?->isLatestVersion() ?? false;
 
-        return [
+        $can = [
             'approve_enquiry' => ! $order && $enquiry && ! $lockedByOther && $enquiryStatus === PortalEnquiryStatus::Pending,
             'reject_enquiry' => ! $order && $enquiry && ! $lockedByOther && in_array($enquiryStatus, [PortalEnquiryStatus::Pending, PortalEnquiryStatus::InReview], true),
             'assign_salesperson' => $enquiry && ! $lockedByOther && ! $enquiry->salesperson_locked && ! in_array($enquiryStatus, [PortalEnquiryStatus::Rejected, PortalEnquiryStatus::Cancelled], true),
-            'start_pricing' => ! $order && $enquiry && ! $lockedByOther && $enquiry->salesperson_id && in_array($enquiryStatus, [PortalEnquiryStatus::Pending, PortalEnquiryStatus::InReview, PortalEnquiryStatus::Quoted], true),
+            'start_pricing' => ! $order && $enquiry && ! $lockedByOther && ! $firstRecordId && $enquiry->salesperson_id && in_array($enquiryStatus, [PortalEnquiryStatus::Pending, PortalEnquiryStatus::InReview, PortalEnquiryStatus::Quoted], true),
             'edit_pricing' => $order && $latest && $status->isEditable(),
             'send' => $order && $latest && in_array($status, [QuotationStatus::Draft, QuotationStatus::Negotiation, QuotationStatus::Sent, QuotationStatus::PendingReview], true) && (float) $order->total_amount > 0,
             'accept' => $order && $latest && ($status->isCustomerActionable() || $status === QuotationStatus::Draft) && (float) $order->total_amount > 0,
@@ -835,8 +1165,15 @@ class OrderDetailData
             'reopen' => $order && $status === QuotationStatus::Closed,
             'credit_decision' => $order && $status === QuotationStatus::PendingApproval && $isManager && CreditApprovalRequest::query()->where('quotation_id', $order->id)->where('status', 'pending')->exists(),
             'review_payments' => $order && $isManager,
-            'send_invoice' => $order && $order->invoices->isNotEmpty(),
+            'send_invoice' => (bool) $order,
+            // credit term: Admin generates the invoice whenever ready, once the CSN exists
+            'issue_invoice' => $order && $order->orderType() === OrderType::Term
+                && $order->consignmentNotes->contains(fn ($csn) => $csn->status?->value !== 'cancelled')
+                && ! $order->invoices->contains(fn ($i) => $i->type === 'term' && $i->status !== 'cancelled'),
         ];
+
+        // an old version (replaced by a newer one) is view only: nothing can be assigned, priced, sent or paid on it
+        return $order && ! $latest ? array_map(fn () => false, $can) : $can;
     }
 
     /**
@@ -845,7 +1182,8 @@ class OrderDetailData
      */
     private function editOrderUrl(?Quotation $order, ?PortalEnquiry $enquiry, bool $lockedByOther): ?string
     {
-        if ($lockedByOther || (! $order && ! $enquiry)) {
+        // an old version is view only (edit the latest version instead)
+        if ($lockedByOther || (! $order && ! $enquiry) || ($order && ! $order->isLatestVersion())) {
             return null;
         }
 
@@ -873,7 +1211,7 @@ class OrderDetailData
         return collect($files)->map(fn (array $file) => [
             'name' => $file['name'] ?? basename((string) ($file['path'] ?? '')),
             'url' => isset($file['path']) ? Storage::disk('public')->url($file['path']) : null,
-            'is_image' => str_starts_with((string) ($file['mime'] ?? ''), 'image/'),
+            'is_image' => str_starts_with((string) ($file['mime'] ?? ''), 'image/') || $this->isImagePath((string) ($file['path'] ?? '')),
         ])->values()->all();
     }
 

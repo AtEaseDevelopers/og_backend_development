@@ -10,7 +10,7 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 /**
  * Picks the branch a user lands in after login so the "Choose a branch" screen is skipped.
  * KL (HQ) wins when the user can access it; otherwise the user's default branch, then the first one.
- * The chooser stays reachable from the user menu ("Change branch").
+ * There is no branch chooser page: branches are switched from the top-bar branch switcher.
  */
 class DefaultBranch
 {
@@ -61,7 +61,7 @@ class DefaultBranch
         $user = Filament::auth()->user();
 
         if (! $user instanceof User) {
-            return route('filament.admin.select-branch');
+            return route('filament.admin.auth.login');
         }
 
         $selected = SelectedBranch::get();
@@ -74,6 +74,10 @@ class DefaultBranch
             }
         }
 
-        return self::url($user) ?? route('filament.admin.select-branch');
+        $url = self::url($user);
+
+        abort_unless($url !== null, 403, 'Your account has no branch access yet. Please contact the HQ admin.');
+
+        return $url;
     }
 }

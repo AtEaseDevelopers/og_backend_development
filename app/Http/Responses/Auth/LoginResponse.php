@@ -15,10 +15,17 @@ class LoginResponse implements Responsable
     {
         SelectedBranch::clear();
 
-        // Land straight in the home branch (KL) instead of the branch chooser.
+        // Land straight in the home branch (KL). A remembered deep link is honoured, but never the
+        // panel root or the old branch chooser (both would only bounce to the branch dashboard).
         $user = Filament::auth()->user();
-        $home = $user instanceof \App\Models\User ? DefaultBranch::url($user) : null;
+        $home = ($user instanceof \App\Models\User ? DefaultBranch::url($user) : null) ?? DefaultBranch::homeUrl();
+        $intended = session()->pull('url.intended');
+        $path = $intended ? rtrim((string) parse_url($intended, PHP_URL_PATH), '/') : '';
 
-        return redirect()->intended($home ?? route('filament.admin.select-branch'));
+        if ($intended && $path !== '' && $path !== '/admin' && ! str_ends_with($path, '/select-branch')) {
+            return redirect()->to($intended);
+        }
+
+        return redirect()->to($home);
     }
 }

@@ -1,0 +1,285 @@
+/*
+ * OG searchable select: the floating "type to filter" panel opened by public/js/og/searchable-select.js.
+ *
+ * Styled like Filament's own dropdowns. Filament publishes its palette as "r, g, b" channel lists
+ * (--primary-50 … --primary-950, --gray-50 … --gray-950, used as rgba(var(--primary-500), a));
+ * the fallbacks below cover the customer portal, which has no Filament variables (amber accent,
+ * stone greys, matching resources/views/layouts/portal.blade.php). Dark mode follows html.dark.
+ */
+
+.og-ss-panel {
+    --og-ss-primary-300: var(--primary-300, 252, 211, 77);
+    --og-ss-primary-400: var(--primary-400, 251, 191, 36);
+    --og-ss-primary-500: var(--primary-500, 245, 158, 11);
+    --og-ss-primary-600: var(--primary-600, 180, 83, 9);
+    --og-ss-gray-100: var(--gray-100, 245, 245, 244);
+    --og-ss-gray-400: var(--gray-400, 168, 162, 158);
+    --og-ss-gray-500: var(--gray-500, 120, 113, 108);
+    --og-ss-gray-900: var(--gray-900, 28, 25, 23);
+    --og-ss-gray-950: var(--gray-950, 12, 10, 9);
+
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 1000;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    max-width: calc(100vw - 16px);
+    /* !important: the panel can land inside a Filament dropdown panel, whose divide-y / space-y child
+       rules (three classes deep) would otherwise add a border or a margin that shifts it. */
+    margin: 0 !important;
+    padding: 0.25rem;
+    border: 0 !important;
+    border-radius: 0.5rem;
+    background: #fff;
+    color: rgb(var(--og-ss-gray-950));
+    box-shadow:
+        0 0 0 1px rgba(var(--og-ss-gray-950), 0.05),
+        0 10px 15px -3px rgba(0, 0, 0, 0.1),
+        0 4px 6px -4px rgba(0, 0, 0, 0.1);
+    font-size: 0.875rem;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 1.25rem;
+    letter-spacing: normal;
+    text-align: left;
+    text-transform: none;
+    white-space: normal;
+    cursor: default;
+    outline: none;
+}
+
+.og-ss-panel *,
+.og-ss-panel *::before,
+.og-ss-panel *::after {
+    box-sizing: border-box;
+}
+
+/* Search box */
+
+.og-ss-search-wrap {
+    position: relative;
+    flex: none;
+    padding: 0.25rem;
+}
+
+.og-ss-search-icon {
+    position: absolute;
+    top: 50%;
+    left: 0.875rem;
+    width: 1rem;
+    height: 1rem;
+    color: rgb(var(--og-ss-gray-400));
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+/* Two classes deep to beat Filament's form-plugin input styles and the portal's global `input` rule. */
+.og-ss-panel .og-ss-search {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    margin: 0;
+    padding: 0.5rem 0.75rem 0.5rem 2.125rem;
+    border: 0;
+    border-radius: 0.375rem;
+    background: #fff;
+    color: rgb(var(--og-ss-gray-950));
+    box-shadow: inset 0 0 0 1px rgba(var(--og-ss-gray-950), 0.1);
+    font: inherit;
+    font-size: 1rem; /* 16px stops iOS from zooming in on focus */
+    line-height: 1.5rem;
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+}
+
+.og-ss-panel .og-ss-search::placeholder {
+    color: rgb(var(--og-ss-gray-400));
+    opacity: 1;
+}
+
+.og-ss-panel .og-ss-search:focus {
+    border: 0;
+    box-shadow: inset 0 0 0 2px rgb(var(--og-ss-primary-600));
+    outline: none;
+}
+
+@media (min-width: 640px) {
+    .og-ss-panel .og-ss-search {
+        padding-top: 0.375rem;
+        padding-bottom: 0.375rem;
+        font-size: 0.875rem;
+        line-height: 1.5rem;
+    }
+}
+
+/* Options */
+
+.og-ss-list {
+    position: relative; /* offsetParent for scrolling the active row into view */
+    flex: 1 1 auto;
+    max-height: 16rem;
+    margin: 0.25rem 0 0;
+    padding: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    outline: none;
+}
+
+.og-ss-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    border-radius: 0.375rem;
+    color: rgb(var(--og-ss-gray-950));
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.og-ss-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.og-ss-option.is-active {
+    background: rgba(var(--og-ss-primary-500), 0.08);
+}
+
+.og-ss-option.is-selected {
+    font-weight: 600;
+}
+
+.og-ss-option.is-placeholder {
+    color: rgb(var(--og-ss-gray-500));
+}
+
+.og-ss-option.is-disabled {
+    color: rgb(var(--og-ss-gray-400));
+    cursor: not-allowed;
+}
+
+.og-ss-check {
+    flex: none;
+    width: 1rem;
+    height: 1rem;
+    color: rgb(var(--og-ss-primary-600));
+}
+
+.og-ss-group {
+    padding: 0.625rem 0.5rem 0.25rem;
+    overflow: hidden;
+    color: rgb(var(--og-ss-gray-500));
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.og-ss-group:first-child {
+    padding-top: 0.25rem;
+}
+
+/* contain: inline-size keeps these notes from widening the panel when it is sized to its options. */
+.og-ss-empty {
+    padding: 0.5rem;
+    color: rgb(var(--og-ss-gray-500));
+    contain: inline-size;
+}
+
+.og-ss-footer {
+    flex: none;
+    margin-top: 0.25rem;
+    padding: 0.375rem 0.5rem 0.125rem;
+    border-top: 1px solid rgb(var(--og-ss-gray-100));
+    color: rgb(var(--og-ss-gray-500));
+    font-size: 0.75rem;
+    line-height: 1rem;
+    contain: inline-size;
+}
+
+.og-ss-footer[hidden] {
+    display: none;
+}
+
+/* The select whose panel is open keeps its focus look while focus sits in the search box. */
+
+.fi-input-wrp:not(.fi-invalid):has(select[data-og-ss-open]) {
+    --tw-ring-shadow: var(--tw-ring-inset,) 0 0 0 calc(2px + var(--tw-ring-offset-width, 0px)) var(--tw-ring-color);
+    --tw-ring-color: rgba(var(--primary-600), 1);
+}
+
+select[data-og-ss-open]:not(.fi-select-input) {
+    outline: 2px solid rgba(var(--primary-500, 180, 83, 9), 0.45);
+    outline-offset: 1px;
+}
+
+/* Dark mode (Filament toggles html.dark) */
+
+.dark .og-ss-panel {
+    background: rgb(var(--og-ss-gray-900));
+    color: #fff;
+    box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.1),
+        0 10px 15px -3px rgba(0, 0, 0, 0.4),
+        0 4px 6px -4px rgba(0, 0, 0, 0.4);
+}
+
+.dark .og-ss-panel .og-ss-search {
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+.dark .og-ss-panel .og-ss-search::placeholder {
+    color: rgb(var(--og-ss-gray-500));
+}
+
+.dark .og-ss-panel .og-ss-search:focus {
+    box-shadow: inset 0 0 0 2px rgb(var(--og-ss-primary-500));
+}
+
+.dark .og-ss-search-icon {
+    color: rgb(var(--og-ss-gray-500));
+}
+
+.dark .og-ss-option {
+    color: #fff;
+}
+
+.dark .og-ss-option.is-active {
+    background: rgba(var(--og-ss-primary-400), 0.2);
+}
+
+.dark .og-ss-option.is-placeholder,
+.dark .og-ss-group,
+.dark .og-ss-empty,
+.dark .og-ss-footer {
+    color: rgb(var(--og-ss-gray-400));
+}
+
+.dark .og-ss-option.is-disabled {
+    color: rgb(var(--og-ss-gray-500));
+}
+
+.dark .og-ss-check {
+    color: rgb(var(--og-ss-primary-300));
+}
+
+.dark .og-ss-footer {
+    border-top-color: rgba(255, 255, 255, 0.05);
+}
+
+.dark .fi-input-wrp:not(.fi-invalid):has(select[data-og-ss-open]) {
+    --tw-ring-color: rgba(var(--primary-500), 1);
+}

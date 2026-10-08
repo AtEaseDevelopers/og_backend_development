@@ -43,6 +43,14 @@ class CodListing extends Page
         // Re-render with current filter state.
     }
 
+    /** The list is always for one day: clearing the date picker goes back to today. */
+    public function updatedFilterDate(): void
+    {
+        if (blank($this->filterDate)) {
+            $this->filterDate = now()->format('Y-m-d');
+        }
+    }
+
     public function resetFilters(): void
     {
         $this->filterDate = now()->format('Y-m-d');

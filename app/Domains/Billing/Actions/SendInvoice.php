@@ -18,7 +18,7 @@ class SendInvoice
 {
     public function __construct(private SendNotification $notify) {}
 
-    public function execute(Invoice $invoice, User $actor, ?string $toEmail = null, ?string $note = null): NotificationLog
+    public function execute(Invoice $invoice, User $actor, ?string $toEmail = null, ?string $note = null, ?string $subject = null, ?string $message = null): NotificationLog
     {
         $invoice->loadMissing(['customer', 'quotation', 'sourceBranch']);
 
@@ -40,8 +40,9 @@ class SendInvoice
         $log = $this->notify->execute(
             event: 'invoice_sent',
             recipient: ['type' => 'customer', 'name' => $invoice->customer?->company_name, 'email' => $email, 'phone' => $invoice->customer?->phone],
-            subject: $label.' '.$invoice->number.' from '.($invoice->sourceBranch?->company_name ?? config('app.name')),
-            message: sprintf(
+            // a subject / message written in the email window replace the standard text
+            subject: filled($subject) ? trim($subject) : $label.' '.$invoice->number.' from '.($invoice->sourceBranch?->company_name ?? config('app.name')),
+            message: filled($message) ? $message : sprintf(
                 "Dear %s,\n\nPlease find attached %s %s dated %s for RM %s%s.\n%s\nThank you for your business.",
                 $invoice->customer?->company_name ?? 'Customer',
                 $label,

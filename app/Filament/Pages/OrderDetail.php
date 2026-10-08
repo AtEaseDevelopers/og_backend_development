@@ -2,10 +2,12 @@
 
 namespace App\Filament\Pages;
 
+use App\Domains\Billing\Actions\EditRecordedPayment;
 use App\Domains\Billing\Actions\GenerateOrderBilling;
+use App\Domains\Billing\Actions\RefreshOrderPaidAmount;
 use App\Domains\Billing\Actions\ReviewPaymentSubmission;
-use App\Domains\Billing\Actions\SendInvoice;
 use App\Domains\Billing\Actions\SubmitPaymentEvidence;
+use App\Domains\Billing\Models\Payment;
 use App\Domains\Billing\Models\PaymentSubmission;
 use App\Domains\Notification\Models\NotificationLog;
 use App\Domains\Quotation\Actions\AcceptQuotation;
@@ -17,12 +19,14 @@ use App\Domains\Quotation\Actions\DecideCreditApproval;
 use App\Domains\Quotation\Actions\RejectQuotation;
 use App\Domains\Quotation\Actions\ReleaseOrder;
 use App\Domains\Quotation\Actions\ReviseQuotation;
+use App\Domains\Quotation\Actions\SendOrderDocument;
 use App\Domains\Quotation\Actions\SaveOrderPricing;
 use App\Domains\Quotation\Actions\SendQuotation;
 use App\Domains\Quotation\Models\CreditApprovalRequest;
 use App\Domains\Quotation\Models\PortalEnquiry;
 use App\Domains\Quotation\Models\Quotation;
 use App\Domains\Quotation\Models\QuotationStatusLog;
+use App\Enums\BillingStatus;
 use App\Enums\OrderType;
 use App\Enums\PaymentMethod;
 use App\Enums\PortalEnquiryStatus;
@@ -35,13 +39,17 @@ use Filament\Actions\Action;
 use Filament\Forms;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\HtmlString;
+use InvalidArgumentException;
 use Livewire\Attributes\Url;
 use Livewire\WithFileUploads;
 use Throwable;
 
 /**
- * Order detail: header with the 7-step progress, the action banner and the stacked
- * Overview / Items & pricing / Payment summary / Documents / Activity sections.
+ * Order detail: header with the 7-step progress, the action banner and the Overview (customer & order,
+ * record ownership, payment summary, linked records) / Items & pricing / Activity tabs.
+ * Older links to the former Payment summary and Documents tabs land on the overview card that replaced them.
  *
  * Route: orders/{type}/{id} where type is "enquiry" (not priced yet) or "order" (quotation record).
  */
@@ -59,8 +67,11 @@ class OrderDetail extends Page
 
     public int $recordId = 0;
 
-    /** Section to scroll to on the combined overview (pricing | payment | decision). */
+    /** Section to scroll to on the combined overview (pricing | payment | decision | documents). */
     public ?string $focus = null;
+
+    /** Former tabs that are now a section / card of the overview (old links and banner CTAs still pass them). */
+    public const OVERVIEW_SECTIONS = ['pricing', 'payment', 'decision', 'documents'];
 
     #[Url(as: 'tab', except: 'overview')]
     public string $tab = 'overview';
@@ -81,12 +92,6 @@ class OrderDetail extends Page
 
     public string $rejectReason = '';
 
-    public bool $showPaymentForm = false;
-
-    public array $paymentForm = [];
-
-    public $paymentReceipt = null;
-
     protected ?array $detailCache = null;
 
     public static function getRelativeRouteName(): string
@@ -106,11 +111,12 @@ class OrderDetail extends Page
         $this->recordType = $type;
         $this->recordId = $id;
 
-        // Overview, items & pricing and payment summary share one page; older links pass the section as the tab
-        if (in_array($this->tab, ['pricing', 'payment', 'decision'], true)) {
+        // Overview, items & pricing, payment summary and linked records (documents) share one page;
+        // older links (?tab=payment, ?tab=documents, …) pass the section as the tab and land on its card
+        if (in_array($this->tab, self::OVERVIEW_SECTIONS, true)) {
             $this->focus = $this->tab;
             $this->tab = 'overview';
-        } elseif (! in_array($this->tab, ['overview', 'documents', 'activity'], true)) {
+        } elseif (! in_array($this->tab, ['overview', 'activity'], true)) {
             $this->tab = 'overview';
         }
 
@@ -118,7 +124,6 @@ class OrderDetail extends Page
         abort_unless($detail, 404);
 
         $this->initPricing($detail);
-        $this->initPaymentForm($detail);
 
         // Section A: hold the enquiry while it is being prepared (released when sent / confirmed)
         $enquiry = $detail['enquiry'];
@@ -147,7 +152,6 @@ class OrderDetail extends Page
     {
         $this->detailCache = null;
         $this->initPricing($this->detail());
-        $this->initPaymentForm($this->detail());
     }
 
     /** Polled while the enquiry is being prepared. */
@@ -169,7 +173,8 @@ class OrderDetail extends Page
 
     public function setTab(string $tab): void
     {
-        if (in_array($tab, ['pricing', 'payment', 'decision'], true)) {
+        // payment → Payment summary card, documents → Linked records card (both on the overview)
+        if (in_array($tab, self::OVERVIEW_SECTIONS, true)) {
             $this->tab = 'overview';
             $this->focus = $tab;
             $this->dispatch('og-scroll', id: 'og-section-'.$tab);
@@ -177,7 +182,7 @@ class OrderDetail extends Page
             return;
         }
 
-        $this->tab = in_array($tab, ['overview', 'documents', 'activity'], true) ? $tab : 'overview';
+        $this->tab = in_array($tab, ['overview', 'activity'], true) ? $tab : 'overview';
         $this->focus = null;
     }
 
@@ -205,6 +210,34 @@ class OrderDetail extends Page
         Notification::make()->title('Order reviewed · ready for pricing')->success()->send();
     }
 
+    /** An old version (replaced by a newer one) is view only. */
+    protected function isOldVersion(): bool
+    {
+        $order = $this->detail()['order'] ?? null;
+
+        return $order instanceof Quotation && ! $order->isLatestVersion();
+    }
+
+    protected function refuseOnOldVersion(): bool
+    {
+        if (! $this->isOldVersion()) {
+            return false;
+        }
+
+        Notification::make()->title('This is an old version · view only')->body('Open the latest version to make changes.')->warning()->send();
+
+        return true;
+    }
+
+    public function mountAction(string $name, array $arguments = []): mixed
+    {
+        if ($this->refuseOnOldVersion()) {
+            return null;
+        }
+
+        return parent::mountAction($name, $arguments);
+    }
+
     public function focusAssign(): void
     {
         $this->tab = 'overview';
@@ -213,6 +246,10 @@ class OrderDetail extends Page
 
     public function assignSalesperson(): void
     {
+        if ($this->refuseOnOldVersion()) {
+            return;
+        }
+
         $enquiry = $this->detail()['enquiry'] ?? null;
         $order = $this->detail()['order'] ?? null;
         $salesperson = filled($this->assignSalespersonId) ? User::query()->find($this->assignSalespersonId) : null;
@@ -282,6 +319,10 @@ class OrderDetail extends Page
     /** Creates the order record(s) from the enquiry and opens the first one for pricing. */
     public function startPricing(): void
     {
+        if ($this->refuseOnOldVersion()) {
+            return;
+        }
+
         $enquiry = $this->detail()['enquiry'] ?? null;
 
         if (! $enquiry) {
@@ -471,6 +512,10 @@ class OrderDetail extends Page
 
     public function savePricing(bool $preview = false): void
     {
+        if ($this->refuseOnOldVersion()) {
+            return;
+        }
+
         $order = $this->detail()['order'] ?? null;
 
         if (! $order) {
@@ -521,111 +566,329 @@ class OrderDetail extends Page
 
     /*
     |--------------------------------------------------------------------------
-    | Payment summary (cash orders)
+    | Payment summary (add / edit / review payments, any order type and stage)
     |--------------------------------------------------------------------------
     */
 
-    protected function initPaymentForm(?array $detail): void
+    /**
+     * Records a payment (counter / slip) through the same flow as the customer portal: SubmitPaymentEvidence, then
+     * approved at once when the actor may review payments (Cash / Pay at Counter are verified and need a second user).
+     * Approval recomputes paid / outstanding, issues a refund note on overpayment and bills a fully paid cash order.
+     *
+     * @param  array{amount: mixed, method: string, payment_date: string, reference?: ?string, attachment?: ?string, remarks?: ?string}  $data
+     */
+    protected function storePayment(Quotation $order, array $data): string
     {
-        $order = $detail['order'] ?? null;
-        $outstanding = $order ? max(0, (float) $order->total_amount - (float) $order->paid_amount) : 0;
-
-        $this->paymentForm = [
-            'type' => 'full',
-            'amount' => $outstanding > 0 ? number_format($outstanding, 2, '.', '') : null,
-            'payment_date' => now()->toDateString(),
-            'method' => $order?->payment_method ?: PaymentMethod::BankTransfer->value,
-            'reference' => null,
-            'bank_account' => null,
-            'remarks' => null,
-        ];
-        $this->paymentReceipt = null;
-    }
-
-    public function updatedPaymentForm($value, string $key): void
-    {
-        if ($key === 'type') {
-            $order = $this->detail()['order'] ?? null;
-            $outstanding = $order ? max(0, (float) $order->total_amount - (float) $order->paid_amount) : 0;
-            $this->paymentForm['amount'] = $value === 'full' ? number_format($outstanding, 2, '.', '') : null;
-        }
-    }
-
-    public function togglePaymentForm(): void
-    {
-        $this->showPaymentForm = ! $this->showPaymentForm;
-    }
-
-    /** Records a customer payment on the counter / from a slip and approves it when the actor may. */
-    public function recordPayment(): void
-    {
-        $order = $this->detail()['order'] ?? null;
-
-        if (! $order) {
-            return;
+        // a credit term order is paid against its invoice (Invoices / AR), not here (same rule as payment_summary.can_add)
+        if ($order->orderType() === OrderType::Term) {
+            throw new InvalidArgumentException('Credit term orders are paid against their invoice. Record the payment under Billing → Invoices.');
         }
 
-        $this->validate([
-            'paymentForm.type' => 'required|in:full,partial',
-            'paymentForm.amount' => 'required|numeric|min:0.01',
-            'paymentForm.payment_date' => 'required|date',
-            'paymentForm.method' => 'required|string',
-            'paymentForm.reference' => 'nullable|string|max:100',
-            'paymentForm.remarks' => 'nullable|string|max:1000',
-            'paymentReceipt' => 'nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:8192',
-        ]);
+        $amount = round((float) $data['amount'], 2);
+        $outstanding = RefreshOrderPaidAmount::liveOutstanding($order);
+        $kind = match (true) {
+            $outstanding <= 0.004 => 'Additional payment.',
+            $amount + 0.005 >= $outstanding => 'Full payment.',
+            default => 'Partial payment.',
+        };
+
+        $submission = app(SubmitPaymentEvidence::class)->execute($order, [
+            'amount' => $amount,
+            'method' => $data['method'],
+            'payment_date' => $data['payment_date'],
+            'reference' => filled($data['reference'] ?? null) ? trim((string) $data['reference']) : null,
+            'receipt_path' => EditRecordedPayment::paths($data['attachment'] ?? null)[0] ?? null,
+            'receipt_paths' => EditRecordedPayment::paths($data['attachment'] ?? null) ?: null,
+            'remarks' => trim($kind.' '.($data['remarks'] ?? '')),
+        ], auth()->user(), 'admin');
+
+        $message = 'Payment recorded · RM '.number_format((float) $submission->amount, 2);
 
         try {
-            $receiptPath = $this->paymentReceipt?->store('payment-receipts/'.$order->id, 'public');
+            $review = app(ReviewPaymentSubmission::class);
 
-            $submission = app(SubmitPaymentEvidence::class)->execute($order, [
-                'amount' => $this->paymentForm['amount'],
-                'method' => $this->paymentForm['method'],
-                'payment_date' => $this->paymentForm['payment_date'],
-                'bank_account' => $this->paymentForm['bank_account'] ?? null,
-                'reference' => $this->paymentForm['reference'] ?: null,
-                'receipt_path' => $receiptPath,
-                'remarks' => trim(($this->paymentForm['type'] === 'partial' ? 'Partial payment. ' : 'Full payment. ').($this->paymentForm['remarks'] ?? '')),
-            ], auth()->user(), 'admin');
+            if ($submission->requiresTwoApprovals()) {
+                $review->verify($submission, auth()->user());
+                $message .= ' · verified (level 1) · a second user must approve';
+            } else {
+                $result = $review->approve($submission, auth()->user());
+                $message .= ' · approved';
 
-            $message = 'Payment recorded · RM '.number_format((float) $submission->amount, 2);
+                if (($result['billing']['ok'] ?? null) === true) {
+                    $message .= ' · Cash Bill issued and CSN created';
+                } elseif (($result['billing']['ok'] ?? null) === false) {
+                    $message .= ' · billing failed: '.($result['billing']['error'] ?? 'see activity');
+                }
+            }
+        } catch (Throwable $e) {
+            $message .= ' · awaiting approval ('.$e->getMessage().')';
+        }
 
-            try {
-                $review = app(ReviewPaymentSubmission::class);
+        return $message;
+    }
 
-                if ($submission->requiresTwoApprovals()) {
-                    $submission = $review->verify($submission, auth()->user());
-                    $message .= ' · verified (level 1) · a second user must approve';
-                } else {
-                    $result = $review->approve($submission, auth()->user());
-                    $message .= ' · approved';
+    public function addPaymentAction(): Action
+    {
+        return Action::make('addPayment')
+            ->label('Add payment')
+            ->modalHeading('Add payment')
+            ->modalDescription(fn () => $this->paymentTotalsLine())
+            ->modalSubmitActionLabel('Record payment')
+            ->visible(fn () => (bool) ($this->detail()['payment_summary']['can_add'] ?? false))
+            ->fillForm(fn () => [
+                'amount' => ($outstanding = ($order = $this->order()) ? RefreshOrderPaidAmount::liveOutstanding($order) : 0.0) > 0 ? number_format($outstanding, 2, '.', '') : null,
+                'payment_date' => now()->toDateString(),
+                'method' => PaymentMethod::tryFrom((string) $this->order()?->payment_method)?->value ?? PaymentMethod::BankTransfer->value,
+            ])
+            ->form(fn () => [
+                Forms\Components\Placeholder::make('add_note')
+                    ->hiddenLabel()
+                    ->content(fn () => $this->addPaymentNote()),
+                ...$this->paymentFormSchema(),
+            ])
+            ->action(function (array $data, Action $action): void {
+                $order = $this->order();
+                $error = null;
 
-                    if (($result['billing']['ok'] ?? null) === true) {
-                        $message .= ' · Cash Bill issued and CSN created';
-                    } elseif (($result['billing']['ok'] ?? null) === false) {
-                        $message .= ' · billing failed: '.($result['billing']['error'] ?? 'see activity');
+                try {
+                    $message = $order ? $this->storePayment($order, $data) : null;
+                } catch (Throwable $e) {
+                    $error = $e->getMessage();
+                }
+
+                if ($error !== null || ! $order) {
+                    Notification::make()->title($error ?? 'Order not found')->danger()->send();
+                    $action->halt();
+
+                    return;
+                }
+
+                Notification::make()->title($message)->success()->send();
+                $this->refreshDetail();
+            });
+    }
+
+    /** Edit a recorded payment at any stage (also after billing / CSN): amount either way, method, date, reference, slip, note. */
+    public function editPaymentAction(): Action
+    {
+        return Action::make('editPayment')
+            ->label('Edit payment')
+            ->modalHeading('Edit payment')
+            ->modalDescription(fn () => $this->paymentTotalsLine())
+            ->modalSubmitActionLabel('Save changes')
+            ->visible(fn () => $this->order() !== null && EditRecordedPayment::allows(auth()->user()))
+            ->fillForm(function (array $arguments): array {
+                [$submission, $payment] = $this->paymentRecord($arguments);
+                $current = EditRecordedPayment::snapshot($submission, $payment);
+
+                return [
+                    'amount' => $current['amount'],
+                    'payment_date' => $current['payment_date'],
+                    'method' => $current['method'],
+                    'reference' => $current['reference'],
+                    'attachment' => $current['attachment'],
+                    'remarks' => $current['remarks'],
+                ];
+            })
+            ->form(function (array $arguments): array {
+                [$submission, $payment] = $this->paymentRecord($arguments);
+                $order = $this->order();
+                $documents = $order ? EditRecordedPayment::documentsFor($order, $submission, $payment) : [];
+
+                return [
+                    Forms\Components\Placeholder::make('issued_documents')
+                        ->hiddenLabel()
+                        ->visible($documents !== [])
+                        ->content(new HtmlString(
+                            '<div class="ow-modal-warning" role="alert"><strong>Already-issued documents are not changed automatically.</strong> '
+                            .'Paid and outstanding amounts are recalculated, but these stay as issued — adjust or re-issue them separately if needed:'
+                            .'<ul>'.collect($documents)->map(fn (string $doc) => '<li>'.e($doc).'</li>')->implode('').'</ul></div>'
+                        )),
+                    ...$this->paymentFormSchema(hasDate: $submission !== null),
+                    Forms\Components\Textarea::make('reason')
+                        ->label('Reason for change')
+                        ->required()
+                        ->rows(2)
+                        ->maxLength(1000)
+                        ->placeholder('e.g. Customer paid RM 200 only, the full amount was keyed in by mistake'),
+                ];
+            })
+            ->action(function (array $data, array $arguments, Action $action): void {
+                $order = $this->order();
+                [$submission, $payment] = $this->paymentRecord($arguments);
+                $record = $submission ?? $payment;
+                $error = $order && $record ? null : 'This payment was not found on the order.';
+                $result = null;
+
+                // the upload field drops a stored path whose file is missing on disk: keep those references as they were
+                $attachment = EditRecordedPayment::paths($data['attachment'] ?? null);
+                $original = EditRecordedPayment::snapshot($submission, $payment)['attachment'];
+
+                foreach ($original as $path) {
+                    if (! in_array($path, $attachment, true) && ! Storage::disk('public')->exists($path)) {
+                        $attachment[] = $path;
                     }
                 }
-            } catch (Throwable $e) {
-                $message .= ' · awaiting approval ('.$e->getMessage().')';
-            }
 
-            Notification::make()->title($message)->success()->send();
-            $this->showPaymentForm = false;
-            $this->refreshDetail();
-            $this->setTab('payment');
-        } catch (Throwable $e) {
-            Notification::make()->title($e->getMessage())->danger()->send();
+                if ($error === null) {
+                    try {
+                        $result = app(EditRecordedPayment::class)->execute($order, $record, [
+                            'amount' => $data['amount'] ?? null,
+                            'method' => $data['method'] ?? null,
+                            'payment_date' => $data['payment_date'] ?? null,
+                            'reference' => $data['reference'] ?? null,
+                            'attachment_paths' => $attachment,
+                            'remarks' => $data['remarks'] ?? null,
+                        ], (string) ($data['reason'] ?? ''), auth()->user());
+                    } catch (Throwable $e) {
+                        $error = $e->getMessage();
+                    }
+                }
+
+                if ($error !== null) {
+                    Notification::make()->title($error)->danger()->send();
+                    $action->halt();
+
+                    return;
+                }
+
+                $this->refreshDetail();
+                $fresh = $this->order();
+                $billing = $result['billing'];
+
+                Notification::make()
+                    ->title(sprintf('Payment updated · Paid RM %s · Outstanding RM %s',
+                        number_format($fresh ? RefreshOrderPaidAmount::livePaid($fresh) : 0, 2),
+                        number_format($fresh ? RefreshOrderPaidAmount::liveOutstanding($fresh) : 0, 2)))
+                    ->body(collect([
+                        ...($result['warnings'] ?? []),
+                        $result['documents'] !== [] ? 'Not changed: '.implode('; ', $result['documents']).'.' : null,
+                        $billing ? ($billing['ok'] ? 'Fully paid · Cash Bill issued and CSN created.' : 'Billing failed: '.$billing['error']) : null,
+                    ])->filter()->implode(' ') ?: null)
+                    ->success()
+                    ->send();
+            });
+    }
+
+    /** @return array<int, Forms\Components\Component> */
+    protected function paymentFormSchema(bool $hasDate = true): array
+    {
+        return [
+            Forms\Components\Grid::make(['default' => 1, 'sm' => 2])->schema([
+                Forms\Components\TextInput::make('amount')
+                    ->label('Amount')
+                    ->prefix('RM')
+                    ->numeric()
+                    ->minValue(0.01)
+                    ->step(0.01)
+                    ->required(),
+                Forms\Components\DatePicker::make('payment_date')
+                    ->label('Payment date')
+                    ->required($hasDate)
+                    ->maxDate(now()->endOfDay())
+                    ->visible($hasDate),
+                Forms\Components\Select::make('method')
+                    ->label('Method')
+                    ->options(PaymentMethod::options())
+                    ->required(),
+                Forms\Components\TextInput::make('reference')
+                    ->label('Reference no.')
+                    ->maxLength(100)
+                    ->placeholder('Bank / slip reference'),
+            ]),
+            Forms\Components\FileUpload::make('attachment')
+                ->label('Payment slips / receipts')
+                ->multiple()
+                ->appendFiles()
+                ->maxFiles(10)
+                ->panelLayout('grid')
+                ->itemPanelAspectRatio(1)
+                ->imagePreviewHeight('80')
+                ->extraAttributes(['class' => 'ow-slip-upload'])
+                ->disk('public')
+                ->visibility('public')
+                ->directory('payment-receipts/'.($this->order()?->id ?? 0))
+                ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
+                ->maxSize(8192)
+                ->openable()
+                ->downloadable()
+                ->helperText('Images or PDF, up to 8 MB each · up to 10 files.'),
+            Forms\Components\Textarea::make('remarks')
+                ->label('Note')
+                ->rows(2)
+                ->maxLength(1000),
+        ];
+    }
+
+    /** @return array{0: ?PaymentSubmission, 1: ?Payment} the payment entry (submission or payment without one) on this order */
+    protected function paymentRecord(array $arguments): array
+    {
+        $order = $this->order();
+        $id = (int) ($arguments['id'] ?? 0);
+
+        if (! $order || $id <= 0) {
+            return [null, null];
         }
+
+        if (($arguments['kind'] ?? 'submission') === 'payment') {
+            $payment = Payment::query()->where('quotation_id', $order->id)->find($id);
+
+            return [$payment?->submission, $payment];
+        }
+
+        $submission = PaymentSubmission::query()->where('quotation_id', $order->id)->find($id);
+
+        return [$submission, $submission?->payment];
+    }
+
+    protected function paymentTotalsLine(): ?string
+    {
+        $order = $this->order();
+
+        return $order
+            // live sum of completed payments (also those recorded on delivery / from the CSN)
+            ? sprintf('%s · Total RM %s · Paid RM %s · Outstanding RM %s', $order->number, number_format((float) $order->total_amount, 2), number_format(RefreshOrderPaidAmount::livePaid($order), 2), number_format(RefreshOrderPaidAmount::liveOutstanding($order), 2))
+            : null;
+    }
+
+    protected function addPaymentNote(): HtmlString
+    {
+        $order = $this->order();
+        $warnings = [];
+
+        if ($order && RefreshOrderPaidAmount::liveOutstanding($order) <= 0.004) {
+            $warnings[] = 'This order is already fully paid: the amount is recorded as an overpayment and a Refund Note is issued when it is approved.';
+        }
+
+        if ($order && $order->billingStatus() === BillingStatus::Generated) {
+            $warnings[] = 'Billing is already issued: no new Cash Bill / invoice is issued for this payment automatically.';
+        }
+
+        $approval = EditRecordedPayment::allows(auth()->user())
+            ? 'Approved straight away · Cash and Pay at Counter payments are verified and need a second user to approve.'
+            : 'Finance, Counter, Branch Manager or HQ Admin must approve it before it counts as paid.';
+
+        return new HtmlString(
+            ($warnings !== [] ? '<div class="ow-modal-warning" role="alert">'.collect($warnings)->map(fn (string $w) => e($w))->implode('<br>').'</div>' : '')
+            .'<div class="ow-modal-note">'.e($approval).'</div>'
+        );
     }
 
     public function verifyPayment(int $submissionId): void
     {
+        if ($this->refuseOnOldVersion()) {
+            return;
+        }
+
         $this->reviewPayment($submissionId, 'verify');
     }
 
     public function approvePayment(int $submissionId): void
     {
+        if ($this->refuseOnOldVersion()) {
+            return;
+        }
+
         $this->reviewPayment($submissionId, 'approve');
     }
 
@@ -721,16 +984,23 @@ class OrderDetail extends Page
                         AcceptQuotation::CHANNEL_WHATSAPP => 'WhatsApp',
                         AcceptQuotation::CHANNEL_EMAIL => 'Email',
                         AcceptQuotation::CHANNEL_ADMIN => 'Counter / phone (admin recorded)',
+                        AcceptQuotation::CHANNEL_PORTAL => 'Customer portal',
                     ])
                     ->default(AcceptQuotation::CHANNEL_WHATSAPP)
                     ->required(),
-                Forms\Components\TextInput::make('confirmed_by_name')->label('Confirmed by (customer contact)')->required(),
+                Forms\Components\TextInput::make('confirmed_by_name')->label('Confirmed by (customer contact)'),
                 Forms\Components\Textarea::make('consent_evidence')->label('Evidence / remarks')->placeholder('e.g. WhatsApp confirmation received 1 Oct 10:15 from +60 12-345 6789'),
             ])
             ->action(function (array $data): void {
                 try {
-                    $this->logOfferedPrice($this->order(), 'Customer accepted quotation v'.$this->order()->version.' via '.$data['channel'].' ('.$data['confirmed_by_name'].')', 'accepted', ucfirst((string) $data['channel']).' · '.$data['confirmed_by_name']);
-                    $result = app(AcceptQuotation::class)->execute($this->order(), $data['channel'], $data['confirmed_by_name'], auth()->user(), $data['consent_evidence'] ?? null);
+                    // the offer log rolls back when the accept is refused (e.g. a product without a price)
+                    $result = \Illuminate\Support\Facades\DB::transaction(function () use ($data) {
+                        $by = filled($data['confirmed_by_name'] ?? null) ? trim((string) $data['confirmed_by_name']) : null;
+                        $channel = $data['channel'] === AcceptQuotation::CHANNEL_PORTAL ? 'Customer portal' : ucfirst((string) $data['channel']);
+                        $this->logOfferedPrice($this->order(), 'Customer accepted quotation v'.$this->order()->version.' via '.$channel.($by ? ' ('.$by.')' : ''), 'accepted', $channel.($by ? ' · '.$by : ''));
+
+                        return app(AcceptQuotation::class)->execute($this->order(), $data['channel'], $by, auth()->user(), $data['consent_evidence'] ?? null, recordedByStaff: true);
+                    });
                     Notification::make()->title('Customer confirmation recorded')->body('Status: '.$result->status->getLabel().'. Proforma '.$result->proformaInvoice?->number.' generated.')->success()->send();
                     $this->refreshDetail();
                 } catch (Throwable $e) {
@@ -776,23 +1046,16 @@ class OrderDetail extends Page
                         ],
                     ]);
 
-                    if (($data['return_to_edit'] ?? true) && $result->status !== QuotationStatus::Negotiation) {
-                        $from = $result->status->value;
-                        $result->update(['status' => QuotationStatus::Negotiation]);
+                    if ($data['return_to_edit'] ?? true) {
+                        $revision = app(ReviseQuotation::class)->execute($result->fresh(), auth()->user(), 'Customer rejected v'.$order->version.' · '.$category->getLabel());
 
-                        QuotationStatusLog::query()->create([
-                            'quotation_id' => $order->id,
-                            'from_status' => $from,
-                            'to_status' => QuotationStatus::Negotiation->value,
-                            'user_id' => auth()->id(),
-                            'remarks' => 'Order returned to editing after customer rejection',
-                        ]);
+                        Notification::make()->title('Rejection recorded · version '.$revision->version.' created for re-pricing')->success()->send();
+                        $this->redirect(static::urlFor('order', $revision->id).'?tab=pricing', navigate: false);
+
+                        return;
                     }
 
-                    Notification::make()
-                        ->title(($data['return_to_edit'] ?? true) ? 'Rejection recorded · order is editable again' : 'Rejection recorded · order closed')
-                        ->success()
-                        ->send();
+                    Notification::make()->title('Rejection recorded · order closed')->success()->send();
 
                     $this->refreshDetail();
                     $this->setTab('pricing');
@@ -912,17 +1175,49 @@ class OrderDetail extends Page
     public function generateBillingAction(): Action
     {
         return Action::make('generateBilling')
-            ->label(fn () => $this->order()?->consignmentNotes()->exists() ? 'Create CSN' : 'Generate Invoice / Cash Bill → CSN')
+            ->label(fn () => $this->order()?->consignmentNotes()->exists() || in_array($this->order()?->orderType(), [OrderType::Cod, OrderType::Term], true) ? 'Create CSN' : 'Generate Cash Bill → CSN')
             ->requiresConfirmation()
-            ->modalDescription(fn () => $this->order()?->billingBlockReason() ?? ($this->order()?->billing_error ? 'Last error: '.$this->order()->billing_error : 'Invoice / Cash Bill will be issued and the CSN created as Pending Lorry Assignment.'))
+            ->modalDescription(fn () => $this->order()?->billingBlockReason() ?? ($this->order()?->billing_error ? 'Last error: '.$this->order()->billing_error : match ($this->order()?->orderType()) {
+                OrderType::Term => 'The CSN is created as Pending Lorry Assignment. Generate the invoice later, when ready.',
+                OrderType::Cod => 'The CSN is created as Pending Lorry Assignment. The COD invoice is issued once the order is fully paid.',
+                default => 'The Cash Bill is issued and the CSN created as Pending Lorry Assignment.',
+            }))
             ->action(function (): void {
                 try {
                     $result = app(GenerateOrderBilling::class)->execute($this->order(), auth()->user());
                     Notification::make()
-                        ->title($result['ok'] ? 'Billing issued: '.$result['invoices']->pluck('number')->implode(', ').' · CSN: '.$result['csns']->pluck('number')->implode(', ') : 'Billing generation failed')
+                        ->title($result['ok'] ? trim(($result['invoices']->isNotEmpty() ? 'Billing issued: '.$result['invoices']->pluck('number')->implode(', ').' · ' : '').'CSN: '.$result['csns']->pluck('number')->implode(', ')) : 'Billing generation failed')
                         ->body($result['error'])
                         ->{$result['ok'] ? 'success' : 'danger'}()
                         ->send();
+                    $this->refreshDetail();
+                } catch (Throwable $e) {
+                    Notification::make()->title($e->getMessage())->danger()->send();
+                }
+            });
+    }
+
+    /** Credit term: Admin generates the invoice whenever ready, once the CSN exists (e.g. after the CSN is returned). */
+    public function issueInvoiceAction(): Action
+    {
+        return Action::make('issueInvoice')
+            ->label('Generate invoice')
+            ->requiresConfirmation()
+            ->modalHeading('Generate the invoice')
+            ->modalDescription(function () {
+                $csns = $this->order()?->consignmentNotes()->where('status', '!=', 'cancelled')->get() ?? collect();
+                $returned = $csns->filter(fn ($csn) => $csn->isOriginalReturned());
+
+                return 'Issues the credit term invoice for RM '.number_format((float) $this->order()?->total_amount, 2).'. '
+                    .($csns->isNotEmpty() && $returned->count() === $csns->count()
+                        ? 'The CSN is returned.'
+                        : 'Note: the CSN ('.$csns->pluck('number')->implode(', ').') is not marked returned yet.');
+            })
+            ->modalSubmitActionLabel('Generate invoice')
+            ->action(function (): void {
+                try {
+                    $invoice = app(GenerateOrderBilling::class)->issueInvoice($this->order(), auth()->user());
+                    Notification::make()->title('Invoice '.$invoice->number.' issued')->success()->send();
                     $this->refreshDetail();
                 } catch (Throwable $e) {
                     Notification::make()->title($e->getMessage())->danger()->send();
@@ -997,21 +1292,73 @@ class OrderDetail extends Page
     public function sendInvoiceAction(): Action
     {
         return Action::make('sendInvoice')
-            ->label('Send invoice / cash bill')
-            ->form(fn () => [
-                Forms\Components\TextInput::make('to_email')->label('Send to')->email()->default($this->order()?->customer?->email),
-                Forms\Components\Textarea::make('note')->label('Note'),
-            ])
-            ->action(function (array $data): void {
-                $invoice = $this->order()?->invoices()->latest('id')->first();
+            ->label('Email document')
+            ->modalHeading('Email a document to the customer')
+            ->modalDescription('Choose which document to send. The PDF is attached and the order activity records what was sent and to whom.')
+            ->modalSubmitActionLabel('Send email')
+            ->modalWidth('7xl')
+            ->form(function () {
+                $options = $this->order() ? SendOrderDocument::options($this->order()) : [];
 
-                if (! $invoice) {
+                // left: what to send and to whom · right: a preview of the chosen PDF
+                return [
+                    Forms\Components\Grid::make(['default' => 1, 'lg' => 5])->schema([
+                        Forms\Components\Group::make([
+                            Forms\Components\Select::make('document')
+                                ->label('Document')
+                                ->options($options)
+                                ->default(array_key_first($options))
+                                ->live()
+                                // a new document gets its own suggested subject and body
+                                ->afterStateUpdated(function (?string $state, Forms\Set $set) {
+                                    if ($state && $this->order()) {
+                                        $email = SendOrderDocument::defaultEmail($this->order(), $state);
+                                        $set('subject', $email['subject']);
+                                        $set('body', $email['body']);
+                                    }
+                                })
+                                ->required(),
+                            Forms\Components\TextInput::make('to_email')->label('To')->email()->required()->default($this->order()?->customer?->email),
+                            Forms\Components\TextInput::make('subject')
+                                ->label('Subject')
+                                ->required()
+                                ->maxLength(200)
+                                ->default(fn () => $this->order() && $options ? SendOrderDocument::defaultEmail($this->order(), (string) array_key_first($options))['subject'] : null),
+                            Forms\Components\Textarea::make('body')
+                                ->label('Message')
+                                ->required()
+                                ->rows(10)
+                                ->default(fn () => $this->order() && $options ? SendOrderDocument::defaultEmail($this->order(), (string) array_key_first($options))['body'] : null)
+                                ->helperText('The PDF is attached to this email.'),
+                        ])->columnSpan(['default' => 1, 'lg' => 2]),
+                        Forms\Components\Placeholder::make('preview')
+                            ->label('Preview')
+                            ->content(function (Forms\Get $get) {
+                                $url = filled($get('document')) ? SendOrderDocument::pdfUrl((string) $get('document')) : null;
+
+                                return new HtmlString($url
+                                    ? '<div class="ow-doc-preview"><iframe src="'.e($url).'#toolbar=0&navpanes=0&view=FitH" title="Document preview"></iframe>'
+                                        .'<a href="'.e($url).'" target="_blank" rel="noopener" class="ow-link">Open in new tab</a></div>'
+                                    : '<div class="ow-doc-preview ow-doc-preview-empty">Choose a document to preview it.</div>');
+                            })
+                            ->columnSpan(['default' => 1, 'lg' => 3]),
+                    ]),
+                ];
+            })
+            ->action(function (array $data): void {
+                $order = $this->order();
+
+                if (! $order) {
                     return;
                 }
 
                 try {
-                    app(SendInvoice::class)->execute($invoice, auth()->user(), $data['to_email'] ?: null, $data['note'] ?? null);
-                    Notification::make()->title('Invoice sent')->success()->send();
+                    $log = app(SendOrderDocument::class)->execute($order, (string) $data['document'], auth()->user(), $data['to_email'] ?: null, $data['subject'] ?? null, $data['body'] ?? null);
+                    $sentLabel = explode(' · ', SendOrderDocument::options($order)[$data['document']] ?? 'Document')[0];
+                    $notice = Notification::make()
+                        ->title($sentLabel.' emailed to '.$log->recipient_contact)
+                        ->body($log->status === 'sent' ? null : 'Delivery status: '.$log->status);
+                    ($log->status === 'failed' ? $notice->danger() : $notice->success())->send();
                     $this->refreshDetail();
                 } catch (Throwable $e) {
                     Notification::make()->title($e->getMessage())->danger()->send();
@@ -1059,11 +1406,5 @@ class OrderDetail extends Page
         return User::query()->role('salesperson')->where('is_active', true)->orderBy('name')->get()
             ->mapWithKeys(fn (User $u) => [$u->id => $u->name.($u->saLocation ? ' · '.$u->saLocation->code : '')])
             ->all();
-    }
-
-    /** @return array<string, string> */
-    public function paymentMethodOptions(): array
-    {
-        return PaymentMethod::options();
     }
 }

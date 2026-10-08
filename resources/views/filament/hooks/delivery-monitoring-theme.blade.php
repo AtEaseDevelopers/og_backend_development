@@ -134,6 +134,23 @@
         color: rgb(17 24 39);
     }
 
+    /* Delivery date (x-og.date-range component): same size as the other filter inputs; the filter card stays light in dark mode too */
+    .fi-page-delivery-monitoring .og-dr {
+        min-width: 0;
+    }
+
+    .fi-page-delivery-monitoring .og-dr .og-dr-trigger {
+        min-height: 2.375rem;
+        border-color: rgb(209 213 219);
+        background: white;
+        color: rgb(17 24 39);
+        font-size: 0.875rem;
+    }
+
+    .fi-page-delivery-monitoring .og-dr .og-dr-trigger:hover {
+        border-color: rgb(156 163 175);
+    }
+
     .fi-page-delivery-monitoring .dm-filter-actions {
         display: flex;
         align-items: center;

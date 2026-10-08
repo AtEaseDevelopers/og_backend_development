@@ -19,7 +19,7 @@ class TransferCodeResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-qr-code';
 
-    protected static ?string $navigationGroup = 'Dispatch';
+    protected static ?string $navigationGroup = 'Master Data';
 
     protected static ?string $navigationLabel = 'Transfer Codes';
 

@@ -62,6 +62,14 @@
                 <div class="csn-doc-party-address">{!! $nl($consignee['address'] ?? null) !!}</div>
             </td>
             <td class="csn-doc-meta-col">
+                {{-- QR of the document number (CSN no. on a CSN, DO no. on a DO) for scanning --}}
+                @php $qr = \App\Support\QrCodeImage::dataUri($meta['qr_value'] ?? ($meta['number'] ?? null)); @endphp
+                @if ($qr)
+                    <div class="csn-doc-qr">
+                        <img src="{{ $qr }}" alt="QR {{ $meta['qr_value'] ?? ($meta['number'] ?? '') }}">
+                        <div class="csn-doc-qr-text">{{ $meta['qr_value'] ?? ($meta['number'] ?? '') }}</div>
+                    </div>
+                @endif
                 <div class="csn-doc-title">{{ $documentTitle }}</div>
                 <table class="csn-doc-meta-table">
                     <tr><td class="csn-doc-meta-label">NO</td><td>{{ $meta['number'] ?? '—' }}</td></tr>

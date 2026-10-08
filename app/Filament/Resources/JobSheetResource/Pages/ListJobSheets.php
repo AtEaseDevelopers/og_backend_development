@@ -12,6 +12,7 @@ use App\Support\JobSheetListData;
 use Filament\Resources\Pages\ListRecords;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 
 class ListJobSheets extends ListRecords
 {
@@ -21,13 +22,21 @@ class ListJobSheets extends ListRecords
 
     public ?string $filterNumber = null;
 
-    public ?string $filterOperatingDate = null;
+    public ?string $filterTripNo = null;
+
+    /** Operating date range ends (Y-m-d, empty = open); both start on today, so the list opens on today's sheets. */
+    public ?string $filterOperatingFrom = null;
+
+    public ?string $filterOperatingTo = null;
 
     public ?string $filterBranchId = null;
 
     public ?string $filterLorryId = null;
 
     public ?string $filterDriverId = null;
+
+    /** '' any, 'none' = no delivery orders, 'some' = at least one */
+    public ?string $filterTaskCount = null;
 
     public ?string $filterStatus = null;
 
@@ -37,7 +46,7 @@ class ListJobSheets extends ListRecords
     {
         parent::mount();
 
-        $this->filterOperatingDate = now()->format('Y-m-d');
+        $this->filterOperatingFrom = $this->filterOperatingTo = now()->format('Y-m-d');
         $this->selectFirstJobSheet();
     }
 
@@ -65,10 +74,12 @@ class ListJobSheets extends ListRecords
     public function resetFilters(): void
     {
         $this->filterNumber = null;
-        $this->filterOperatingDate = now()->format('Y-m-d');
+        $this->filterTripNo = null;
+        $this->filterOperatingFrom = $this->filterOperatingTo = now()->format('Y-m-d');
         $this->filterBranchId = null;
         $this->filterLorryId = null;
         $this->filterDriverId = null;
+        $this->filterTaskCount = null;
         $this->filterStatus = null;
         $this->resetTable();
         $this->selectFirstJobSheet();
@@ -97,18 +108,24 @@ class ListJobSheets extends ListRecords
 
     protected function applyJobSheetFilters(Builder $query): Builder
     {
+        [$operatingFrom, $operatingTo] = $this->operatingDateRange();
+        $tripNo = $this->tripNoSearch();
+
+        // The Task Count column adds the delivery order count to the table query itself, so no withCount here
         return $query
-            ->withCount('deliveryOrders')
             ->with(['operatingBranch', 'lorry', 'driver'])
             ->when(filled($this->filterNumber), fn (Builder $builder) => $builder->where(
                 'number',
                 'like',
                 '%'.trim((string) $this->filterNumber).'%',
             ))
-            ->when(filled($this->filterOperatingDate), fn (Builder $builder) => $builder->whereDate(
-                'operating_date',
-                $this->filterOperatingDate,
+            ->when($tripNo !== '', fn (Builder $builder) => $builder->where(
+                'trip_no',
+                'like',
+                '%'.$tripNo.'%',
             ))
+            ->when($operatingFrom, fn (Builder $builder) => $builder->whereDate('operating_date', '>=', $operatingFrom))
+            ->when($operatingTo, fn (Builder $builder) => $builder->whereDate('operating_date', '<=', $operatingTo))
             ->when(filled($this->filterBranchId), fn (Builder $builder) => $builder->where(
                 'operating_branch_id',
                 $this->filterBranchId,
@@ -121,10 +138,53 @@ class ListJobSheets extends ListRecords
                 'driver_id',
                 $this->filterDriverId,
             ))
+            ->when($this->filterTaskCount === 'none', fn (Builder $builder) => $builder->doesntHave('deliveryOrders'))
+            ->when($this->filterTaskCount === 'some', fn (Builder $builder) => $builder->has('deliveryOrders'))
             ->when(filled($this->filterStatus), fn (Builder $builder) => $builder->where(
                 'status',
                 $this->filterStatus,
             ));
+    }
+
+    /**
+     * Valid Y-m-d ends of the operating date filter (null = open end), swapped when typed the wrong way round.
+     *
+     * @return array{0: ?string, 1: ?string}
+     */
+    protected function operatingDateRange(): array
+    {
+        $valid = function (?string $value): ?string {
+            $value = trim((string) $value);
+            $date = $value !== '' ? rescue(fn () => Carbon::createFromFormat('!Y-m-d', $value), null, false) : null;
+
+            return $date && $date->format('Y-m-d') === $value ? $value : null;
+        };
+
+        $from = $valid($this->filterOperatingFrom);
+        $to = $valid($this->filterOperatingTo);
+
+        return $from && $to && $from > $to ? [$to, $from] : [$from, $to];
+    }
+
+    /** The trip filter text without a typed "Trip" prefix, so "Trip 2" and "2" both match trip 2. */
+    protected function tripNoSearch(): string
+    {
+        return trim((string) preg_replace('/^\s*trip\s*/i', '', (string) $this->filterTripNo));
+    }
+
+    /** Header badge text for the operating date filter, e.g. "07/10/2026" or "01/10/2026 – 07/10/2026". */
+    public function getOperatingDateLabel(): string
+    {
+        [$from, $to] = $this->operatingDateRange();
+        $format = fn (string $date): string => Carbon::createFromFormat('!Y-m-d', $date)->format('d/m/Y');
+
+        return match (true) {
+            $from && $to && $from === $to => $format($from),
+            $from && $to => $format($from).' – '.$format($to),
+            (bool) $from => 'From '.$format($from),
+            (bool) $to => 'Until '.$format($to),
+            default => 'All dates',
+        };
     }
 
     /** @return array<string, mixed>|null */
@@ -174,6 +234,15 @@ class ListJobSheets extends ListRecords
     }
 
     /** @return array<string, string> */
+    public function taskCountFilterOptions(): array
+    {
+        return [
+            'none' => 'None',
+            'some' => '1 or more',
+        ];
+    }
+
+    /** @return array<string, string> */
     public function statusFilterOptions(): array
     {
         return collect(JobSheetStatus::cases())
@@ -186,12 +255,14 @@ class ListJobSheets extends ListRecords
         return $this->getJobSheetListingQuery();
     }
 
+    /** The id tie-breaker keeps column sorts with equal values (status, driver...) stable from page to page. */
     public function table(Table $table): Table
     {
         return parent::table($table)
             ->searchable(false)
             ->filters([])
             ->defaultSort('id', 'desc')
+            ->defaultKeySort()
             ->recordUrl(null)
             ->recordAction('selectJobSheetFromTable');
     }

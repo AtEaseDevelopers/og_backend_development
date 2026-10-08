@@ -14,40 +14,29 @@ use App\Enums\QuotationStatus;
 /**
  * Single source of truth for where an order sits in the flow
  * Enquiry → Quotation → Confirmation → Proforma → Payment / Release → Billing → CSN,
- * and for the colour legend used by the Orders workspace:
- * In progress · Awaiting customer · Needs action · Issue / Rejected · Released / Credit · Completed / Paid.
+ * and for the stage tags that filter the Orders workspace.
  */
 class OrderStage
 {
     public const STEPS = ['Enquiry', 'Quotation', 'Confirmation', 'Proforma', 'Payment / Release', 'Invoice', 'CSN'];
 
-    /** Legend colour keys → labels. */
-    public const LEGEND = [
-        'progress' => 'In progress',
-        'customer' => 'Awaiting customer',
-        'action' => 'Needs action',
-        'issue' => 'Issue / Rejected',
-        'released' => 'Released / Credit',
-        'done' => 'Completed / Paid',
+    /**
+     * Stage keys (as returned in forEnquiry / forOrder 'key') → tag label and colour, in flow order.
+     * The Orders list shows one clickable tag per stage, after an "All" tag for every open order.
+     *
+     * @var array<string, array{label: string, color: string}>
+     */
+    public const STAGES = [
+        'enquiry' => ['label' => 'New enquiry', 'color' => 'progress'],
+        'pending_salesperson' => ['label' => 'Pending salesperson', 'color' => 'action'],
+        'quotation' => ['label' => 'Preparing quotation', 'color' => 'progress'],
+        'awaiting_customer' => ['label' => 'Awaiting customer', 'color' => 'customer'],
+        'confirmation' => ['label' => 'Confirmation', 'color' => 'action'],
+        'payment' => ['label' => 'Payment / release', 'color' => 'action'],
+        'billed' => ['label' => 'Invoice issued', 'color' => 'released'],
+        'csn' => ['label' => 'CSN created', 'color' => 'done'],
+        'closed' => ['label' => 'Rejected / closed', 'color' => 'issue'],
     ];
-
-    /** @return array<string, string> */
-    public static function stageOptions(): array
-    {
-        return [
-            '' => 'All open',
-            'all' => 'All (incl. closed)',
-            'enquiry' => 'New enquiry',
-            'pending_salesperson' => 'Pending salesperson',
-            'quotation' => 'Preparing quotation',
-            'awaiting_customer' => 'Awaiting customer',
-            'confirmation' => 'Credit approval',
-            'payment' => 'Payment / release',
-            'billed' => 'Billing issued',
-            'csn' => 'CSN created',
-            'closed' => 'Rejected / closed',
-        ];
-    }
 
     /**
      * @return array{key: string, step: int, label: string, color: string, hint: string, next: string, closed: bool, attention: bool, ready_to_bill: bool}
@@ -110,7 +99,7 @@ class OrderStage
             $status === QuotationStatus::Confirmed && $rejected => ['payment', 5, 'Payment review', 'action', 'Receipt mismatch · Customer correction needed', 'View rejection', false],
             $status === QuotationStatus::Confirmed && $pending > 0 => ['payment', 5, 'Payment review', 'action', 'Payment proof submitted · Verify and approve', 'Review payment', false],
             $status === QuotationStatus::Confirmed && $type === OrderType::Term => ['payment', 5, 'Admin release required', 'action', 'Credit order · Release to issue invoice and CSN', 'Review admin release', false],
-            $status === QuotationStatus::Confirmed && $type === OrderType::Cod => ['payment', 5, 'Ready to bill', 'released', 'COD order · Billing issued at dispatch', 'Review billing', false],
+            $status === QuotationStatus::Confirmed && $type === OrderType::Cod => ['payment', 5, 'Ready to bill', 'released', 'COD order · CSN created, invoice once fully paid', 'Review billing', false],
             $status === QuotationStatus::Confirmed && $paid > 0 && $paid + 0.005 < $total => ['payment', 5, 'Payment review', 'action', 'Partial payment · Admin release required', 'Review admin release', false],
             $status === QuotationStatus::Confirmed => ['payment', 5, 'Awaiting payment', 'customer', 'Proforma issued · Waiting for customer payment', 'Review payment', false],
             $status === QuotationStatus::PendingApproval => ['confirmation', 3, 'Credit approval', 'action', 'Customer confirmed · Awaiting branch manager credit approval', 'Review credit approval', false],
@@ -120,6 +109,7 @@ class OrderStage
             $status === QuotationStatus::Negotiation => ['quotation', 3, 'Customer rejected · revising', 'action', 'Customer rejected the price · Edit and send again', 'Edit pricing', false],
             $status === QuotationStatus::Draft && ! $q->salesperson_id => ['pending_salesperson', 2, 'Pending salesperson', 'action', 'No salesperson assigned · Assign one to continue', 'Assign salesperson', false],
             $status === QuotationStatus::Draft => ['quotation', 2, 'Preparing quotation', 'progress', $total > 0 ? 'Priced · Ready to send for confirmation' : 'Pricing in progress · Salesperson editing', $total > 0 ? 'Send quotation' : 'Provide pricing', false],
+            $status === QuotationStatus::Superseded => ['closed', 2, 'Old version', 'gray', 'Replaced by a newer version · kept for reference', 'View order', true],
             default => ['closed', 2, $status->getLabel() ?? 'Closed', 'issue', $q->rejection_reason ?: $q->closed_reason ?: ($status->getLabel() ?? 'Closed'), 'View order', true],
         };
 
@@ -171,7 +161,7 @@ class OrderStage
         if ($type === OrderType::Term) {
             return $q->isReleased()
                 ? ['key' => 'credit', 'label' => 'Credit · released', 'color' => 'released', 'method' => $method ?? 'Credit term', 'hint' => 'Released '.$q->released_at?->format('d/m/Y')]
-                : ['key' => 'credit', 'label' => 'Credit', 'color' => 'released', 'method' => $method ?? 'Credit term', 'hint' => 'Invoice on release'];
+                : ['key' => 'credit', 'label' => 'Credit', 'color' => 'released', 'method' => $method ?? 'Credit term', 'hint' => 'Invoice generated by Admin after the CSN'];
         }
 
         if ($latest && $latest->status === PaymentSubmissionStatus::Rejected && $paid + 0.005 < $total) {

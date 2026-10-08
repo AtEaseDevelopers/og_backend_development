@@ -6,6 +6,7 @@ use App\Domains\Billing\Models\Invoice;
 use App\Domains\Billing\Models\Payment;
 use App\Domains\Billing\Models\Receipt;
 use App\Domains\Consignment\Models\ConsignmentNote;
+use App\Domains\Quotation\Models\Quotation;
 use App\Enums\CsnBillingType;
 use App\Enums\DocumentType;
 use App\Enums\InvoiceStatus;
@@ -20,6 +21,7 @@ class RecordPayment
     public function __construct(
         private DocumentNumberingService $numbering,
         private GenerateCashBillInvoice $generateInvoice,
+        private RefreshOrderPaidAmount $refreshPaidAmount,
     ) {}
 
     public function execute(array $data, User $actor): Payment
@@ -59,6 +61,7 @@ class RecordPayment
                 'status' => $data['status'] ?? 'completed',
                 'reconciliation_status' => $data['reconciliation_status'] ?? null,
                 'slip_path' => $data['slip_path'] ?? null,
+                'slip_paths' => $data['slip_paths'] ?? null,
                 'remarks' => $data['remarks'] ?? null,
                 'received_by' => $actor->id,
             ]);
@@ -84,6 +87,12 @@ class RecordPayment
             if ($csn && $csn->billing_type === CsnBillingType::CashBill && $csn->fresh()->payment_status === PaymentStatus::Paid) {
                 $invoice = $this->generateInvoice->execute($csn->fresh(), $actor);
                 $payment->update(['invoice_id' => $invoice->id]);
+            }
+
+            // every completed payment on an order counts towards its paid amount, whichever flow recorded it
+            // (driver COD collection and CSN "Collect Payment" call this action directly)
+            if ($payment->quotation_id && ($quotation = Quotation::query()->find($payment->quotation_id))) {
+                $this->refreshPaidAmount->execute($quotation);
             }
 
             return $payment->fresh(['receipt']);

@@ -27,7 +27,7 @@ class PaymentSubmission extends Model
     protected $fillable = [
         'company_id', 'branch_id', 'quotation_id', 'proforma_invoice_id', 'customer_id',
         'submitted_by', 'submitted_channel', 'amount', 'payment_date', 'method', 'bank_account',
-        'reference', 'receipt_path', 'status', 'rejection_reason',
+        'reference', 'receipt_path', 'receipt_paths', 'status', 'rejection_reason',
         'level1_by', 'level1_at', 'level2_by', 'level2_at', 'payment_id', 'remarks',
     ];
 
@@ -40,7 +40,22 @@ class PaymentSubmission extends Model
             'method' => PaymentMethod::class,
             'level1_at' => 'datetime',
             'level2_at' => 'datetime',
+            'receipt_paths' => 'array',
         ];
+    }
+
+    /**
+     * Every uploaded file of this submission, first file first (receipt_path plus the extra files in receipt_paths).
+     *
+     * @return list<string>
+     */
+    public function files(): array
+    {
+        return collect([$this->receipt_path, ...((array) ($this->receipt_paths ?? []))])
+            ->filter(fn ($path) => is_string($path) && $path !== '')
+            ->unique()
+            ->values()
+            ->all();
     }
 
     public function getActivitylogOptions(): LogOptions

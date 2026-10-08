@@ -31,6 +31,9 @@ class FailedDeliveryResource extends Resource
 
     protected static ?string $navigationLabel = 'Failed Delivery Review';
 
+    // menu item removed (user request 8 Oct 2026); the page stays reachable from links
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?int $navigationSort = 55;
 
     public static function form(Form $form): Form

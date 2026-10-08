@@ -47,13 +47,9 @@
                                 @endforeach
                             </select>
                         </div>
-                        <div class="cca-filter-field">
-                            <label class="cca-filter-label" for="filterDateFrom">From</label>
-                            <input id="filterDateFrom" type="date" wire:model.live="filterDateFrom" class="cca-filter-input" />
-                        </div>
-                        <div class="cca-filter-field">
-                            <label class="cca-filter-label" for="filterDateTo">To</label>
-                            <input id="filterDateTo" type="date" wire:model.live="filterDateTo" class="cca-filter-input" />
+                        <div class="cca-filter-field cca-filter-field-date">
+                            <span class="cca-filter-label">Application date</span>
+                            <x-og.date-range from="filterDateFrom" to="filterDateTo" :from-value="$filterDateFrom" :to-value="$filterDateTo" label="Application date" />
                         </div>
                     </div>
                     <button type="button" wire:click="resetFilters" class="cca-btn cca-btn-outline cca-btn-sm">Reset filters</button>

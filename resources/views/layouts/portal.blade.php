@@ -33,6 +33,7 @@
         h1 { font-size: 1.6rem; margin: 0 0 1rem; }
         .muted { color: var(--muted); }
     </style>
+    @include('filament.hooks.searchable-select')
 </head>
 <body>
 <div class="wrap" style="padding-bottom:4.5rem">

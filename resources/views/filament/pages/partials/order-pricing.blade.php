@@ -13,6 +13,11 @@
             </div>
         @else
             <p class="ow-note">{{ $pr['why_not'] ?? 'Pricing is not available for this enquiry.' }}</p>
+            @if (! empty($pr['records_url']))
+                <div class="ow-actions" style="margin-top:.75rem">
+                    <a href="{{ $pr['records_url'] }}" class="ow-btn ow-btn-primary">Open order →</a>
+                </div>
+            @endif
         @endif
     </div>
 @elseif (! $hasOwner)
@@ -72,8 +77,29 @@
             }
         }
         $b = $pr['before'];
+        // products kept on the order without a price yet (saved as lines without a unit price, left out of the total)
+        $unpricedRows = collect($this->pricing['rows'] ?? [])
+            ->filter(fn ($row) => filled($row['item_name'] ?? null) && collect($row['prices'] ?? [])->filter(fn ($p) => filled($p))->isEmpty())
+            ->pluck('item_name')->unique()->values();
     @endphp
-    <div class="ow-grid-main">
+    <div class="ow-stack">
+        <div class="ow-card ow-card-pad">
+            <div class="ow-card-title">Before proceeding</div>
+            <div class="ow-dl" style="grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr))">
+                <div><div class="ow-dt">DO number</div><div class="ow-dd">{{ $b['do_number'] }}</div></div>
+                <div><div class="ow-dt">Salesperson</div><div class="ow-dd">{{ $b['salesperson'] }}</div></div>
+                <div><div class="ow-dt">Customer consent</div><div class="ow-dd">{{ $b['consent'] }}</div></div>
+                <div><div class="ow-dt">Quotation</div><div class="ow-dd ow-mono">{{ $b['quotation'] }}</div></div>
+                <div><div class="ow-dt">Version</div><div class="ow-dd">{{ $b['version'] }}</div></div>
+                <div><div class="ow-dt">Payment</div><div class="ow-dd">{{ $b['payment'] }}</div></div>
+                <div><div class="ow-dt">Invoice / CSN</div><div class="ow-dd">{{ $b['billing'] }}</div></div>
+            </div>
+            <p class="ow-note" style="margin-top:.85rem">A price entered by Admin is a proposal. Customer confirmation is a separate stage.</p>
+            @if ($d['urls']['full_editor'])
+                <a href="{{ $d['urls']['full_editor'] }}" class="ow-link" style="display:inline-block;margin-top:.5rem;font-size:.8rem">Edit order details →</a>
+            @endif
+        </div>
+
         <div class="ow-card ow-card-pad">
             <div class="ow-card-title">Admin pricing</div>
             <div>{{ $d['customer'] }} · {{ $pr['preview']['route'] }}</div>
@@ -137,7 +163,13 @@
                                         @endif
                                     </td>
                                 @endforeach
-                                <td class="ow-num">RM {{ number_format($totals['rows'][$i] ?? 0, 2) }}</td>
+                                <td class="ow-num">
+                                    @if (filled($row['item_name'] ?? null) && collect($row['prices'] ?? [])->filter(fn ($p) => filled($p))->isEmpty())
+                                        <span class="ow-note">No price yet</span>
+                                    @else
+                                        RM {{ number_format($totals['rows'][$i] ?? 0, 2) }}
+                                    @endif
+                                </td>
                                 <td style="width:2rem">
                                     @if (count($this->pricing['rows']) > 1)
                                         <button type="button" wire:click="removePricingRow({{ $i }})" class="ow-btn-link" title="Remove" style="color:#b91c1c">✕</button>
@@ -167,6 +199,13 @@
                 </div>
             @endif
 
+            @if ($unpricedRows->isNotEmpty())
+                <div class="ow-callout ow-callout-warning" style="margin-top:.75rem">
+                    <strong>No price yet:</strong> {{ $unpricedRows->implode(', ') }}<br>
+                    Kept on the order and left out of the total. Enter a price before sending the quotation.
+                </div>
+            @endif
+
             <div class="ow-total-row"><span>Quotation total</span><span>RM {{ number_format($totals['total'], 2) }}</span></div>
             <div class="ow-note" style="margin-top:.35rem">Quantity × unit rate + pickup + drop-off + other charges.</div>
 
@@ -174,23 +213,6 @@
                 <button type="button" wire:click="savePricing(false)" wire:loading.attr="disabled" class="ow-btn">Save pricing draft</button>
                 <button type="button" wire:click="savePricing(true)" wire:loading.attr="disabled" class="ow-btn ow-btn-primary">Preview quotation →</button>
             </div>
-        </div>
-
-        <div class="ow-card ow-card-pad">
-            <div class="ow-card-title">Before proceeding</div>
-            <div class="ow-dl">
-                <div><div class="ow-dt">DO number</div><div class="ow-dd">{{ $b['do_number'] }}</div></div>
-                <div><div class="ow-dt">Salesperson</div><div class="ow-dd">{{ $b['salesperson'] }}</div></div>
-                <div><div class="ow-dt">Customer consent</div><div class="ow-dd">{{ $b['consent'] }}</div></div>
-                <div><div class="ow-dt">Quotation</div><div class="ow-dd ow-mono">{{ $b['quotation'] }}</div></div>
-                <div><div class="ow-dt">Version</div><div class="ow-dd">{{ $b['version'] }}</div></div>
-                <div><div class="ow-dt">Payment</div><div class="ow-dd">{{ $b['payment'] }}</div></div>
-                <div><div class="ow-dt">Invoice / CSN</div><div class="ow-dd">{{ $b['billing'] }}</div></div>
-            </div>
-            <p class="ow-note" style="margin-top:.85rem">A price entered by Admin is a proposal. Customer confirmation is a separate stage.</p>
-            @if ($d['urls']['full_editor'])
-                <a href="{{ $d['urls']['full_editor'] }}" class="ow-link" style="display:inline-block;margin-top:.5rem;font-size:.8rem">Edit order details →</a>
-            @endif
         </div>
     </div>
 @else

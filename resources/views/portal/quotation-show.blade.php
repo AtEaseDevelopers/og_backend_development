@@ -74,8 +74,9 @@
                 <td>{{ $line->item_name }}</td>
                 <td>{{ rtrim(rtrim(number_format($line->quantity, 3, '.', ''), '0'), '.') }}</td>
                 <td>{{ $line->uom }}</td>
-                <td>RM {{ number_format($line->unit_price, 2) }}</td>
-                <td style="text-align:right">RM {{ number_format($line->line_total, 2) }}</td>
+                {{-- a product without a price yet (never sent: sending needs every product priced) shows no amount --}}
+                <td>{{ $line->unit_price !== null ? 'RM '.number_format((float) $line->unit_price, 2) : '—' }}</td>
+                <td style="text-align:right">{{ $line->unit_price !== null ? 'RM '.number_format((float) $line->line_total, 2) : '—' }}</td>
             </tr>
         @endforeach
         <tr><td colspan="4"><strong>Total</strong></td><td style="text-align:right"><strong>RM {{ number_format($quotation->total_amount, 2) }}</strong></td></tr>

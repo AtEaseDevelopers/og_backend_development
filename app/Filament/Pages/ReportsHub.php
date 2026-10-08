@@ -12,6 +12,7 @@ use App\Domains\Integration\Models\EinvoiceSubmission;
 use App\Domains\Integration\Models\SyncLog;
 use App\Domains\MasterData\Models\Branch;
 use App\Domains\MasterData\Models\VehicleMaintenanceRecord;
+use App\Filament\Forms\Components\DateRangePicker;
 use Filament\Forms;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -46,8 +47,10 @@ class ReportsHub extends Page implements HasForms, HasTable
         $this->form->fill([
             'report' => 'csn_do',
             'source_branch_id' => \App\Support\CurrentBranch::id() ?? auth()->user()?->defaultBranch()?->id,
-            'from' => now()->startOfMonth()->toDateString(),
-            'to' => now()->toDateString(),
+            'period' => [
+                'from' => now()->startOfMonth()->toDateString(),
+                'until' => now()->toDateString(),
+            ],
         ]);
     }
 
@@ -74,8 +77,11 @@ class ReportsHub extends Page implements HasForms, HasTable
                 Forms\Components\Placeholder::make('branch_label')
                     ->label('Company / branch')
                     ->content(fn () => \App\Support\CurrentBranch::get()?->getFilamentName() ?? '—'),
-                Forms\Components\DatePicker::make('from')->live(),
-                Forms\Components\DatePicker::make('to')->live(),
+                DateRangePicker::make('period')
+                    ->label('Date')
+                    ->live()
+                    // only on the 4-column breakpoint; below it the grid has 1 column
+                    ->columnSpan(['lg' => 2]),
             ])
             ->columns(4)
             ->statePath('data');
@@ -98,8 +104,7 @@ class ReportsHub extends Page implements HasForms, HasTable
     {
         $report = $this->data['report'] ?? 'csn_do';
         $branchId = $this->data['source_branch_id'] ?? null;
-        $from = $this->data['from'] ?? null;
-        $to = $this->data['to'] ?? null;
+        ['from' => $from, 'until' => $to] = DateRangePicker::normalize($this->data['period'] ?? null);
 
         return match ($report) {
             'missing_csn' => MissingCsnLog::query()

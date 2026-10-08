@@ -1,182 +1,199 @@
-{{-- Payment summary (cash orders) / payment term note (credit term & COD orders). --}}
-@if ($pay['mode'] === 'non_cash')
-    <div class="ow-card ow-card-pad">
-        <div class="ow-callout {{ $pay['cod_blocked'] ? 'ow-callout-danger' : 'ow-callout-info' }}">{{ $pay['text'] }}</div>
-        <div class="ow-dl" style="margin-top:.85rem">
-            <div><div class="ow-dt">Invoice</div><div class="ow-dd ow-mono">{{ $pay['invoice'] ?? 'Not issued yet' }}</div></div>
-            <div><div class="ow-dt">CSN</div><div class="ow-dd ow-mono">{{ $pay['csn'] ?? 'Not created yet' }}</div></div>
-        </div>
-        @if ($can['generate_billing'])
-            <div class="ow-actions" style="margin-top:.85rem">
-                <button type="button" wire:click="mountAction('generateBilling')" class="ow-btn ow-btn-primary">Issue invoice → CSN</button>
-            </div>
+{{--
+    Payment summary card (order overview, right column; replaces the former "Payment & release" card and the
+    Payment summary tab): status and payment term, Total / Paid / Outstanding, the payment history with uploaded
+    slips / receipts, Add payment and per-entry Edit, payment review, and the Admin release where it still applies.
+--}}
+@php
+    $ps = $d['payment_summary'];
+    $release = $ps['release'];
+@endphp
+<div class="ow-card ow-card-pad ow-anchor" id="og-section-payment"
+     x-data="{ view: null }"
+     x-on:og-file-view.window="view = $event.detail"
+     x-on:og-file-view-close.window="view = null">
+    <div class="ow-card-title">
+        Payment summary
+        @if ($ps['can_add'])
+            <button type="button" wire:click="mountAction('addPayment')" class="ow-btn ow-btn-sm">+ Add payment</button>
         @endif
     </div>
-@elseif ($pay['mode'] === 'order')
-    @php
-        $r = $pay['review'];
-        $bill = $pay['billing'];
-        $outstanding = max(0, (float) $order->total_amount - (float) $order->paid_amount);
-        $canRecord = $outstanding > 0.004 && in_array($order->status, [\App\Enums\QuotationStatus::Accepted, \App\Enums\QuotationStatus::PendingApproval, \App\Enums\QuotationStatus::Confirmed], true);
-    @endphp
-    <div class="ow-grid-main">
-        <div class="ow-stack">
-            <div class="ow-card ow-card-pad">
-                <div class="ow-card-title">Payment review</div>
-                <span class="ow-pill ow-pill-{{ $r['color'] }}">{{ $r['label'] }}</span>
-                <div style="margin-top:.5rem">
-                    <div class="ow-kv"><span>Order total</span><strong>{{ $r['total'] }}</strong></div>
-                    <div class="ow-kv"><span>Paid to date</span><strong>{{ $r['paid'] }}</strong></div>
-                    <div class="ow-kv"><span>Outstanding</span><strong>{{ $r['outstanding'] }}</strong></div>
-                </div>
-                <div class="ow-dl" style="margin-top:.6rem">
-                    <div><div class="ow-dt">Payment method</div><div class="ow-dd">{{ $r['method'] }}</div></div>
-                    <div><div class="ow-dt">Payment term</div><div class="ow-dd">{{ $r['order_type'] }}</div></div>
-                    <div><div class="ow-dt">Review status</div><div class="ow-dd">{{ $r['review_status'] }}</div></div>
-                    <div><div class="ow-dt">Approval levels</div><div class="ow-dd">{{ $r['approval_levels'] }}</div></div>
-                    @if ($r['proforma'])
-                        <div><div class="ow-dt">Proforma invoice</div><div class="ow-dd ow-mono">{{ $r['proforma'] }}</div></div>
-                    @endif
-                </div>
-                @if ($r['note'])
-                    <div class="ow-callout ow-callout-warning" style="margin-top:.85rem">{{ $r['note'] }}</div>
-                @endif
-            </div>
+    <div class="ow-chips" style="margin:0 0 .35rem">
+        <span class="ow-pill ow-pill-{{ $ps['color'] }}">{{ $ps['label'] }}</span>
+        <span class="ow-pill ow-pill-dark">{{ $ps['order_type'] }}</span>
+    </div>
+    <div class="ow-kv"><span>Total</span><strong>{{ $ps['total'] }}</strong></div>
+    <div class="ow-kv"><span>Paid</span><strong>{{ $ps['paid'] }}</strong></div>
+    <div class="ow-kv"><span>Outstanding</span><strong @class(['ow-due' => $ps['outstanding_value'] > 0.004])>{{ $ps['outstanding'] }}</strong></div>
 
-            <div class="ow-card ow-card-pad">
-                <div class="ow-card-title">Payment history</div>
-                @if ($pay['submissions'] === [])
-                    <p class="ow-note">No payment recorded yet.</p>
-                @else
-                    <div class="ow-table-wrap">
-                        <table class="ow-price-table">
-                            <thead><tr><th>Date</th><th class="ow-num">Amount</th><th>Method</th><th>Reference</th><th>Status</th><th></th></tr></thead>
-                            <tbody>
-                                @foreach ($pay['submissions'] as $s)
-                                    <tr wire:key="ow-sub-{{ $s['id'] }}">
-                                        <td>{{ $s['date'] }}</td>
-                                        <td class="ow-num">{{ $s['amount'] }}</td>
-                                        <td>{{ $s['method'] }}</td>
-                                        <td>
-                                            <div class="ow-mono">{{ $s['reference'] }}</div>
-                                            @if ($s['remarks'])<div class="ow-note">{{ $s['remarks'] }}</div>@endif
-                                            @if ($s['receipt_url'])<a href="{{ $s['receipt_url'] }}" target="_blank" rel="noopener" class="ow-link" style="font-size:.75rem">View receipt</a>@endif
-                                        </td>
-                                        <td><span class="ow-pill ow-pill-{{ $s['color'] }}">{{ $s['status'] }}</span></td>
-                                        <td>
-                                            @if ($can['review_payments'])
-                                                <div class="ow-actions">
-                                                    @if ($s['can_reject'])<button type="button" wire:click="mountAction('rejectPayment', { id: {{ $s['id'] }} })" class="ow-btn ow-btn-sm ow-btn-danger">Reject</button>@endif
-                                                    @if ($s['can_verify'])<button type="button" wire:click="verifyPayment({{ $s['id'] }})" class="ow-btn ow-btn-sm">Verify</button>@endif
-                                                    @if ($s['can_approve'] && ! $s['can_verify'])<button type="button" wire:click="approvePayment({{ $s['id'] }})" class="ow-btn ow-btn-sm ow-btn-success">Approve</button>@endif
-                                                </div>
-                                            @endif
-                                        </td>
-                                    </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
-                    </div>
-                @endif
-            </div>
+    <div class="ow-dl" style="margin-top:.6rem">
+        <div><div class="ow-dt">Payment method</div><div class="ow-dd">{{ $ps['method'] ?? '—' }}</div></div>
+        <div><div class="ow-dt">Review status</div><div class="ow-dd">{{ $ps['review_status'] }}</div></div>
+        @if ($ps['proforma'])
+            <div><div class="ow-dt">Proforma invoice</div><div class="ow-dd ow-mono">{{ $ps['proforma'] }}</div></div>
+        @endif
+        @if ($ps['approval_levels'])
+            <div><div class="ow-dt">Approval</div><div class="ow-dd">{{ $ps['approval_levels'] }}</div></div>
+        @endif
+    </div>
 
-            <div class="ow-card ow-card-pad">
-                <div class="ow-card-title">Invoice &amp; accounting</div>
-                <div class="ow-dl ow-dl-3">
-                    <div><div class="ow-dt">Billing type</div><div class="ow-dd">{{ $bill['billing_type'] }}</div></div>
-                    <div><div class="ow-dt">Invoice / Cash Bill</div><div class="ow-dd ow-mono">{{ $bill['invoice'] }}</div></div>
-                    <div><div class="ow-dt">Dispatch release</div><div class="ow-dd">{{ $bill['dispatch_release'] }}</div></div>
-                    <div><div class="ow-dt">EOD</div><div class="ow-dd">{{ $bill['eod'] }}</div></div>
-                    <div><div class="ow-dt">AutoCount sync</div><div class="ow-dd">{{ $bill['autocount'] }}</div></div>
-                    <div><div class="ow-dt">Refund note</div><div class="ow-dd">{{ $bill['refund'] }}</div></div>
-                </div>
-                <p class="ow-note" style="margin-top:.75rem">{{ $bill['note'] }}</p>
-                @if ($can['generate_billing'] || $can['send_invoice'])
-                    <div class="ow-actions" style="margin-top:.75rem">
-                        @if ($can['send_invoice'])<button type="button" wire:click="mountAction('sendInvoice')" class="ow-btn">Email invoice / cash bill</button>@endif
-                        @if ($can['generate_billing'])<button type="button" wire:click="mountAction('generateBilling')" class="ow-btn ow-btn-primary">{{ $order->billingStatus() === \App\Enums\BillingStatus::Generated ? 'Create CSN' : 'Issue invoice → CSN' }}</button>@endif
-                    </div>
-                @endif
-            </div>
+    @if ($ps['term_text'])
+        <div class="ow-callout {{ $ps['cod_blocked'] ? 'ow-callout-danger' : 'ow-callout-info' }}" style="margin-top:.75rem">{{ $ps['term_text'] }}</div>
+    @endif
+    @if ($ps['note'])
+        <div class="ow-callout ow-callout-warning" style="margin-top:.75rem">{{ $ps['note'] }}</div>
+    @endif
+    <div class="ow-note" style="margin-top:.6rem">{{ $ps['status_note'] }}</div>
+    @if ($ps['cod_pending'] ?? false)
+        <p class="ow-note" style="margin-top:.35rem">COD · any payment recorded here reduces what the driver collects on delivery. The COD invoice is issued once the order is fully paid.</p>
+    @endif
+
+    {{-- Admin release: still needed for a cash order short of payment (and a credit term order not released on confirmation) --}}
+    @if ($release['released'])
+        <div class="ow-callout ow-callout-success" style="margin-top:.75rem">
+            Admin release by {{ $release['by'] }}@if ($release['at']) on {{ $release['at'] }}@endif.
+            @if ($release['reason'])<br>{{ $release['reason'] }}@endif
         </div>
+    @elseif ($can['release'] && $release['applies'])
+        <div class="ow-release">
+            <div style="min-width:0">
+                <div class="ow-l1">Admin release</div>
+                <div class="ow-note">Issue the billing and create the CSN before the balance is fully paid. Outstanding {{ $ps['outstanding'] }}.</div>
+            </div>
+            <button type="button" wire:click="mountAction('release')" class="ow-btn ow-btn-sm ow-btn-primary">Admin release →</button>
+        </div>
+    @elseif ($release['applies'])
+        <p class="ow-note" style="margin-top:.6rem">The outstanding balance needs an Admin release (HQ Admin, Branch Manager or Finance) before billing and CSN creation.</p>
+    @endif
 
-        <div class="ow-stack">
-            @if ($canRecord)
-                <div class="ow-card ow-card-pad">
-                    <div class="ow-card-title">Record payment</div>
-                    <div class="ow-field">
-                        <label>Payment type</label>
-                        <div class="ow-radio-group">
-                            <label><input type="radio" value="full" wire:model.live="paymentForm.type"> Full payment</label>
-                            <label><input type="radio" value="partial" wire:model.live="paymentForm.type"> Partial payment</label>
-                        </div>
-                    </div>
-                    <div class="ow-fgrid" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:.75rem">
-                        <div class="ow-field">
-                            <label>Amount (RM) <span class="ow-req">*</span></label>
-                            <div class="ow-money"><span>RM</span><input type="number" min="0.01" step="0.01" wire:model="paymentForm.amount" class="ow-input" @readonly(($paymentForm['type'] ?? 'full') === 'full')></div>
-                            @error('paymentForm.amount')<div class="ow-field-error">{{ $message }}</div>@enderror
-                        </div>
-                        <div class="ow-field">
-                            <label>Payment date <span class="ow-req">*</span></label>
-                            <input type="date" wire:model="paymentForm.payment_date" class="ow-input">
-                            @error('paymentForm.payment_date')<div class="ow-field-error">{{ $message }}</div>@enderror
-                        </div>
-                        <div class="ow-field">
-                            <label>Method</label>
-                            <select wire:model="paymentForm.method" class="ow-select">
-                                @foreach ($this->paymentMethodOptions() as $value => $label)
-                                    <option value="{{ $value }}">{{ $label }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div class="ow-field">
-                            <label>Reference no.</label>
-                            <input type="text" wire:model="paymentForm.reference" class="ow-input" placeholder="Bank / slip reference">
-                        </div>
-                    </div>
-                    <div class="ow-field" style="margin-top:.75rem">
-                        <label>Payment slip / receipt image</label>
-                        <input type="file" wire:model="paymentReceipt" accept="image/*,application/pdf" class="ow-input">
-                        <div wire:loading wire:target="paymentReceipt" class="ow-note">Uploading…</div>
-                        @if ($paymentReceipt && method_exists($paymentReceipt, 'isPreviewable') && $paymentReceipt->isPreviewable())
-                            <img src="{{ $paymentReceipt->temporaryUrl() }}" alt="Receipt preview" style="margin-top:.5rem;max-height:120px;border-radius:.4rem;border:1px solid var(--ow-line)">
+    {{-- Payment history: collapsed by default, click the heading to expand --}}
+    <div x-data="{ historyOpen: false }">
+    <button type="button" class="ow-pay-head ow-pay-toggle" x-on:click="historyOpen = ! historyOpen" x-bind:aria-expanded="historyOpen.toString()">
+        <span>Payment history</span>
+        <span class="ow-note">
+            {{ count($ps['entries']) }} {{ \Illuminate\Support\Str::plural('entry', count($ps['entries'])) }}
+            @php $toReview = $can['review_payments'] ? collect($ps['entries'])->filter(fn ($e) => $e['can_verify'] || $e['can_approve'])->count() : 0; @endphp
+            @if ($toReview > 0)
+                <span class="ow-pill ow-pill-action">{{ $toReview }} to review</span>
+            @endif
+            <span class="ow-pay-toggle-label" x-text="historyOpen ? 'Hide' : 'Show'">Show</span>
+            <svg class="ow-pay-chevron" x-bind:class="{ 'is-open': historyOpen }" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
+        </span>
+    </button>
+    <div x-show="historyOpen" x-collapse x-cloak>
+    @forelse ($ps['entries'] as $e)
+        @php $review = $can['review_payments'] && ($e['can_reject'] || $e['can_verify'] || $e['can_approve']); @endphp
+        <div class="ow-pay" wire:key="ow-pay-{{ $e['key'] }}">
+            <div class="ow-pay-row">
+                <div style="min-width:0">
+                    <div class="ow-pay-amount">{{ $e['amount'] }}</div>
+                    <div class="ow-note">{{ $e['date'] }} · {{ $e['method'] }}</div>
+                </div>
+                <span class="ow-pill ow-pill-{{ $e['color'] }}">{{ $e['status'] }}</span>
+            </div>
+            <div class="ow-pay-meta">
+                <span>Ref <span class="ow-mono">{{ $e['reference'] ?: '—' }}</span></span>
+                <span>Recorded by {{ $e['recorded_by'] }}</span>
+                @if ($e['approved_by'])<span>Approved by {{ $e['approved_by'] }}</span>@endif
+                @if ($e['edited_by'] ?? null)<span>Edited by {{ $e['edited_by'] }}</span>@endif
+            </div>
+            @if ($e['remarks'])
+                <div class="ow-pay-remarks">{{ $e['remarks'] }}</div>
+            @endif
+            @if ($e['documents'])
+                <div class="ow-note ow-mono" style="margin-top:.2rem">{{ $e['documents'] }}</div>
+            @endif
+            @if ($e['attachments'] !== [])
+                <div class="ow-pay-files">
+                    @foreach ($e['attachments'] as $file)
+                        @if ($file['missing'])
+                            <span class="ow-pay-file ow-pay-file-missing" title="{{ $file['name'] }}">
+                                <span class="ow-pay-file-ext">{{ $file['ext'] }}</span>
+                                <span class="ow-pay-file-name">File not found</span>
+                            </span>
+                        @else
+                            <a href="{{ $file['url'] }}" target="_blank" rel="noopener" class="ow-pay-file" title="View {{ $file['name'] }}"
+                               x-on:click.prevent="$dispatch('og-file-view', { url: @js($file['url']), name: @js($file['name']), image: @js($file['is_image']) })">
+                                @if ($file['is_image'])
+                                    <img src="{{ $file['url'] }}" alt="Payment slip {{ $file['name'] }}" loading="lazy">
+                                @else
+                                    <span class="ow-pay-file-ext">{{ $file['ext'] }}</span>
+                                @endif
+                                <span class="ow-pay-file-name">{{ $file['is_image'] ? 'View slip' : 'Open '.$file['ext'] }}</span>
+                            </a>
                         @endif
-                        @error('paymentReceipt')<div class="ow-field-error">{{ $message }}</div>@enderror
-                    </div>
-                    <div class="ow-field" style="margin-top:.75rem">
-                        <label>Remarks</label>
-                        <textarea wire:model="paymentForm.remarks" rows="2" class="ow-textarea" placeholder="e.g. Balance to be collected on delivery"></textarea>
-                    </div>
-                    <div class="ow-note" style="margin-top:.5rem">
-                        {{ ($paymentForm['type'] ?? 'full') === 'full'
-                            ? 'A full payment clears the balance. Once approved the Cash Bill is issued and the CSN is created.'
-                            : 'A partial payment leaves an outstanding balance. Billing and CSN need an Admin release (below).' }}
-                    </div>
-                    <div class="ow-actions" style="margin-top:.85rem">
-                        <button type="button" wire:click="recordPayment" wire:loading.attr="disabled" class="ow-btn ow-btn-primary">Record payment</button>
-                    </div>
+                    @endforeach
                 </div>
             @endif
+            @if ($e['can_edit'] || $review)
+                <div class="ow-actions" style="margin-top:.5rem">
+                    @if ($e['can_edit'])
+                        <button type="button" wire:click="mountAction('editPayment', { kind: '{{ $e['kind'] }}', id: {{ $e['id'] }} })" class="ow-btn ow-btn-sm">Edit</button>
+                    @endif
+                    @if ($review)
+                        @if ($e['can_reject'])<button type="button" wire:click="mountAction('rejectPayment', { id: {{ $e['id'] }} })" class="ow-btn ow-btn-sm ow-btn-danger">Reject</button>@endif
+                        @if ($e['can_verify'])<button type="button" wire:click="verifyPayment({{ $e['id'] }})" class="ow-btn ow-btn-sm">Verify</button>@endif
+                        @if ($e['can_approve'] && ! $e['can_verify'])<button type="button" wire:click="approvePayment({{ $e['id'] }})" class="ow-btn ow-btn-sm ow-btn-success">Approve</button>@endif
+                    @endif
+                </div>
+            @endif
+        </div>
+    @empty
+        <p class="ow-note" style="margin-top:.4rem">No payment recorded yet.</p>
+    @endforelse
+    </div>
+    </div>
 
-            <div class="ow-card ow-card-pad">
-                <div class="ow-card-title">Admin release</div>
-                @if ($order->isReleased())
-                    <div class="ow-callout ow-callout-success">
-                        Released by {{ $order->releaser?->name ?? 'Admin' }} on {{ $order->released_at?->format('d M Y · H:i') }}.
-                        @if ($order->release_reason)<br>{{ $order->release_reason }}@endif
-                    </div>
-                @elseif ($can['release'])
-                    <p>Release the order to issue the Cash Bill and create the CSN before the balance is fully paid. Outstanding: <strong>RM {{ number_format($outstanding, 2) }}</strong>.</p>
-                    <div class="ow-actions" style="margin-top:.75rem">
-                        <button type="button" wire:click="mountAction('release')" class="ow-btn ow-btn-primary">Admin release →</button>
-                    </div>
-                @elseif ($order->billingStatus() === \App\Enums\BillingStatus::Generated)
-                    <p class="ow-note">Not needed · billing already issued.</p>
-                @else
-                    <p class="ow-note">Available to HQ Admin, Branch Manager or Finance once the order is confirmed.</p>
-                @endif
+    {{-- slip / receipt viewer: payment history links and the tiles of the payment upload field open here --}}
+    <script>
+        (() => {
+            if (window.ogSlipViewerReady) return;
+            window.ogSlipViewerReady = true;
+
+            const isOpen = () => [...document.querySelectorAll('.ow-file-viewer')].some((el) => el.offsetParent !== null || getComputedStyle(el).display !== 'none');
+
+            // a tile in the "Payment slips / receipts" upload field: show that file (new upload or saved file)
+            document.addEventListener('click', (event) => {
+                const item = event.target.closest('.ow-slip-upload .filepond--item');
+                if (! item || event.target.closest('button, a, .filepond--file-action-button, .filepond--open-icon, .filepond--download-icon')) return;
+
+                let host = item.parentElement;
+                while (host && ! (window.Alpine && host.hasAttribute('x-data') && Alpine.$data(host)?.pond)) host = host.parentElement;
+                const pond = host ? Alpine.$data(host).pond : null;
+                const file = pond?.getFile(item.id.replace('filepond--item-', ''));
+                if (! file?.file) return;
+
+                event.preventDefault();
+                event.stopPropagation();
+                window.dispatchEvent(new CustomEvent('og-file-view', { detail: {
+                    url: URL.createObjectURL(file.file),
+                    name: file.filename,
+                    image: /^image\//.test(file.file.type || file.fileType || ''),
+                } }));
+            }, true);
+
+            // Esc closes only the viewer, not the payment window behind it
+            window.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape' && isOpen()) {
+                    event.stopImmediatePropagation();
+                    event.preventDefault();
+                    window.dispatchEvent(new CustomEvent('og-file-view-close'));
+                }
+            }, true);
+        })();
+    </script>
+    <template x-teleport="body">
+        <div x-show="view" x-cloak x-transition.opacity class="ow-file-viewer" x-on:click.self="view = null" role="dialog" aria-modal="true" aria-label="Payment slip">
+            <div class="ow-file-viewer-box" x-show="view">
+                <div class="ow-file-viewer-head">
+                    <span class="ow-file-viewer-name" x-text="view?.name"></span>
+                    <a x-bind:href="view?.url" target="_blank" rel="noopener" class="ow-file-viewer-link">Open in new tab</a>
+                    <button type="button" class="ow-file-viewer-close" x-on:click="view = null" aria-label="Close">&times;</button>
+                </div>
+                <div class="ow-file-viewer-body">
+                    <template x-if="view && view.image"><img x-bind:src="view.url" x-bind:alt="view.name"></template>
+                    <template x-if="view && ! view.image"><iframe x-bind:src="view.url" title="Payment slip"></iframe></template>
+                </div>
             </div>
         </div>
-    </div>
-@endif
+    </template>
+</div>

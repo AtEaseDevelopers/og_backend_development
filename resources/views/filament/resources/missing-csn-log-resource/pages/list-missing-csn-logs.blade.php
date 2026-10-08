@@ -162,13 +162,8 @@
                     </select>
                 </div>
                 <div class="mc-filter-field">
-                    <label class="mc-filter-label" for="filterMonitoringDate">Monitoring Date</label>
-                    <input
-                        id="filterMonitoringDate"
-                        type="date"
-                        wire:model.defer="filterMonitoringDate"
-                        class="mc-filter-input"
-                    />
+                    <span class="mc-filter-label">Monitoring Date</span>
+                    <x-og.date-range single :live="false" from="filterMonitoringDate" :from-value="$filterMonitoringDate" label="Monitoring date" />
                 </div>
                 <div class="mc-filter-actions">
                     <button type="button" wire:click="resetFilters" class="mc-btn mc-btn-secondary">Reset</button>

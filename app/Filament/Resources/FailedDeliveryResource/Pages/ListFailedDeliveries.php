@@ -55,6 +55,14 @@ class ListFailedDeliveries extends ListRecords
         // Re-render with current filter state.
     }
 
+    /** The review is always for one day: clearing the date picker goes back to today. */
+    public function updatedFilterDeliveryDate(): void
+    {
+        if (blank($this->filterDeliveryDate)) {
+            $this->filterDeliveryDate = now()->format('Y-m-d');
+        }
+    }
+
     public function resetFilters(): void
     {
         $this->filterDeliveryDate = now()->format('Y-m-d');

@@ -93,11 +93,16 @@ class ConvertQuotationToCsns
                     'customer_brn' => $quotation->customer->brn,
                     'customer_tin' => $quotation->customer->tin,
                     'customer_phone' => $quotation->customer->phone,
-                    'consignor_name' => $quotation->consignor_name ?: $quotation->customer->company_name,
+                    // a consignor left blank on the order stays blank ('' = blank on purpose; the CSN document shows "—").
+                    // Older records without an order form never had one: the customer, as before.
+                    'consignor_name' => $quotation->consignor_name ?: ($quotation->portal_enquiry_id ? '' : $quotation->customer->company_name),
+                    // a Store record's pickup location is the store (branch) address
                     'consignor_address' => $quotation->pickup_location ?: ($quotation->customer_address ?: $quotation->customer->address),
+                    // the consignor's person in charge has no CSN column: only the contact number is carried
+                    'consignor_phone' => $quotation->consignor_pic_phone,
                     'consignee_name' => $single && filled($quotation->consignee_name) ? $quotation->consignee_name : $destination->consignee_name,
-                    'consignee_pic' => $destination->consignee_pic,
-                    'consignee_phone' => $destination->consignee_phone,
+                    'consignee_pic' => ($single ? $quotation->consignee_pic_name : null) ?: $destination->consignee_pic,
+                    'consignee_phone' => ($single ? $quotation->consignee_pic_phone : null) ?: $destination->consignee_phone,
                     // delivery_address is NOT NULL: fall back to the destination label (the PDF hides label-only repeats)
                     'delivery_address' => ($single
                         ? ($quotation->drop_off_location ?: ($quotation->consignee_address ?: $this->realAddress($destination)))
@@ -109,7 +114,8 @@ class ConvertQuotationToCsns
                     'to_location_id' => $single ? $quotation->to_location_id : null,
                     'subtotal' => $subtotal,
                     'total_amount' => $subtotal,
-                    'issued_at' => now()->toDateString(),
+                    // the CSN date is the order's expected delivery date (today when the order has none)
+                    'issued_at' => $quotation->expected_delivery_date?->toDateString() ?? now()->toDateString(),
                     'qr_token' => (string) Str::uuid(),
                     'tracking_token' => Str::random(40),
                     'created_by' => $actor->id,
@@ -124,7 +130,8 @@ class ConvertQuotationToCsns
                         'quantity' => $line->quantity,
                         'weight' => $line->weight,
                         'dimensions' => $line->dimensions,
-                        'unit_price' => $line->unit_price,
+                        // csn_lines.unit_price is NOT NULL (an order is only confirmed once every product is priced)
+                        'unit_price' => $line->unit_price ?? 0,
                         'line_total' => $line->line_total,
                     ]);
                 }

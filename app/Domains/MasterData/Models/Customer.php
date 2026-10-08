@@ -2,9 +2,11 @@
 
 namespace App\Domains\MasterData\Models;
 
+use App\Enums\OrderType;
 use App\Models\Concerns\BelongsToCompany;
 
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -71,6 +73,33 @@ class Customer extends Model
         }
 
         return true;
+    }
+
+    /**
+     * Customer type (Cash, COD or Credit): the default order type when set,
+     * otherwise Credit for credit-term customers and Cash for everyone else.
+     */
+    public function customerType(): OrderType
+    {
+        return OrderType::tryFrom((string) $this->default_order_type)
+            ?? ($this->is_credit ? OrderType::Term : OrderType::Cash);
+    }
+
+    /** customerType() as a query: customers of the given type ('cash', 'cod' or 'term'). */
+    public function scopeOfCustomerType(Builder $query, string $type): void
+    {
+        $query->where(function (Builder $query) use ($type): void {
+            $query->where('default_order_type', $type);
+
+            // No usable default order type: is_credit decides between Credit and Cash
+            if ($type !== OrderType::Cod->value) {
+                $query->orWhere(fn (Builder $fallback) => $fallback
+                    ->where(fn (Builder $unset) => $unset
+                        ->whereNull('default_order_type')
+                        ->orWhereNotIn('default_order_type', array_column(OrderType::cases(), 'value')))
+                    ->where('is_credit', $type === OrderType::Term->value));
+            }
+        });
     }
 
     protected function casts(): array

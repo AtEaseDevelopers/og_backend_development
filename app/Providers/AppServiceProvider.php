@@ -34,5 +34,28 @@ class AppServiceProvider extends ServiceProvider
         \Filament\Actions\MountableAction::configureUsing(
             fn (\Filament\Actions\MountableAction $action) => $action->modalFooterActionsAlignment(\Filament\Support\Enums\Alignment::End),
         );
+
+        /*
+         * UI convention: every dropdown is a select2-style picker (type to filter, then pick).
+         * searchable() swaps the native <select> for Filament's Choices.js select. These defaults
+         * run before the field's own setUp() and chained calls, so a field can still opt out with
+         * ->searchable(false) or narrow the search with ->searchable(['col', ...]). preload() only
+         * affects relationship selects (list the first options on open instead of an empty "start
+         * typing" box); static ->options() lists are filtered in the browser, and their options
+         * limit is raised so the whole list can still be scrolled (Choices.js only renders the
+         * first optionsLimit entries; for relationships it stays a DB LIMIT of 50). SelectFilter
+         * builds its own Select and passes its own searchable/preload flags into it, so filters
+         * (incl. TernaryFilter) need a separate default.
+         */
+        \Filament\Forms\Components\Select::configureUsing(
+            fn (\Filament\Forms\Components\Select $select) => $select
+                ->searchable()
+                ->preload()
+                ->optionsLimit(fn (\Filament\Forms\Components\Select $component): int => $component->hasRelationship() ? 50 : 500),
+        );
+
+        \Filament\Tables\Filters\SelectFilter::configureUsing(
+            fn (\Filament\Tables\Filters\SelectFilter $filter) => $filter->searchable()->preload(),
+        );
     }
 }

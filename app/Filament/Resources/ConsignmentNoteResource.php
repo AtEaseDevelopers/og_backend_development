@@ -30,10 +30,11 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Support\Enums\MaxWidth;
 use Filament\Tables;
-use Filament\Tables\Enums\FiltersLayout;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\HtmlString;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 class ConsignmentNoteResource extends Resource
@@ -61,13 +62,20 @@ class ConsignmentNoteResource extends Resource
     {
         return $table
             ->columns([
+                // Every column sorts. Filtering is only in the filter card above the table
+                // (ListConsignmentNotes::applyFilterBar), so no column is searchable and there is no table search box.
                 Tables\Columns\TextColumn::make('number')
-                    ->searchable()
                     ->sortable()
-                    ->description(fn (ConsignmentNote $record) => trim(($record->customer_do_number ? 'DO '.$record->customer_do_number : '').($record->sa_prefix ? ' · '.$record->sa_prefix : '')) ?: null)
+                    ->description(fn (ConsignmentNote $record) => static::numberColumnNotes($record))
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('issued_at')
+                    ->label('CSN date')
+                    ->date('d M Y')
+                    ->placeholder('—')
+                    ->sortable()
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('customer_name')
-                    ->searchable()
+                    ->sortable()
                     ->description(fn (ConsignmentNote $record) => $record->salesperson?->name)
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('quotation.number')
@@ -76,35 +84,74 @@ class ConsignmentNoteResource extends Resource
                     ->color('primary')
                     ->placeholder('—')
                     ->description(fn (ConsignmentNote $record) => $record->invoice_number)
+                    ->sortable()
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('order_type')
                     ->label('Order type')
                     ->badge()
                     ->placeholder('—')
+                    ->sortable()
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('service_type')
                     ->label('Service')
                     ->badge()
                     ->color('gray')
                     ->placeholder('—')
+                    ->sortable()
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('claimer.name')
                     ->label('Claimed by')
                     ->description(fn (ConsignmentNote $record) => $record->claimed_at?->format('d/m H:i'))
                     ->placeholder('—')
+                    ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('billing_type')
                     ->badge()
                     ->formatStateUsing(fn ($state) => $state instanceof CsnBillingType ? $state->label() : $state)
+                    ->sortable()
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
+                    ->sortable()
+                    ->toggleable(),
+                // delivery progress of the latest main DO, including a failed delivery and its reason
+                Tables\Columns\TextColumn::make('delivery_status')
+                    ->label('Delivery')
+                    ->badge()
+                    ->state(fn (ConsignmentNote $record) => static::deliveryState($record)['label'])
+                    ->color(fn (ConsignmentNote $record) => static::deliveryState($record)['color'])
+                    ->description(fn (ConsignmentNote $record) => static::deliveryState($record)['note'])
+                    // a failed delivery: the full reason and the driver's remarks on hover
+                    ->tooltip(fn (ConsignmentNote $record) => static::deliveryState($record)['tooltip'] ?? null)
+                    ->toggleable(),
+                // is the original CSN back from the driver (scanned with "Scan returned CSN")
+                Tables\Columns\TextColumn::make('return_status')
+                    ->label('CSN returned')
+                    ->badge()
+                    ->state(fn (ConsignmentNote $record) => match (true) {
+                        $record->return_status === 'returned' || (bool) $record->returnedCsn => 'Returned',
+                        $record->return_status === 'missing' => 'Missing',
+                        $record->return_status === 'pending_return' => 'Not yet',
+                        default => '—',
+                    })
+                    ->color(fn (string $state) => match ($state) {
+                        'Returned' => 'success',
+                        'Missing' => 'danger',
+                        'Not yet' => 'warning',
+                        default => 'gray',
+                    })
+                    ->description(fn (ConsignmentNote $record) => $record->returnedCsn
+                        ? trim(($record->returnedCsn->returned_at?->format('d/m H:i') ?? '').($record->returnedCsn->receivedBy ? ' · '.$record->returnedCsn->receivedBy->name : ''), ' ·')
+                        : null)
+                    ->sortable()
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('payment_status')
                     ->badge()
+                    ->sortable()
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('total_amount')
                     ->money('MYR')
+                    ->sortable()
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('delivery_orders_count')
                     ->counts('deliveryOrders')
@@ -113,6 +160,7 @@ class ConsignmentNoteResource extends Resource
                     ->badge()
                     ->color(fn ($state) => ($state ?? 0) > 0 ? 'primary' : 'gray')
                     ->tooltip('View delivery orders')
+                    ->sortable()
                     ->toggleable()
                     ->action(
                         Tables\Actions\Action::make('manageDeliveryOrders')
@@ -132,203 +180,126 @@ class ConsignmentNoteResource extends Resource
                     ),
                 Tables\Columns\TextColumn::make('deliveryOrder.lorry.registration_no')
                     ->label('Main lorry')
+                    // the main DO's lorry, first DO if a CSN ever has two (a plain relationship sort would fail then)
+                    ->sortable(query: fn (Builder $query, string $direction): Builder => $query->orderBy(
+                        DB::table('delivery_orders')
+                            ->join('lorries', 'lorries.id', '=', 'delivery_orders.lorry_id')
+                            ->whereColumn('delivery_orders.consignment_note_id', 'consignment_notes.id')
+                            ->whereNull('delivery_orders.parent_do_id')
+                            ->orderBy('delivery_orders.id')
+                            ->limit(1)
+                            ->select('lorries.registration_no'),
+                        $direction,
+                    ))
                     ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('subsheets_count')
                     ->counts('subsheets')
                     ->label('Subsheets')
+                    ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->defaultSort('created_at', 'desc')
             ->striped()
-            ->searchPlaceholder('Search CSN no. or customer')
-            ->filters([
-                Tables\Filters\SelectFilter::make('customer_id')
-                    ->label('Customer')
-                    ->relationship('customer', 'company_name')
-                    ->searchable()
-                    ->preload(),
-                Tables\Filters\SelectFilter::make('service_type')
-                    ->label('Service (Pick Up / Store)')
-                    ->options(\App\Enums\ServiceType::options()),
-                Tables\Filters\SelectFilter::make('order_type')
-                    ->label('Order type')
-                    ->options(\App\Enums\OrderType::options()),
-                Tables\Filters\SelectFilter::make('sa_location_id')
-                    ->label('SA location prefix')
-                    ->options(fn () => \App\Domains\MasterData\Models\SaLocation::query()->orderBy('code')->get()->mapWithKeys(fn ($l) => [$l->id => $l->csn_prefix.' — '.$l->name])),
-                Tables\Filters\SelectFilter::make('transfer_code_id')
-                    ->label('Transfer code')
-                    ->relationship('transferCode', 'code'),
-                Tables\Filters\SelectFilter::make('salesperson_id')
-                    ->label('Salesperson')
-                    ->relationship('salesperson', 'name')
-                    ->searchable()
-                    ->preload(),
-                Tables\Filters\Filter::make('driver_id')
-                    ->label('Driver')
-                    ->form([
-                        Forms\Components\Select::make('value')
-                            ->label('Driver')
-                            ->options(fn () => static::driverOptions())
-                            ->searchable(),
-                    ])
-                    ->query(fn (Builder $query, array $data): Builder => $query->when(
-                        $data['value'] ?? null,
-                        fn (Builder $query, $driverId): Builder => $query->whereHas('deliveryOrder', fn (Builder $q) => $q->where('driver_id', $driverId)),
-                    )),
-                Tables\Filters\TernaryFilter::make('claimed')
-                    ->label('Claimed')
-                    ->queries(
-                        true: fn (Builder $query) => $query->whereNotNull('claimed_by'),
-                        false: fn (Builder $query) => $query->whereNull('claimed_by'),
-                        blank: fn (Builder $query) => $query,
-                    ),
-                Tables\Filters\SelectFilter::make('status')
-                    ->label('Status')
-                    ->options(collect(CsnStatus::cases())->mapWithKeys(
-                        fn (CsnStatus $c) => [$c->value => $c->getLabel()]
-                    )),
-                Tables\Filters\SelectFilter::make('payment_status')
-                    ->label('Payment status')
-                    ->options(collect(PaymentStatus::cases())->mapWithKeys(
-                        fn (PaymentStatus $c) => [$c->value => $c->getLabel()]
-                    )),
-                Tables\Filters\SelectFilter::make('billing_type')
-                    ->label('Billing type')
-                    ->options(collect(CsnBillingType::cases())->mapWithKeys(
-                        fn (CsnBillingType $c) => [$c->value => $c->label()]
-                    )),
-                Tables\Filters\SelectFilter::make('quotation_id')
-                    ->label('Quotation')
-                    ->relationship('quotation', 'number')
-                    ->searchable()
-                    ->preload(),
-                Tables\Filters\Filter::make('main_lorry_id')
-                    ->label('Main lorry')
-                    ->form([
-                        Forms\Components\Select::make('value')
-                            ->label('Main lorry')
+            // No Filament filters: the CSN list page has its own Orders-style filter card
+            // (ListConsignmentNotes::applyFilterBar), with a "Filters +" panel instead of a dropdown modal.
+            ->bulkActions([
+                Tables\Actions\BulkAction::make('bulkAssignLorry')
+                    ->label('Assign to lorry')
+                    ->icon('heroicon-o-truck')
+                    ->modalHeading('Assign the selected CSNs to a lorry')
+                    ->modalDescription('CSNs that already have a lorry, are cancelled or cannot be dispatched yet are skipped.')
+                    ->modalSubmitActionLabel('Assign')
+                    ->form(fn () => static::assignLorryFormSchema())
+                    ->action(function (Collection $records, array $data): void {
+                        [$done, $skipped] = [0, []];
+
+                        foreach ($records as $record) {
+                            if ($record->deliveryOrder()->exists() || $record->status === CsnStatus::Cancelled || ! $record->canAssignToLorry()) {
+                                $skipped[] = $record->number;
+
+                                continue;
+                            }
+
+                            try {
+                                static::runAssignAndSubsheets($record, $data, notify: false);
+                                $done++;
+                            } catch (Throwable $e) {
+                                $skipped[] = $record->number.' ('.$e->getMessage().')';
+                            }
+                        }
+
+                        $notice = Notification::make()
+                            ->title($done.' CSN(s) assigned')
+                            ->body($skipped ? 'Skipped: '.implode(', ', $skipped) : null);
+                        ($skipped ? $notice->warning() : $notice->success())->send();
+                    })
+                    ->deselectRecordsAfterCompletion(),
+                Tables\Actions\BulkAction::make('bulkSubsheets')
+                    ->label('Create subsheets')
+                    ->icon('heroicon-o-document-duplicate')
+                    ->color('warning')
+                    ->modalHeading('Create subsheets for the selected CSNs')
+                    ->modalDescription('Each selected CSN gets a subsheet for every lorry chosen. CSNs without a main lorry yet are skipped.')
+                    ->modalSubmitActionLabel('Create subsheets')
+                    // 1. subsheet or transfer · 2. transfer code · 3. lorries
+                    ->form(fn () => [
+                        Forms\Components\Radio::make('task_type')
+                            ->label('Type')
+                            ->options([
+                                'incoming_psi' => 'Subsheet (pickup, bring goods to hub)',
+                                'transfer' => 'Transfer (handover leg)',
+                            ])
+                            ->default('incoming_psi')
+                            ->inline()
+                            ->live()
+                            ->afterStateUpdated(fn (Forms\Set $set) => $set('transfer_code', null))
+                            ->required(),
+                        Forms\Components\Select::make('transfer_code')
+                            ->label('Transfer code')
+                            ->options(fn (Forms\Get $get) => TransferCode::query()
+                                ->where('is_active', true)
+                                ->when($get('task_type') === 'incoming_psi', fn ($q) => $q->where('type', 'incoming'))
+                                ->orderBy('code')
+                                ->get()
+                                ->mapWithKeys(fn (TransferCode $t) => [$t->code => filled($t->name) ? $t->code.' — '.$t->name : $t->code]))
+                            ->searchable()
+                            ->nullable(),
+                        Forms\Components\Select::make('sub_lorry_ids')
+                            ->label('Lorries')
+                            ->helperText('Each selected CSN gets one subsheet per lorry.')
                             ->options(fn () => static::lorryOptions())
+                            ->multiple()
+                            ->required()
                             ->searchable(),
+                        Forms\Components\TextInput::make('segment_route')->label('Route')->maxLength(120),
+                        Forms\Components\Textarea::make('notes')->rows(2),
                     ])
-                    ->query(function (Builder $query, array $data): Builder {
-                        return $query->when(
-                            $data['value'] ?? null,
-                            fn (Builder $query, $lorryId): Builder => $query->whereHas(
-                                'deliveryOrder',
-                                fn (Builder $query) => $query->where('lorry_id', $lorryId)
-                            ),
-                        );
-                    }),
-                Tables\Filters\TernaryFilter::make('assigned')
-                    ->label('Assigned to lorry')
-                    ->queries(
-                        true: fn (Builder $query) => $query->whereHas('deliveryOrder'),
-                        false: fn (Builder $query) => $query->whereDoesntHave('deliveryOrder'),
-                        blank: fn (Builder $query) => $query,
-                    ),
-                Tables\Filters\TernaryFilter::make('has_subsheets')
-                    ->label('Has subsheets')
-                    ->queries(
-                        true: fn (Builder $query) => $query->whereHas('subsheets'),
-                        false: fn (Builder $query) => $query->whereDoesntHave('subsheets'),
-                        blank: fn (Builder $query) => $query,
-                    ),
-                Tables\Filters\Filter::make('issued_at')
-                    ->label('Issued date')
-                    ->columnSpan(2)
-                    ->form([
-                        Forms\Components\Fieldset::make('Issued date')->schema([
-                            Forms\Components\DatePicker::make('from')->label('From'),
-                            Forms\Components\DatePicker::make('until')->label('Until'),
-                        ])->columns(2),
-                    ])
-                    ->query(function (Builder $query, array $data): Builder {
-                        return $query
-                            ->when(
-                                $data['from'] ?? null,
-                                fn (Builder $query, string $date): Builder => $query->whereDate('issued_at', '>=', $date),
-                            )
-                            ->when(
-                                $data['until'] ?? null,
-                                fn (Builder $query, string $date): Builder => $query->whereDate('issued_at', '<=', $date),
-                            );
-                    }),
-                Tables\Filters\Filter::make('job_date')
-                    ->label('Job date')
-                    ->columnSpan(2)
-                    ->form([
-                        Forms\Components\Fieldset::make('Job date')->schema([
-                            Forms\Components\DatePicker::make('from')->label('From'),
-                            Forms\Components\DatePicker::make('until')->label('Until'),
-                        ])->columns(2),
-                    ])
-                    ->query(function (Builder $query, array $data): Builder {
-                        return $query
-                            ->when(
-                                $data['from'] ?? null,
-                                fn (Builder $query, string $date): Builder => $query->whereDate('job_date', '>=', $date),
-                            )
-                            ->when(
-                                $data['until'] ?? null,
-                                fn (Builder $query, string $date): Builder => $query->whereDate('job_date', '<=', $date),
-                            );
-                    }),
-                Tables\Filters\Filter::make('created_at')
-                    ->label('Created date')
-                    ->columnSpan(2)
-                    ->form([
-                        Forms\Components\Fieldset::make('Created date')->schema([
-                            Forms\Components\DatePicker::make('from')->label('From'),
-                            Forms\Components\DatePicker::make('until')->label('Until'),
-                        ])->columns(2),
-                    ])
-                    ->query(function (Builder $query, array $data): Builder {
-                        return $query
-                            ->when(
-                                $data['from'] ?? null,
-                                fn (Builder $query, string $date): Builder => $query->whereDate('created_at', '>=', $date),
-                            )
-                            ->when(
-                                $data['until'] ?? null,
-                                fn (Builder $query, string $date): Builder => $query->whereDate('created_at', '<=', $date),
-                            );
-                    }),
-                Tables\Filters\Filter::make('total_amount')
-                    ->label('Total amount')
-                    ->columnSpan(2)
-                    ->form([
-                        Forms\Components\Fieldset::make('Total amount')->schema([
-                            Forms\Components\TextInput::make('min')
-                                ->label('Min (MYR)')
-                                ->numeric(),
-                            Forms\Components\TextInput::make('max')
-                                ->label('Max (MYR)')
-                                ->numeric(),
-                        ])->columns(2),
-                    ])
-                    ->query(function (Builder $query, array $data): Builder {
-                        return $query
-                            ->when(
-                                $data['min'] ?? null,
-                                fn (Builder $query, $amount): Builder => $query->where('total_amount', '>=', $amount),
-                            )
-                            ->when(
-                                $data['max'] ?? null,
-                                fn (Builder $query, $amount): Builder => $query->where('total_amount', '<=', $amount),
-                            );
-                    }),
+                    ->action(function (Collection $records, array $data): void {
+                        [$created, $skipped] = [0, []];
+
+                        foreach ($records as $record) {
+                            if (! $record->deliveryOrder?->job_sheet_id || $record->status === CsnStatus::Cancelled) {
+                                $skipped[] = $record->number;
+
+                                continue;
+                            }
+
+                            try {
+                                // never a subsheet for the CSN's own main lorry
+                                $lorries = collect($data['sub_lorry_ids'] ?? [])->reject(fn ($id) => (int) $id === (int) $record->deliveryOrder->lorry_id);
+                                $created += static::createSubsheetsForLorries($record, $lorries, static::additionalTaskPayload($data));
+                            } catch (Throwable $e) {
+                                $skipped[] = $record->number.' ('.$e->getMessage().')';
+                            }
+                        }
+
+                        $notice = Notification::make()
+                            ->title($created.' subsheet(s) created')
+                            ->body($skipped ? 'Skipped (no main lorry yet or cancelled): '.implode(', ', $skipped) : null);
+                        ($skipped ? $notice->warning() : $notice->success())->send();
+                    })
+                    ->deselectRecordsAfterCompletion(),
             ])
-            ->filtersFormColumns(3)
-            ->filtersLayout(FiltersLayout::Dropdown)
-            ->filtersTriggerAction(
-                fn (Tables\Actions\Action $action) => $action
-                    ->icon('heroicon-o-funnel')
-                    ->iconButton()
-                    ->label('')
-                    ->color('gray')
-            )
-            ->persistFiltersInSession()
             ->actions([
                 Tables\Actions\ViewAction::make(),
                 Tables\Actions\EditAction::make(),
@@ -504,6 +475,80 @@ class ConsignmentNoteResource extends Resource
                         }
                     }),
             ]);
+    }
+
+    /**
+     * Delivery status of a CSN from its latest main DO (subsheet legs excluded): not assigned, assigned,
+     * in transit, delivered or failed (with the driver's reason).
+     *
+     * @return array{label: string, color: string, note: ?string, tooltip?: ?string}
+     */
+    public static function deliveryState(ConsignmentNote $record): array
+    {
+        $dos = $record->relationLoaded('deliveryOrders') ? $record->deliveryOrders : $record->deliveryOrders()->with('failedDelivery')->get();
+        $main = $dos->whereNull('parent_do_id')->sortByDesc('id')->first();
+
+        if (! $main) {
+            return ['label' => 'Not assigned', 'color' => 'gray', 'note' => null];
+        }
+
+        $status = $main->status instanceof DeliveryOrderStatus ? $main->status : DeliveryOrderStatus::tryFrom((string) $main->status);
+
+        return match ($status) {
+            DeliveryOrderStatus::Failed => [
+                'label' => 'Failed',
+                'color' => 'danger',
+                'note' => trim(($main->failedDelivery?->reason ? str((string) $main->failedDelivery->reason)->replace('_', ' ')->ucfirst()->limit(24) : 'Delivery failed')
+                    .($main->failedDelivery?->failed_at ? ' · '.$main->failedDelivery->failed_at->format('d/m H:i') : '')),
+                'tooltip' => $main->failedDelivery
+                    ? trim('Reason: '.($main->failedDelivery->reason ?: '—').($main->failedDelivery->remarks ? "
+Driver remarks: ".$main->failedDelivery->remarks : ''))
+                    : null,
+            ],
+            DeliveryOrderStatus::Delivered => ['label' => 'Delivered', 'color' => 'success', 'note' => $main->delivered_at?->format('d/m H:i')],
+            DeliveryOrderStatus::InTransit => ['label' => 'In transit', 'color' => 'info', 'note' => null],
+            DeliveryOrderStatus::Assigned => ['label' => 'Assigned', 'color' => 'primary', 'note' => null],
+            DeliveryOrderStatus::Transferred, DeliveryOrderStatus::Reassigned => ['label' => ucfirst((string) $status->value), 'color' => 'warning', 'note' => null],
+            DeliveryOrderStatus::Cancelled => ['label' => 'DO cancelled', 'color' => 'gray', 'note' => null],
+            default => ['label' => ucfirst(str_replace('_', ' ', (string) ($status?->value ?? $main->status))), 'color' => 'gray', 'note' => null],
+        };
+    }
+
+    /** Under the CSN number: customer DO / SA prefix, the transfer code(s) and Subsheet / Break bulk tags. */
+    public static function numberColumnNotes(ConsignmentNote $record): ?HtmlString
+    {
+        $parts = array_filter([
+            $record->customer_do_number ? 'DO '.e($record->customer_do_number) : null,
+            $record->sa_prefix ? e($record->sa_prefix) : null,
+        ]);
+
+        $codes = collect([$record->transferCode?->code])
+            ->merge($record->relationLoaded('subsheets') ? $record->subsheets->pluck('transfer_code') : [])
+            ->filter()
+            ->unique()
+            ->values();
+
+        $tags = collect();
+
+        if ($codes->isNotEmpty()) {
+            $tags->push('<span class="ow-csn-tag ow-csn-tag-code" title="Transfer code">'.e($codes->implode(', ')).'</span>');
+        }
+
+        $subsheets = $record->relationLoaded('subsheets') ? $record->subsheets->count() : 0;
+
+        if ($subsheets > 0) {
+            $tags->push('<span class="ow-csn-tag">Subsheet'.($subsheets > 1 ? ' ×'.$subsheets : '').'</span>');
+        }
+
+        if (($record->break_bulks_count ?? 0) > 0) {
+            $tags->push('<span class="ow-csn-tag ow-csn-tag-bb">Break bulk'.($record->break_bulks_count > 1 ? ' ×'.$record->break_bulks_count : '').'</span>');
+        }
+
+        if ($parts === [] && $tags->isEmpty()) {
+            return null;
+        }
+
+        return new HtmlString(trim(implode(' · ', $parts).($tags->isNotEmpty() ? '<span class="ow-csn-tags">'.$tags->implode('').'</span>' : '')));
     }
 
     /**
@@ -771,7 +816,7 @@ class ConsignmentNoteResource extends Resource
         return $location ? strtoupper($location->name) : null;
     }
 
-    public static function runAssignAndSubsheets(ConsignmentNote $record, array $data): void
+    public static function runAssignAndSubsheets(ConsignmentNote $record, array $data, bool $notify = true): void
     {
         $do = app(AssignCsnToLorry::class)->execute(
             $record,
@@ -786,11 +831,13 @@ class ConsignmentNoteResource extends Resource
             static::additionalTaskPayload($data)
         );
 
-        Notification::make()
-            ->title('Assigned — DO '.$do->number)
-            ->body($created ? "{$created} subsheet(s) created for additional lorries." : null)
-            ->success()
-            ->send();
+        if ($notify) {
+            Notification::make()
+                ->title('Assigned — DO '.$do->number)
+                ->body($created ? "{$created} subsheet(s) created for additional lorries." : null)
+                ->success()
+                ->send();
+        }
     }
 
     /**

@@ -53,7 +53,7 @@ class SubmitPaymentEvidence
 
         $proforma = $this->proforma->execute($quotation);
 
-        return PaymentSubmission::query()->create([
+        $submission = PaymentSubmission::query()->create([
             'company_id' => $quotation->company_id,
             'branch_id' => $quotation->branch_id,
             'quotation_id' => $quotation->id,
@@ -67,8 +67,38 @@ class SubmitPaymentEvidence
             'bank_account' => $data['bank_account'] ?? null,
             'reference' => $data['reference'] ?? null,
             'receipt_path' => $data['receipt_path'] ?? null,
+            'receipt_paths' => $data['receipt_paths'] ?? null,
             'remarks' => $data['remarks'] ?? null,
             'status' => PaymentSubmissionStatus::Submitted,
         ]);
+
+        $this->recordOrderPaymentMethod($quotation, $submission, $method);
+
+        return $submission;
+    }
+
+    /**
+     * Admin-entered orders carry no payment method (it is captured when the payment is recorded): the order takes
+     * the method of its payment, so the Orders list (payment method filter, payment line) shows it. A method chosen
+     * when the order was placed (customer portal) is kept; one taken from a payment that was then rejected gives
+     * way to the next attempt.
+     */
+    private function recordOrderPaymentMethod(Quotation $quotation, PaymentSubmission $submission, PaymentMethod $method): void
+    {
+        if ((string) $quotation->payment_method === $method->value) {
+            return;
+        }
+
+        $fromPayment = blank($quotation->payment_method)
+            || (blank($quotation->portalEnquiry?->payment_method)
+                && ! PaymentSubmission::query()
+                    ->where('quotation_id', $quotation->id)
+                    ->whereKeyNot($submission->id)
+                    ->where('status', '!=', PaymentSubmissionStatus::Rejected->value)
+                    ->exists());
+
+        if ($fromPayment) {
+            $quotation->update(['payment_method' => $method->value]);
+        }
     }
 }

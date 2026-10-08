@@ -4,8 +4,8 @@ namespace App\Filament\Pages;
 
 use App\Domains\MasterData\Models\Customer;
 use App\Domains\MasterData\Models\SaLocation;
-use App\Domains\Quotation\Models\PortalEnquiry;
 use App\Enums\OrderType;
+use App\Enums\ServiceType;
 use App\Models\User;
 use App\Support\CurrentCompany;
 use App\Support\OrderListingData;
@@ -45,8 +45,14 @@ class Orders extends Page
     #[Url(as: 'customer', except: '')]
     public string $customer = '';
 
+    #[Url(as: 'ctype', except: '')]
+    public string $customerType = '';
+
     #[Url(as: 'type', except: '')]
     public string $orderType = '';
+
+    #[Url(as: 'service', except: '')]
+    public string $serviceType = '';
 
     #[Url(as: 'salesperson', except: '')]
     public string $salesperson = '';
@@ -87,13 +93,31 @@ class Orders extends Page
     #[Url(as: 'max', except: '')]
     public string $amountMax = '';
 
+    /** Table header sort: one of OrderListingData::SORTS, '' = newest first. */
+    #[Url(as: 'sort', except: '')]
+    public string $sort = '';
+
+    #[Url(as: 'dir', except: 'asc')]
+    public string $dir = 'asc';
+
     public bool $filtersOpen = false;
 
     public function mount(): void
     {
+        // Old links may carry a stage that no longer has a tag ('all', removed keys): show All instead
+        if (! array_key_exists($this->stage, OrderStage::STAGES)) {
+            $this->stage = '';
+        }
+
+        if (! in_array($this->sort, OrderListingData::SORTS, true)) {
+            $this->sort = '';
+        }
+
+        $this->dir = $this->dir === 'desc' ? 'desc' : 'asc';
+
+        // Only the "Filters +" panel fields; the date ranges sit next to the search and are always shown
         $this->filtersOpen = filled($this->paymentStatus) || filled($this->paymentMethod) || filled($this->saLocation)
             || filled($this->pricingSource) || filled($this->quotationStatus) || filled($this->dropOffType)
-            || filled($this->createdFrom) || filled($this->createdTo) || filled($this->validFrom) || filled($this->validTo)
             || filled($this->amountMin) || filled($this->amountMax);
     }
 
@@ -116,7 +140,9 @@ class Orders extends Page
             'card' => $this->card ?? '',
             'stage' => $this->stage ?? '',
             'customer_id' => $this->customer,
+            'customer_type' => $this->customerType,
             'order_type' => $this->orderType,
+            'service_type' => $this->serviceType,
             'salesperson_id' => $this->salesperson,
             'payment_status' => $this->paymentStatus,
             'payment_method' => $this->paymentMethod,
@@ -130,7 +156,42 @@ class Orders extends Page
             'valid_to' => $this->validTo,
             'amount_min' => $this->amountMin,
             'amount_max' => $this->amountMax,
+            'sort' => $this->sort,
+            'dir' => $this->dir,
         ]);
+    }
+
+    /**
+     * Table columns: header label and sort key (filtering lives in the filter card above the table).
+     *
+     * @return list<array{key: string, label: string, num: bool}>
+     */
+    public function columns(): array
+    {
+        return [
+            ['key' => 'order', 'label' => 'Order / Customer', 'num' => false],
+            ['key' => 'route', 'label' => 'Route / Service', 'num' => false],
+            ['key' => 'stage', 'label' => 'Order stage', 'num' => false],
+            ['key' => 'payment', 'label' => 'Payment', 'num' => false],
+            ['key' => 'amount', 'label' => 'Amount', 'num' => true],
+            ['key' => 'next', 'label' => 'Next step', 'num' => false],
+        ];
+    }
+
+    /** Header click: ascending, then descending, then back to the default (newest first). */
+    public function sortBy(string $key): void
+    {
+        if (! in_array($key, OrderListingData::SORTS, true)) {
+            return;
+        }
+
+        if ($this->sort !== $key) {
+            [$this->sort, $this->dir] = [$key, 'asc'];
+        } elseif ($this->dir === 'asc') {
+            $this->dir = 'desc';
+        } else {
+            [$this->sort, $this->dir] = ['', 'asc'];
+        }
     }
 
     /** @return list<array{key: string, label: string, hint: string, count: int}> */
@@ -149,6 +210,11 @@ class Orders extends Page
         $this->card = $key;
     }
 
+    public function selectStage(string $key): void
+    {
+        $this->stage = array_key_exists($key, OrderStage::STAGES) ? $key : '';
+    }
+
     public function toggleFilters(): void
     {
         $this->filtersOpen = ! $this->filtersOpen;
@@ -156,27 +222,46 @@ class Orders extends Page
 
     public function resetFilters(): void
     {
-        foreach (['search', 'card', 'stage', 'customer', 'orderType', 'salesperson', 'paymentStatus', 'paymentMethod', 'saLocation', 'pricingSource', 'quotationStatus', 'dropOffType', 'createdFrom', 'createdTo', 'validFrom', 'validTo', 'amountMin', 'amountMax'] as $property) {
+        foreach (['search', 'card', 'stage', 'customer', 'customerType', 'orderType', 'serviceType', 'salesperson', 'paymentStatus', 'paymentMethod', 'saLocation', 'pricingSource', 'quotationStatus', 'dropOffType', 'createdFrom', 'createdTo', 'validFrom', 'validTo', 'amountMin', 'amountMax', 'sort'] as $property) {
             $this->{$property} = '';
         }
+
+        $this->dir = 'asc';
+    }
+
+    /**
+     * "All" (every open order) first, then one tag per order stage with its count.
+     *
+     * @param  array<string, int>  $counts
+     * @return list<array{key: string, label: string, color: string, count: int}>
+     */
+    public function stageTags(array $counts): array
+    {
+        $tags = [['key' => '', 'label' => 'All', 'color' => 'all', 'count' => (int) ($counts[''] ?? 0)]];
+
+        foreach (OrderStage::STAGES as $key => $stage) {
+            $tags[] = ['key' => $key, 'label' => $stage['label'], 'color' => $stage['color'], 'count' => (int) ($counts[$key] ?? 0)];
+        }
+
+        return $tags;
     }
 
     /** @return array<string, string> */
-    public function legend(): array
+    public function customerTypeOptions(): array
     {
-        return OrderStage::LEGEND;
-    }
-
-    /** @return array<string, string> */
-    public function stageOptions(): array
-    {
-        return OrderStage::stageOptions();
+        return OrderListingData::customerTypeOptions();
     }
 
     /** @return array<string, string> */
     public function orderTypeOptions(): array
     {
         return ['' => 'All'] + OrderType::options();
+    }
+
+    /** @return array<string, string> */
+    public function serviceTypeOptions(): array
+    {
+        return ['' => 'All'] + ServiceType::options();
     }
 
     /** @return array<string, string> */
@@ -236,18 +321,6 @@ class Orders extends Page
     public function createUrl(): string
     {
         return CreateOrder::getUrl();
-    }
-
-    /** Newest customer-submitted enquiry, for the "Order intake" card link. */
-    public function latestCustomerOrderUrl(): ?string
-    {
-        $enquiry = PortalEnquiry::query()
-            ->whereIn('source', [PortalEnquiry::SOURCE_PORTAL, PortalEnquiry::SOURCE_SALESPERSON_LINK])
-            ->when(CurrentCompany::id(), fn ($q, $id) => $q->where('company_id', $id))
-            ->latest('id')
-            ->first(['id']);
-
-        return $enquiry ? OrderDetail::urlFor('enquiry', $enquiry->id) : null;
     }
 
     /** @return list<string> */

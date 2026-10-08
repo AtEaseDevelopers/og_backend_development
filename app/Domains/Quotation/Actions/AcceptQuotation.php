@@ -11,6 +11,7 @@ use App\Enums\BillingStatus;
 use App\Enums\OrderType;
 use App\Enums\QuotationStatus;
 use App\Models\User;
+use App\Support\QuotationMatrix;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use Throwable;
@@ -46,11 +47,13 @@ class AcceptQuotation
         ?string $confirmedByName = null,
         ?User $actor = null,
         ?string $consentEvidence = null,
+        bool $recordedByStaff = false,
     ): Quotation {
         $quotation->loadMissing(['customer', 'branch', 'salesperson', 'creator']);
 
         $status = $quotation->status;
-        $adminOnBehalf = in_array($channel, [self::CHANNEL_ADMIN, self::CHANNEL_CONSENT, self::CHANNEL_WHATSAPP, self::CHANNEL_EMAIL], true);
+        $adminOnBehalf = in_array($channel, [self::CHANNEL_ADMIN, self::CHANNEL_CONSENT, self::CHANNEL_WHATSAPP, self::CHANNEL_EMAIL], true)
+            || ($recordedByStaff && $channel === self::CHANNEL_PORTAL);
 
         if (! ($status->isCustomerActionable() || ($adminOnBehalf && $status === QuotationStatus::Draft))) {
             throw new InvalidArgumentException('Quotation '.$quotation->number.' cannot be accepted in status "'.$status->getLabel().'".');
@@ -64,9 +67,14 @@ class AcceptQuotation
             throw new InvalidArgumentException('Quotation has no pricing yet.');
         }
 
+        // the proforma / invoice would bill a product kept on the order without a price yet at RM 0
+        if (($unpriced = QuotationMatrix::unpricedItems($quotation)) !== []) {
+            throw new InvalidArgumentException('Enter a price for '.implode(', ', $unpriced).' under Items & pricing before confirming '.$quotation->number.'.');
+        }
+
         $reviewer = $actor ?? $quotation->salesperson ?? $quotation->creator ?? User::query()->role('hq_admin')->first();
 
-        $quotation = DB::transaction(function () use ($quotation, $channel, $confirmedByName, $actor, $consentEvidence, $reviewer) {
+        $quotation = DB::transaction(function () use ($quotation, $channel, $confirmedByName, $actor, $consentEvidence, $reviewer, $recordedByStaff) {
             $from = $quotation->status->value;
 
             $quotation->update([
@@ -74,7 +82,7 @@ class AcceptQuotation
                 'accepted_version' => $quotation->version,
                 'confirmed_at' => now(),
                 'confirmation_channel' => $channel,
-                'confirmed_by_name' => $confirmedByName ?? $actor?->name ?? $quotation->customer?->company_name,
+                'confirmed_by_name' => $confirmedByName ?? ($recordedByStaff ? $quotation->customer?->company_name : ($actor?->name ?? $quotation->customer?->company_name)),
                 'consent_evidence' => $consentEvidence,
                 'pricing_reconfirmation_required' => $quotation->pricing_reconfirmation_required
                     ?? $quotation->customer?->pricing_reconfirmation_required,

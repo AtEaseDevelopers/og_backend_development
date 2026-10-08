@@ -3,9 +3,12 @@
 namespace App\Domains\Delivery\Actions;
 
 use App\Domains\Billing\Actions\RecordPayment;
+use App\Domains\Billing\Actions\RefreshOrderPaidAmount;
+use App\Domains\Consignment\Models\ConsignmentNote;
 use App\Domains\Delivery\Models\ProofOfDelivery;
 use App\Domains\Dispatch\Models\DeliveryOrder;
 use App\Domains\MasterData\Models\Driver;
+use App\Domains\Quotation\Models\Quotation;
 use App\Enums\CsnBillingType;
 use App\Enums\CsnStatus;
 use App\Enums\DeliveryOrderStatus;
@@ -37,10 +40,13 @@ class CompleteDelivery
         return DB::transaction(function () use ($do, $driver, $data, $actor) {
             $csn = $do->consignmentNote;
 
+            // COD: the driver collects what is still due on the order (Admin may already have recorded a payment)
+            $codDue = $csn?->billing_type === CsnBillingType::Cod ? $this->codDue($csn) : 0.0;
+
             if ($csn?->billing_type === CsnBillingType::Cod) {
-                $collected = (float) ($data['cod_amount_collected'] ?? $csn->total_amount);
-                if ($collected + 0.0001 < (float) $csn->total_amount) {
-                    throw new InvalidArgumentException('Driver must collect the full COD amount unless an authorized adjustment is recorded.');
+                $collected = (float) ($data['cod_amount_collected'] ?? $codDue);
+                if ($collected + 0.0001 < $codDue) {
+                    throw new InvalidArgumentException('Driver must collect the full COD amount due (RM '.number_format($codDue, 2).') unless an authorized adjustment is recorded.');
                 }
             }
 
@@ -74,7 +80,7 @@ class CompleteDelivery
                 $this->pendingReturns->ensurePendingReturn($csn->fresh());
             }
 
-            if ($csn?->billing_type === CsnBillingType::Cod) {
+            if ($csn?->billing_type === CsnBillingType::Cod && (float) ($data['cod_amount_collected'] ?? $codDue) > 0) {
                 $paymentActor = $actor ?? $driver->user ?? User::query()->where('driver_id', $driver->id)->first();
                 if ($paymentActor) {
                     $this->recordPayment->execute([
@@ -84,8 +90,8 @@ class CompleteDelivery
                         'delivery_order_id' => $do->id,
                         'driver_id' => $driver->id,
                         'method' => 'cod',
-                        'amount' => (float) ($data['cod_amount_collected'] ?? $csn->total_amount),
-                        'expected_amount' => $csn->total_amount,
+                        'amount' => (float) ($data['cod_amount_collected'] ?? $codDue),
+                        'expected_amount' => $codDue,
                         'reference' => $data['cod_payment_method'] ?? 'COD collection',
                         'receipt_type' => 'cod',
                         'reconciliation_status' => 'pending',
@@ -110,5 +116,17 @@ class CompleteDelivery
 
             return $pod;
         });
+    }
+
+    /** COD amount the driver still has to collect: the CSN total, less what was already paid on its order. */
+    private function codDue(ConsignmentNote $csn): float
+    {
+        $total = (float) $csn->total_amount;
+
+        if (! $csn->quotation_id || ! ($order = Quotation::query()->find($csn->quotation_id))) {
+            return $total;
+        }
+
+        return round(min($total, RefreshOrderPaidAmount::liveOutstanding($order)), 2);
     }
 }

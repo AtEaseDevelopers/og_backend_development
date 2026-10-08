@@ -92,7 +92,8 @@ class QuotationPdfController
 
             if ($column !== null) {
                 $rows[$rowKey]['prices'][$column] = $line->unit_price;
-                $rows[$rowKey]['amounts'][$column] = $line->line_total;
+                // a product without a price yet shows no amount (not RM 0.00)
+                $rows[$rowKey]['amounts'][$column] = $line->unit_price !== null ? $line->line_total : null;
             }
         }
 
@@ -102,7 +103,7 @@ class QuotationPdfController
                     'label' => $line->item_name,
                     'sub' => collect([$line->dimensions, $line->handling_notes])->filter()->implode(' · '),
                     'prices' => [$line->unit_price],
-                    'amounts' => [$line->line_total],
+                    'amounts' => [$line->unit_price !== null ? $line->line_total : null],
                     'qty' => (float) $line->quantity,
                 ];
             }

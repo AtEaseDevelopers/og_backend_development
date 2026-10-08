@@ -12,40 +12,21 @@
         max-width: 42rem;
     }
 
-    .fi-page-cod-listing .cl-page-toolbar {
-        display: flex;
-        justify-content: flex-end;
-        margin-top: -0.5rem;
-        margin-bottom: 1rem;
+    /* Date filter (x-og.date-range component): same size as the other filter inputs; the filter card stays light in dark mode too */
+    .fi-page-cod-listing .og-dr {
+        min-width: 0;
     }
 
-    .fi-page-cod-listing .cl-date-field {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.375rem 0.75rem;
-        border: 1px solid rgb(229 231 235);
-        border-radius: 0.5rem;
+    .fi-page-cod-listing .og-dr .og-dr-trigger {
+        min-height: 2.375rem;
+        border-color: rgb(209 213 219);
         background: white;
-    }
-
-    .fi-page-cod-listing .cl-date-label {
-        font-size: 0.875rem;
-        font-weight: 600;
-        color: rgb(55 65 81);
-    }
-
-    .fi-page-cod-listing .cl-date-input {
-        position: absolute;
-        opacity: 0;
-        width: 0;
-        height: 0;
-        pointer-events: none;
-    }
-
-    .fi-page-cod-listing .cl-date-display {
-        font-size: 0.875rem;
         color: rgb(17 24 39);
+        font-size: 0.875rem;
+    }
+
+    .fi-page-cod-listing .og-dr .og-dr-trigger:hover {
+        border-color: rgb(156 163 175);
     }
 
     .fi-page-cod-listing .cl-filter-card {
@@ -59,7 +40,7 @@
 
     .fi-page-cod-listing .cl-filter-grid {
         display: grid;
-        grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto;
+        grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) auto;
         gap: 0.875rem 1rem;
         align-items: end;
     }
@@ -251,10 +232,6 @@
     @media (max-width: 1023px) {
         .fi-page-cod-listing .cl-filter-grid {
             grid-template-columns: 1fr;
-        }
-
-        .fi-page-cod-listing .cl-page-toolbar {
-            justify-content: flex-start;
         }
     }
 </style>

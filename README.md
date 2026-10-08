@@ -26,7 +26,7 @@ php artisan serve
 
 Admin flow: **login → choose branch → choose or register company (BRN required) → open that company’s system**.
 
-- Brand logo / **Change branch** returns to the branch picker
+- Login lands straight in the KL branch; switch branches from the top-bar branch switcher
 - **Change company** returns to the company picker for the selected branch
 - Seeded demo companies use the same codes as branches (`KL`, `JB`, `KLG`, `PG`)
 

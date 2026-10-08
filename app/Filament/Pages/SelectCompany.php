@@ -43,7 +43,7 @@ class SelectCompany extends SimplePage implements HasForms
 
         $branch = SelectedBranch::get();
         if (! $branch instanceof Branch) {
-            $this->redirect(route('filament.admin.select-branch'));
+            $this->redirect(\App\Support\DefaultBranch::homeUrl());
 
             return;
         }
@@ -205,7 +205,7 @@ class SelectCompany extends SimplePage implements HasForms
     public function backToBranches(): void
     {
         SelectedBranch::clear();
-        $this->redirect(route('filament.admin.select-branch'));
+        $this->redirect(\App\Support\DefaultBranch::homeUrl());
     }
 
     public static function getUrl(array $parameters = [], bool $isAbsolute = true, ?string $panel = null, ?\Illuminate\Database\Eloquent\Model $tenant = null): string

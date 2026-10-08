@@ -9,7 +9,6 @@ use App\Filament\Pages\Dashboard;
 use App\Filament\Pages\EditOrder;
 use App\Filament\Pages\OrderDetail;
 use App\Filament\Pages\Orders;
-use App\Filament\Pages\SelectBranch;
 use App\Http\Controllers\Admin\ConsignmentNotePdfController;
 use App\Http\Controllers\Admin\DeliveryOrderPdfController;
 use App\Http\Controllers\Admin\InvoicePdfController;
@@ -20,7 +19,6 @@ use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
-use Filament\Navigation\MenuItem;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
@@ -81,7 +79,8 @@ class AdminPanelProvider extends PanelProvider
                 'Master Data',
             ])
             ->authenticatedRoutes(function (): void {
-                Route::get('/select-branch', SelectBranch::class)->name('select-branch');
+                // The branch chooser page is gone: this old URL goes straight to the user's branch dashboard
+                Route::get('/select-branch', \App\Http\Controllers\Admin\RedirectToSelectBranchController::class)->name('select-branch');
             })
             ->authenticatedTenantRoutes(function (): void {
                 Route::get('/quotations/{quotation}/pdf', QuotationPdfController::class)
@@ -117,13 +116,6 @@ class AdminPanelProvider extends PanelProvider
                 Route::get('/daily-lorry-schedule/pdf', \App\Http\Controllers\Admin\DailyLorrySchedulePdfController::class)
                     ->name('daily-lorry-schedule.pdf');
             })
-            ->userMenuItems([
-                'change-branch' => MenuItem::make()
-                    ->label('Change branch')
-                    ->icon('heroicon-o-building-office-2')
-                    ->url(fn (): string => route('filament.admin.select-branch'))
-                    ->sort(-1),
-            ])
             ->renderHook(
                 PanelsRenderHook::TOPBAR_START,
                 fn (): View => view('filament.hooks.branch-switcher'),
@@ -211,6 +203,14 @@ class AdminPanelProvider extends PanelProvider
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
                 fn (): View => view('filament.hooks.credit-customer-approval-theme'),
+            )
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): View => view('filament.hooks.searchable-select'),
+            )
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): View => view('filament.hooks.date-range-picker'),
             )
             ->middleware([
                 EncryptCookies::class,

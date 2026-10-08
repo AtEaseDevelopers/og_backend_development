@@ -2,10 +2,12 @@
 
 namespace App\Support;
 
+use App\Domains\MasterData\Models\Customer;
 use App\Domains\Quotation\Actions\CreateOrderFromEnquiry;
 use App\Domains\Quotation\Models\PortalEnquiry;
 use App\Domains\Quotation\Models\Quotation;
 use App\Enums\DropOffType;
+use App\Enums\OrderType;
 use App\Enums\PaymentMethod;
 use App\Enums\QuotationStatus;
 use App\Filament\Pages\OrderDetail;
@@ -25,15 +27,12 @@ class OrderListingData
 {
     public const STEPS = OrderStage::STEPS;
 
-    /** @return array<string, string> */
-    public static function stageOptions(): array
-    {
-        return OrderStage::stageOptions();
-    }
+    /** Sortable table columns (header click). */
+    public const SORTS = ['order', 'route', 'stage', 'payment', 'amount', 'next'];
 
     /**
      * @param  array<string, mixed>  $filters
-     * @return array{rows: list<array<string, mixed>>, count: int, total: int, summary: array<string, int>}
+     * @return array{rows: list<array<string, mixed>>, count: int, total: int, summary: array<string, int>, stage_counts: array<string, int>}
      */
     public function for(array $filters): array
     {
@@ -54,15 +53,8 @@ class OrderListingData
         $stage = (string) ($filters['stage'] ?? '');
         $card = (string) ($filters['card'] ?? '');
 
-        $filtered = $rows->filter(function (array $row) use ($stage, $card, $filters): bool {
-            if ($stage === '') {
-                if ($row['is_closed']) {
-                    return false;
-                }
-            } elseif ($stage !== 'all' && $row['stage']['key'] !== $stage) {
-                return false;
-            }
-
+        // Every filter except the stage: the stage tags count within this set
+        $matching = $rows->filter(function (array $row) use ($card, $filters): bool {
             $cardOk = match ($card) {
                 'attention' => $row['attention'],
                 'customer' => $row['stage']['key'] === 'awaiting_customer',
@@ -71,13 +63,28 @@ class OrderListingData
             };
 
             return $cardOk && $this->passesMemoryFilters($row, $filters);
-        })->values();
+        });
+
+        $byStage = $matching->countBy(fn (array $row) => $row['stage']['key']);
+        $stageCounts = ['' => $matching->where('is_closed', false)->count()];
+
+        foreach (array_keys(OrderStage::STAGES) as $key) {
+            $stageCounts[$key] = (int) $byStage->get($key, 0);
+        }
+
+        // "All" ('') is every open order; closed ones sit under their own tag
+        $filtered = $matching->filter(fn (array $row): bool => $stage === ''
+            ? ! $row['is_closed']
+            : $row['stage']['key'] === $stage)->values();
+
+        $filtered = $this->sortRows($filtered, (string) ($filters['sort'] ?? ''), (string) ($filters['dir'] ?? 'asc'));
 
         return [
             'rows' => $filtered->all(),
             'count' => $filtered->count(),
             'total' => $rows->count(),
             'summary' => $summary,
+            'stage_counts' => $stageCounts,
         ];
     }
 
@@ -139,6 +146,7 @@ class OrderListingData
             'document_number' => null,
             'customer' => $enquiry->customer?->company_name ?? '—',
             'customer_id' => $enquiry->customer_id,
+            'customer_type' => $this->customerType($enquiry->customer),
             'enquiry_ref' => $enquiry->reference_no,
             'order_type' => $enquiry->order_type?->getLabel(),
             'order_type_value' => $enquiry->order_type?->value,
@@ -255,6 +263,7 @@ class OrderListingData
             'document_number' => $q->number,
             'customer' => $q->customer?->company_name ?? '—',
             'customer_id' => $q->customer_id,
+            'customer_type' => $this->customerType($q->customer),
             'enquiry_ref' => $enquiry?->reference_no,
             'order_type' => $q->orderType()?->getLabel(),
             'order_type_value' => $q->orderType()?->value,
@@ -323,8 +332,17 @@ class OrderListingData
             $query->where('customer_id', $filters['customer_id']);
         }
 
+        if (filled($filters['customer_type'] ?? null)) {
+            $type = (string) $filters['customer_type'];
+            $query->whereHas('customer', fn (Builder $customer) => $customer->ofCustomerType($type));
+        }
+
         if (filled($filters['order_type'] ?? null)) {
             $query->where('order_type', $filters['order_type']);
+        }
+
+        if (filled($filters['service_type'] ?? null)) {
+            $query->where('service_type', $filters['service_type']);
         }
 
         if (filled($filters['salesperson_id'] ?? null)) {
@@ -348,6 +366,14 @@ class OrderListingData
         }
     }
 
+    /** @return array{key: string, label: string}|null */
+    private function customerType(?Customer $customer): ?array
+    {
+        $type = $customer?->customerType();
+
+        return $type ? ['key' => $type->value, 'label' => $type->shortLabel()] : null;
+    }
+
     /** Filters that depend on computed values. */
     private function passesMemoryFilters(array $row, array $filters): bool
     {
@@ -360,6 +386,42 @@ class OrderListingData
         }
 
         return true;
+    }
+
+    /**
+     * Header sort. Without one the rows stay newest first; the sort is stable, so rows with
+     * equal values keep that newest-first order in both directions.
+     *
+     * @param  Collection<int, array<string, mixed>>  $rows
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function sortRows(Collection $rows, string $sort, string $dir): Collection
+    {
+        if (! in_array($sort, self::SORTS, true)) {
+            return $rows;
+        }
+
+        $sign = $dir === 'desc' ? -1 : 1;
+        // "Not priced" sorts as no amount, below every priced order
+        $amount = fn (array $row): float => $row['amount_muted'] ? 0.0 : (float) $row['total'];
+
+        return $rows->sort(fn (array $a, array $b): int => $sign * match ($sort) {
+            'order' => strnatcasecmp((string) $a['order_number'], (string) $b['order_number'])
+                ?: strnatcasecmp((string) $a['customer'], (string) $b['customer']),
+            'route' => strnatcasecmp((string) $a['route_from'], (string) $b['route_from'])
+                ?: strnatcasecmp((string) $a['route_to'], (string) $b['route_to']),
+            'stage' => ((int) $a['stage']['step'] <=> (int) $b['stage']['step'])
+                ?: strnatcasecmp((string) $a['stage']['label'], (string) $b['stage']['label']),
+            'payment' => strnatcasecmp((string) $a['payment']['label'], (string) $b['payment']['label']),
+            'amount' => $amount($a) <=> $amount($b),
+            'next' => strnatcasecmp((string) $a['next_step'], (string) $b['next_step']),
+        })->values();
+    }
+
+    /** @return array<string, string> */
+    public static function customerTypeOptions(): array
+    {
+        return ['' => 'All'] + collect(OrderType::cases())->mapWithKeys(fn (OrderType $type) => [$type->value => $type->shortLabel()])->all();
     }
 
     /** @return array<string, string> */
@@ -438,9 +500,7 @@ class OrderListingData
         }
 
         $first = $items->first();
-        $qty = rtrim(rtrim(number_format((float) ($first['quantity'] ?? 1), 3, '.', ''), '0'), '.');
-
-        return trim($qty.' '.strtoupper((string) ($first['uom'] ?? 'UNIT')).' '.str((string) ($first['item_name'] ?? ''))->limit(22))
+        return trim(QuantityLabel::format($first['quantity'] ?? 1, $first['uom'] ?? null).' '.str((string) ($first['item_name'] ?? ''))->limit(22))
             .($items->count() > 1 ? ' · +'.($items->count() - 1).' more' : '');
     }
 
@@ -453,9 +513,7 @@ class OrderListingData
         }
 
         $first = $distinct->first();
-        $qty = rtrim(rtrim(number_format((float) $first->quantity, 3, '.', ''), '0'), '.');
-
-        return trim($qty.' '.strtoupper((string) ($first->uom ?: 'x')).' '.str($first->item_name)->limit(22))
+        return trim(QuantityLabel::format($first->quantity, $first->uom).' '.str($first->item_name)->limit(22))
             .($distinct->count() > 1 ? ' · +'.($distinct->count() - 1).' more' : '');
     }
 }

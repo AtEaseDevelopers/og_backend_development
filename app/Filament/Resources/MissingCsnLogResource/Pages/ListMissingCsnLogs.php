@@ -62,6 +62,14 @@ class ListMissingCsnLogs extends ListRecords
         $this->monitoringPage = 1;
     }
 
+    /** Overdue is worked out as of one day: clearing the date picker goes back to today. */
+    public function updatedFilterMonitoringDate(): void
+    {
+        if (blank($this->filterMonitoringDate)) {
+            $this->filterMonitoringDate = now()->format('Y-m-d');
+        }
+    }
+
     public function resetFilters(): void
     {
         $this->filterMonitoringDate = now()->format('Y-m-d');

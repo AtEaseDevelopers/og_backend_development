@@ -273,8 +273,9 @@
     @endif
 
     @if($detail['can_create_quotation'])
-        <button type="button" wire:click="createQuotation({{ $detail['id'] }})" @class(['cor-btn', 'cor-btn-secondary-solid' => ! $detail['quotation_url'], 'cor-btn-outline' => (bool) $detail['quotation_url']])>
-            {{ $detail['quotation_url'] ? 'New order from this enquiry' : 'Generate Quotation' }}
+        {{-- priced orders open Edit order (the Create order layout); pricing creates the records only once --}}
+        <button type="button" wire:click="createQuotation({{ $detail['id'] }})" @class(['cor-btn', 'cor-btn-secondary-solid' => ! $detail['has_order_records'], 'cor-btn-outline' => (bool) $detail['has_order_records']])>
+            {{ $detail['has_order_records'] ? 'Edit order' : 'Provide pricing' }}
         </button>
     @endif
 

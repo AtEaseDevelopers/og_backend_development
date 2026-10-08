@@ -4,6 +4,7 @@ namespace App\Filament\Pages;
 
 use App\Domains\Billing\Actions\RecordPayment;
 use App\Domains\Consignment\Models\ConsignmentNote;
+use App\Domains\MasterData\Models\Customer;
 use App\Enums\CsnBillingType;
 use App\Enums\CsnStatus;
 use App\Enums\PaymentStatus;
@@ -15,9 +16,18 @@ use Filament\Pages\Page;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
+use Livewire\WithFileUploads;
 
+/**
+ * Cash Bill payment at the counter, opened from Payments & Receipts ("Create Cash Bill Payment"; no menu item).
+ * Pick the customer to list all their unpaid Cash Bill CSNs and tick the ones being paid, or scan a CSN's QR
+ * code (handheld scanner or typed number) to tick it. Payment slips / receipts can be uploaded; every payment
+ * recorded here shows in the payment listing.
+ */
 class CashBillCalculator extends Page
 {
+    use WithFileUploads;
+
     protected static ?string $navigationIcon = 'heroicon-o-calculator';
 
     protected static ?string $navigationGroup = 'Billing';
@@ -26,9 +36,15 @@ class CashBillCalculator extends Page
 
     protected static ?int $navigationSort = 19;
 
+    // opened from Payments & Receipts, not from the menu (user request 8 Oct 2026)
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static string $view = 'filament.pages.cash-bill-calculator';
 
-    public string $search = '';
+    public ?int $customerId = null;
+
+    /** Scanned / typed CSN number (QR code on the CSN). */
+    public string $scan = '';
 
     /** @var list<int> */
     public array $selectedCsnIds = [];
@@ -36,6 +52,9 @@ class CashBillCalculator extends Page
     public string $method = 'cash';
 
     public string $amountReceived = '0.00';
+
+    /** @var array<int, \Livewire\Features\SupportFileUploads\TemporaryUploadedFile> payment slips / receipts */
+    public array $slips = [];
 
     public ?string $lastReceiptNumber = null;
 
@@ -46,7 +65,7 @@ class CashBillCalculator extends Page
 
     public function getSubheading(): ?string
     {
-        return 'Select Cash Bill CSNs, record payment and review the generated receipt.';
+        return 'Choose the customer and tick the Cash Bill CSNs being paid (or scan their QR codes), record the payment and print the receipt.';
     }
 
     protected function getHeaderActions(): array
@@ -82,78 +101,93 @@ class CashBillCalculator extends Page
         $this->amountReceived = '0.00';
     }
 
-    public function updatedSearch(): void
+    /** Customers with at least one unpaid Cash Bill CSN, with the count. @return array<int, string> */
+    #[Computed]
+    public function customerOptions(): array
     {
-        if (blank($this->search)) {
-            return;
-        }
+        $counts = $this->unpaidCashBillQuery()
+            ->whereNotNull('customer_id')
+            ->selectRaw('customer_id, count(*) as n')
+            ->groupBy('customer_id')
+            ->pluck('n', 'customer_id');
 
-        $match = $this->csnSearchResults->first();
-
-        if ($match && count($this->selectedCsnIds) === 0) {
-            return;
-        }
+        return Customer::query()
+            ->whereIn('id', $counts->keys())
+            ->orderBy('company_name')
+            ->get(['id', 'company_name'])
+            ->mapWithKeys(fn (Customer $c) => [$c->id => $c->company_name.' ('.$counts[$c->id].' unpaid)'])
+            ->all();
     }
 
-    public function addFromSearch(): void
+    /** A different customer: only CSNs of the new customer stay ticked. */
+    public function updatedCustomerId(): void
     {
-        $term = trim($this->search);
+        $this->customerId = $this->customerId ?: null;
+        $keep = $this->customerId ? $this->unpaidCashBillQuery()->where('customer_id', $this->customerId)->pluck('id')->all() : [];
+        $this->selectedCsnIds = array_values(array_intersect($this->selectedCsnIds, $keep));
+        $this->lastReceiptNumber = null;
+    }
+
+    /** Every unpaid Cash Bill CSN of the chosen customer, oldest first. @return Collection<int, ConsignmentNote> */
+    #[Computed]
+    public function customerCsns(): Collection
+    {
+        if (! $this->customerId) {
+            return collect();
+        }
+
+        return $this->unpaidCashBillQuery()
+            ->with(['sourceBranch'])
+            ->where('customer_id', $this->customerId)
+            ->orderBy('issued_at')
+            ->orderBy('id')
+            ->get();
+    }
+
+    public function toggleCsn(int $csnId): void
+    {
+        in_array($csnId, $this->selectedCsnIds, true) ? $this->removeCsn($csnId) : $this->addCsn($csnId);
+    }
+
+    public function toggleAll(): void
+    {
+        $ids = $this->customerCsns->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $this->selectedCsnIds = count(array_diff($ids, $this->selectedCsnIds)) === 0 ? [] : $ids;
+        $this->lastReceiptNumber = null;
+    }
+
+    /** Scanning a CSN's QR code (or typing its number) ticks it; picks its customer when none is chosen. */
+    public function scanCsn(?string $value = null): void
+    {
+        $term = trim((string) ($value ?? $this->scan));
+        $this->scan = '';
 
         if ($term === '') {
             return;
         }
 
-        $match = $this->csnSearchResults->first();
-
-        if (! $match) {
-            $this->notifySearchMiss($term);
-
-            return;
-        }
-
-        $this->addCsn((int) $match->id);
-        $this->search = '';
-    }
-
-    protected function notifySearchMiss(string $term): void
-    {
-        $csn = $this->findCashBillCsnByTerm($term);
+        $csn = $this->cashBillCsnQuery()->where(fn (Builder $q) => $q->where('number', $term)->orWhere('qr_token', $term))->first();
 
         if (! $csn) {
-            Notification::make()
-                ->title('CSN not found')
-                ->body('No Cash Bill CSN matches "'.$term.'" in this company.')
-                ->warning()
-                ->send();
+            Notification::make()->title('CSN not found')->body('No Cash Bill CSN "'.$term.'" in this company.')->warning()->send();
 
             return;
         }
 
         if (in_array($csn->payment_status, [PaymentStatus::Paid, PaymentStatus::CodCollected], true)) {
-            Notification::make()
-                ->title('Already paid')
-                ->body($csn->number.' has already been collected. Only outstanding Cash Bill CSNs can be added.')
-                ->warning()
-                ->send();
+            Notification::make()->title('Already paid')->body($csn->number.' has already been paid.')->warning()->send();
 
             return;
         }
 
-        if (in_array($csn->id, $this->selectedCsnIds, true)) {
-            Notification::make()
-                ->title('Already selected')
-                ->body($csn->number.' is already in the payment list.')
-                ->info()
-                ->send();
-
-            return;
+        if ($this->customerId && (int) $csn->customer_id !== (int) $this->customerId) {
+            $this->customerId = (int) $csn->customer_id;
+            $this->selectedCsnIds = [];
+            Notification::make()->title('Switched customer')->body($csn->number.' belongs to '.($csn->customer_name ?: 'another customer').'; the list now shows that customer.')->info()->send();
         }
 
-        Notification::make()
-            ->title('CSN unavailable')
-            ->body('No unpaid Cash Bill CSN matches "'.$term.'".')
-            ->warning()
-            ->send();
+        $this->customerId = (int) $csn->customer_id ?: null;
+        $this->addCsn((int) $csn->id);
     }
 
     public function addCsn(int $csnId): void
@@ -181,6 +215,12 @@ class CashBillCalculator extends Page
         $this->lastReceiptNumber = null;
     }
 
+    public function removeSlip(int $index): void
+    {
+        unset($this->slips[$index]);
+        $this->slips = array_values($this->slips);
+    }
+
     public function selectMethod(string $method): void
     {
         $allowed = collect($this->paymentMethods())->pluck('key')->all();
@@ -205,6 +245,11 @@ class CashBillCalculator extends Page
             return;
         }
 
+        $this->validate([
+            'slips' => ['array', 'max:10'],
+            'slips.*' => ['file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:8192'],
+        ], [], ['slips.*' => 'payment slip']);
+
         $csns = ConsignmentNote::query()
             ->whereIn('id', $this->selectedCsnIds)
             ->get();
@@ -215,12 +260,18 @@ class CashBillCalculator extends Page
         if ($received + 0.0001 < $total) {
             Notification::make()
                 ->title('Insufficient amount')
-                ->body('Total due is MYR '.number_format($total, 2))
+                ->body('Total due is RM '.number_format($total, 2))
                 ->danger()
                 ->send();
 
             return;
         }
+
+        // the same slips belong to every CSN paid in this transaction
+        $slipPaths = collect($this->slips)
+            ->map(fn ($file) => $file->store('payment-receipts/cash-bill/'.now()->format('Y-m'), 'public'))
+            ->values()
+            ->all();
 
         $receiptNumbers = [];
 
@@ -231,6 +282,8 @@ class CashBillCalculator extends Page
                 'customer_id' => $csn->customer_id,
                 'amount' => $csn->total_amount,
                 'method' => $this->method,
+                'slip_path' => $slipPaths[0] ?? null,
+                'slip_paths' => $slipPaths !== [] ? $slipPaths : null,
             ], auth()->user());
 
             if ($payment->receipt?->number) {
@@ -243,13 +296,14 @@ class CashBillCalculator extends Page
 
         Notification::make()
             ->title('Collected '.count($this->selectedCsnIds).' Cash Bill(s)')
-            ->body('Change: MYR '.number_format($change, 2))
+            ->body('Change: RM '.number_format($change, 2).($slipPaths ? ' · '.count($slipPaths).' slip(s) attached' : ''))
             ->success()
             ->send();
 
         $this->selectedCsnIds = [];
         $this->amountReceived = '0.00';
-        $this->search = '';
+        $this->slips = [];
+        $this->scan = '';
     }
 
     #[Computed]
@@ -304,26 +358,6 @@ class CashBillCalculator extends Page
         return $branch ? strtoupper($branch->code).' View' : 'HQ View';
     }
 
-    /** @return Collection<int, ConsignmentNote> */
-    #[Computed]
-    public function csnSearchResults(): Collection
-    {
-        $term = trim($this->search);
-
-        if ($term === '') {
-            return collect();
-        }
-
-        return $this->unpaidCashBillQuery()
-            ->where(function ($query) use ($term) {
-                $query->where('number', 'like', '%'.$term.'%')
-                    ->orWhere('customer_name', 'like', '%'.$term.'%');
-            })
-            ->when($this->selectedCsnIds !== [], fn ($query) => $query->whereNotIn('id', $this->selectedCsnIds))
-            ->limit(8)
-            ->get();
-    }
-
     public function paymentStatusLabel(ConsignmentNote $csn): string
     {
         $status = $csn->payment_status instanceof PaymentStatus
@@ -349,16 +383,6 @@ class CashBillCalculator extends Page
         }
 
         return $query;
-    }
-
-    private function findCashBillCsnByTerm(string $term): ?ConsignmentNote
-    {
-        return $this->cashBillCsnQuery()
-            ->where(function (Builder $query) use ($term): void {
-                $query->where('number', 'like', '%'.$term.'%')
-                    ->orWhere('customer_name', 'like', '%'.$term.'%');
-            })
-            ->first();
     }
 
     /** @return Builder<ConsignmentNote> */

@@ -2,23 +2,9 @@
     $data = $this->getListingData();
     $rows = $data['rows'] ?? [];
     $count = $data['count'] ?? 0;
-    $dateLabel = $data['selected_date_label'] ?? now()->format('d/m/Y');
 @endphp
 
 <x-filament-panels::page class="fi-page-cod-listing cl-page">
-    <div class="cl-page-toolbar">
-        <div class="cl-date-field">
-            <label class="cl-date-label" for="filterDate">Date:</label>
-            <input
-                id="filterDate"
-                type="date"
-                wire:model.live="filterDate"
-                class="cl-date-input"
-            />
-            <span class="cl-date-display">{{ $dateLabel }}</span>
-        </div>
-    </div>
-
     <div class="cl-filter-card">
         <form wire:submit="applyFilters" class="cl-filter-grid">
             <div class="cl-filter-field cl-filter-search">
@@ -35,6 +21,11 @@
                         placeholder="Search Driver, Lorry or Job Sheet..."
                     />
                 </div>
+            </div>
+            {{-- The operating day applies as soon as it is picked; search and status wait for "Search" --}}
+            <div class="cl-filter-field">
+                <span class="cl-filter-label">Date</span>
+                <x-og.date-range single from="filterDate" :from-value="$filterDate" label="Date" />
             </div>
             <div class="cl-filter-field">
                 <label class="cl-filter-label" for="filterStatus">Status</label>

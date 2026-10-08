@@ -30,6 +30,7 @@ class ReviewPaymentSubmission
         private CreateRefundNote $refund,
         private GenerateOrderBilling $billing,
         private SendNotification $notify,
+        private RefreshOrderPaidAmount $refreshPaid,
     ) {}
 
     public function verify(PaymentSubmission $submission, User $actor): PaymentSubmission
@@ -88,6 +89,7 @@ class ReviewPaymentSubmission
                 'expected_amount' => (float) $quotation->total_amount,
                 'reference' => $submission->reference,
                 'slip_path' => $submission->receipt_path,
+                'slip_paths' => $submission->receipt_paths,
                 'remarks' => trim(($submission->remarks ?? '').' '.($remarks ?? '')) ?: null,
                 'status' => 'completed',
                 'receipt_type' => 'official',
@@ -171,23 +173,10 @@ class ReviewPaymentSubmission
         return $submission->fresh();
     }
 
+    /** Paid amount = sum of the order's completed payments (shared with RecordPayment, see RefreshOrderPaidAmount). */
     public function refreshPaidAmount(Quotation $quotation): void
     {
-        $paid = (float) Payment::query()
-            ->where('quotation_id', $quotation->id)
-            ->where('status', 'completed')
-            ->sum('amount');
-
-        $quotation->update([
-            'paid_amount' => $paid,
-            'billing_status' => $quotation->billingStatus() === BillingStatus::Generated
-                ? BillingStatus::Generated
-                : ($quotation->orderType() === OrderType::Cash && $paid + 0.005 < (float) $quotation->total_amount
-                    ? BillingStatus::AwaitingPayment
-                    : $quotation->billingStatus()),
-        ]);
-
-        $quotation->proformaInvoice?->update(['paid_amount' => $paid]);
+        $this->refreshPaid->execute($quotation);
     }
 
     private function notifyCustomer(PaymentSubmission $submission, Quotation $quotation, bool $approved): void

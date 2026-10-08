@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Domains\Quotation\Actions\UpdateOrderRecords;
 use App\Domains\Quotation\Models\Quotation;
 
 class QuotationMatrix
@@ -41,7 +42,8 @@ class QuotationMatrix
             }
 
             if (in_array($column, $columns, true)) {
-                $rows[$rowKey]['prices'][$column] = (float) $line->unit_price;
+                // a line without a price yet stays without one
+                $rows[$rowKey]['prices'][$column] = $line->unit_price !== null ? (float) $line->unit_price : null;
             }
         }
 
@@ -49,6 +51,32 @@ class QuotationMatrix
             'matrix_columns' => $columns,
             'matrix_rows' => array_values($rows),
         ];
+    }
+
+    /** No price entered (a 0 is a price). */
+    public static function isBlankPrice(mixed $price): bool
+    {
+        return $price === null || (is_string($price) && trim($price) === '');
+    }
+
+    /**
+     * Products of a record kept as a line without a price yet (they are left out of its total): a quotation
+     * is not sent or confirmed while one is left.
+     *
+     * @return list<string>
+     */
+    public static function unpricedItems(Quotation $quotation): array
+    {
+        $names = $quotation->lines()->whereNull('unit_price')->orderBy('id')->pluck('item_name');
+
+        // products of older records that only come back from the order form (no line yet) are unpriced too
+        if ($quotation->portal_enquiry_id && ($enquiry = $quotation->portalEnquiry)) {
+            $names = $names->merge(collect(UpdateOrderRecords::payloadItemsWithoutLine($quotation, $enquiry))
+                ->map(fn (array $item) => trim((string) ($item['item_name'] ?? '')))
+                ->filter());
+        }
+
+        return $names->unique()->values()->all();
     }
 
     /**
@@ -151,15 +179,14 @@ class QuotationMatrix
                 ? $lookup->resolveUomCode($row['catalog_key'] ?? null, $itemName)
                 : null;
 
-            foreach ($columns as $column) {
+            $priced = array_values(array_filter($columns, fn (string $column) => ! static::isBlankPrice($row['prices'][$column] ?? null)));
+
+            // a product without any price yet is still kept: one line on the first column with no unit price
+            // (line total 0, so the totals leave it out) until a price is entered
+            foreach ($priced !== [] ? $priced : [$columns[0]] as $column) {
                 $price = $row['prices'][$column] ?? null;
-
-                if ($price === null || $price === '') {
-                    continue;
-                }
-
-                $unitPrice = round((float) $price, 2);
-                $lineTotal = round($quantity * $unitPrice, 2);
+                $unitPrice = static::isBlankPrice($price) ? null : round((float) $price, 2);
+                $lineTotal = $unitPrice !== null ? round($quantity * $unitPrice, 2) : 0.0;
                 $subtotal += $lineTotal;
 
                 $quotation->lines()->create([
