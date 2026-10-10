@@ -4,7 +4,7 @@
 > what is done, what is left, and the rules the user has set. Update it whenever an item changes status,
 > and refresh "Last updated" with the output of plain `date` (local Malaysia time).
 
-**Last updated:** Sat Oct 10 18:51:42 MPST 2026 · Create Payment multi-invoice, menus removed, OCR button on Orders (all requirements of this round done)
+**Last updated:** Sat Oct 10 18:58:34 MPST 2026 · round 2 committed and pushed as `8ff252f` on `main`; server steps below still to run
 
 **Previous round:** finished and pushed as commit `a29b179` on `main` (8 Oct 2026: orders, order details,
 billing / COD / Term, CSN bulk actions, QR codes, returned-CSN scanning, cash bill calculator). Its details are
