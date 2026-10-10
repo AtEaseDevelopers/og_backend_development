@@ -90,7 +90,11 @@
                 group,
                 groupLabel: group ? (group.label || '').trim() : '',
                 disabled: opt.disabled || (group !== null && group.disabled),
-                key: null, // folded label, computed on the first search
+                // optional extras: a tag beside the label (data-og-tag / data-og-tag-tone) and a second line (data-og-sub)
+                tag: (opt.dataset.ogTag || '').trim(),
+                tagTone: (opt.dataset.ogTagTone || '').trim(),
+                sub: (opt.dataset.ogSub || '').replace(/\s+/g, ' ').trim(),
+                key: null, // folded label (and second line), computed on the first search
             });
         }
 
@@ -107,7 +111,7 @@
 
         return items.filter((item) => {
             if (item.key === null) {
-                item.key = fold(item.label);
+                item.key = fold(item.sub ? item.label + ' ' + item.sub : item.label);
             }
 
             return terms.every((term) => item.key.includes(term));
@@ -439,7 +443,37 @@
 
             label.className = 'og-ss-label';
             label.textContent = item.label || '—';
-            row.appendChild(label);
+
+            if (item.tag || item.sub) {
+                const body = document.createElement('span');
+                const top = document.createElement('span');
+
+                body.className = 'og-ss-body';
+                top.className = 'og-ss-top';
+                top.appendChild(label);
+
+                if (item.tag) {
+                    const tag = document.createElement('span');
+
+                    tag.className = 'og-ss-tag' + (item.tagTone ? ' og-ss-tag-' + item.tagTone : '');
+                    tag.textContent = item.tag;
+                    top.appendChild(tag);
+                }
+
+                body.appendChild(top);
+
+                if (item.sub) {
+                    const sub = document.createElement('span');
+
+                    sub.className = 'og-ss-sub';
+                    sub.textContent = item.sub;
+                    body.appendChild(sub);
+                }
+
+                row.appendChild(body);
+            } else {
+                row.appendChild(label);
+            }
 
             if (selected) {
                 row.classList.add('is-selected');

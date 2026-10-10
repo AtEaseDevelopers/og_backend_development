@@ -7,9 +7,12 @@ use Filament\Actions;
 use Filament\Resources\Pages\ListRecords;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use App\Filament\Concerns\HasExcelColumnFilters;
 
 class ListBreakBulks extends ListRecords
 {
+    use HasExcelColumnFilters;
+
     protected static string $resource = BreakBulkResource::class;
 
     protected static string $view = 'filament.resources.break-bulk-resource.pages.list-break-bulks';

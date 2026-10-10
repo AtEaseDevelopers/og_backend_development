@@ -19,7 +19,8 @@ use Livewire\Attributes\Computed;
 use Livewire\WithFileUploads;
 
 /**
- * Cash Bill payment at the counter, opened from Payments & Receipts ("Create Cash Bill Payment"; no menu item).
+ * Cash Bill payment at the counter: Billing → "Cash Bill Payment (Counter Use)" (menu item since 10 Oct 2026; the
+ * "Create Cash Bill Payment" button on Payments & Receipts was removed).
  * Pick the customer to list all their unpaid Cash Bill CSNs and tick the ones being paid, or scan a CSN's QR
  * code (handheld scanner or typed number) to tick it. Payment slips / receipts can be uploaded; every payment
  * recorded here shows in the payment listing.
@@ -32,12 +33,10 @@ class CashBillCalculator extends Page
 
     protected static ?string $navigationGroup = 'Billing';
 
-    protected static ?string $navigationLabel = 'Cash Bill Calculator';
+    protected static ?string $navigationLabel = 'Cash Bill Payment (Counter Use)';
 
-    protected static ?int $navigationSort = 19;
-
-    // opened from Payments & Receipts, not from the menu (user request 8 Oct 2026)
-    protected static bool $shouldRegisterNavigation = false;
+    // right after Payments & Receipts (20): with the same sort as Invoices (21), a page is listed before a resource
+    protected static ?int $navigationSort = 21;
 
     protected static string $view = 'filament.pages.cash-bill-calculator';
 
@@ -60,7 +59,7 @@ class CashBillCalculator extends Page
 
     public function getTitle(): string
     {
-        return 'Create Cash Bill';
+        return 'Cash Bill Payment (Counter Use)';
     }
 
     public function getSubheading(): ?string

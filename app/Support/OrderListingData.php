@@ -28,11 +28,69 @@ class OrderListingData
     public const STEPS = OrderStage::STEPS;
 
     /** Sortable table columns (header click). */
-    public const SORTS = ['order', 'route', 'stage', 'payment', 'amount', 'next'];
+    public const SORTS = ['order', 'date', 'route', 'salesperson', 'service', 'stage', 'payment', 'amount', 'next'];
+
+    /**
+     * Excel-style column filters: each table column filters on the values it shows (one checklist per field).
+     *
+     * @var array<string, array<string, string>> column => [field => label]
+     */
+    public const COLUMN_FILTERS = [
+        'order' => ['order_number' => 'Order no.', 'customer' => 'Customer', 'customer_type' => 'Customer type'],
+        'route' => ['route_from' => 'From', 'route_to' => 'To'],
+        'salesperson' => ['salesperson' => 'Salesperson'],
+        'service' => ['service_type' => 'Service'],
+        'stage' => ['stage' => 'Order stage'],
+        'payment' => ['payment_status' => 'Payment status', 'payment_method' => 'Payment method'],
+        'amount' => ['order_type' => 'Payment term'],
+        'next' => ['next_step' => 'Next step'],
+    ];
+
+    public const BLANK = '(Blank)';
+
+    /** The value a row shows for a column-filter field (what the checklist lists). */
+    public static function columnValue(array $row, string $field): string
+    {
+        $value = match ($field) {
+            'order_number' => $row['order_number'] ?? null,
+            'customer' => $row['customer'] ?? null,
+            'customer_type' => $row['customer_type']['label'] ?? null,
+            'route_from' => $row['route_from'] ?? null,
+            'route_to' => $row['route_to'] ?? null,
+            'service_type' => $row['service_type'] ?? null,
+            'salesperson' => $row['salesperson'] ?? null,
+            'stage' => $row['stage']['label'] ?? null,
+            'payment_status' => $row['payment']['label'] ?? null,
+            'payment_method' => $row['payment']['method'] ?? null,
+            'order_type' => $row['order_type'] ?? null,
+            'next_step' => $row['next_step'] ?? null,
+            default => null,
+        };
+
+        $value = trim((string) $value);
+
+        return $value === '' || $value === '—' ? self::BLANK : $value;
+    }
+
+    /**
+     * Does the row pass every column filter (except one field's own, for that field's checklist)?
+     *
+     * @param  array<string, list<string>>  $columnFilters  field => allowed values (absent = every value)
+     */
+    private function passesColumnFilters(array $row, array $columnFilters, ?string $exceptField = null): bool
+    {
+        foreach ($columnFilters as $field => $allowed) {
+            if ($field !== $exceptField && ! in_array(self::columnValue($row, $field), $allowed, true)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     /**
      * @param  array<string, mixed>  $filters
-     * @return array{rows: list<array<string, mixed>>, count: int, total: int, summary: array<string, int>, stage_counts: array<string, int>}
+     * @return array{rows: list<array<string, mixed>>, count: int, total: int, summary: array<string, int>, stage_counts: array<string, int>, column_options: array<string, list<array{value: string, count: int}>>, column_filters: array<string, list<string>>}
      */
     public function for(array $filters): array
     {
@@ -65,6 +123,33 @@ class OrderListingData
             return $cardOk && $this->passesMemoryFilters($row, $filters);
         });
 
+        // Excel-style column filters; each checklist lists the values left by every other filter
+        $columnFilters = collect($filters['column_filters'] ?? [])
+            ->filter(fn ($values, $field) => is_array($values) && in_array($field, array_merge(...array_values(array_map('array_keys', self::COLUMN_FILTERS))), true))
+            ->map(fn (array $values) => array_values(array_map('strval', $values)))
+            ->all();
+
+        $stageScope = fn (array $row): bool => $stage === '' ? ! $row['is_closed'] : $row['stage']['key'] === $stage;
+        $columnOptions = [];
+
+        foreach (self::COLUMN_FILTERS as $fields) {
+            foreach (array_keys($fields) as $field) {
+                $columnOptions[$field] = $matching
+                    ->filter(fn (array $row): bool => $stageScope($row) && $this->passesColumnFilters($row, $columnFilters, $field))
+                    ->countBy(fn (array $row): string => self::columnValue($row, $field))
+                    ->sortKeysUsing(fn ($a, $b) => match (true) {
+                        $a === self::BLANK => 1,
+                        $b === self::BLANK => -1,
+                        default => strnatcasecmp((string) $a, (string) $b),
+                    })
+                    ->map(fn (int $count, $value) => ['value' => (string) $value, 'count' => $count])
+                    ->values()
+                    ->all();
+            }
+        }
+
+        $matching = $matching->filter(fn (array $row): bool => $this->passesColumnFilters($row, $columnFilters));
+
         $byStage = $matching->countBy(fn (array $row) => $row['stage']['key']);
         $stageCounts = ['' => $matching->where('is_closed', false)->count()];
 
@@ -73,9 +158,7 @@ class OrderListingData
         }
 
         // "All" ('') is every open order; closed ones sit under their own tag
-        $filtered = $matching->filter(fn (array $row): bool => $stage === ''
-            ? ! $row['is_closed']
-            : $row['stage']['key'] === $stage)->values();
+        $filtered = $matching->filter($stageScope)->values();
 
         $filtered = $this->sortRows($filtered, (string) ($filters['sort'] ?? ''), (string) ($filters['dir'] ?? 'asc'));
 
@@ -85,6 +168,8 @@ class OrderListingData
             'total' => $rows->count(),
             'summary' => $summary,
             'stage_counts' => $stageCounts,
+            'column_options' => $columnOptions,
+            'column_filters' => $columnFilters,
         ];
     }
 
@@ -408,6 +493,9 @@ class OrderListingData
         return $rows->sort(fn (array $a, array $b): int => $sign * match ($sort) {
             'order' => strnatcasecmp((string) $a['order_number'], (string) $b['order_number'])
                 ?: strnatcasecmp((string) $a['customer'], (string) $b['customer']),
+            'date' => (int) $a['sort_at'] <=> (int) $b['sort_at'],
+            'salesperson' => strnatcasecmp((string) $a['salesperson'], (string) $b['salesperson']),
+            'service' => strnatcasecmp((string) $a['service_type'], (string) $b['service_type']),
             'route' => strnatcasecmp((string) $a['route_from'], (string) $b['route_from'])
                 ?: strnatcasecmp((string) $a['route_to'], (string) $b['route_to']),
             'stage' => ((int) $a['stage']['step'] <=> (int) $b['stage']['step'])

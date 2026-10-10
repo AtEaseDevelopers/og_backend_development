@@ -27,7 +27,7 @@ class DeliveryOrder extends Model
 
     protected $fillable = [
         'number', 'consignment_note_id', 'company_id', 'source_branch_id', 'job_sheet_id',
-        'lorry_id', 'driver_id', 'status', 'tracking_token', 'parent_do_id',
+        'lorry_id', 'driver_id', 'status', 'tracking_token', 'parent_do_id', 'subsheet_id',
         'is_duplicate', 'delivered_at', 'failed_at',
     ];
 
@@ -94,6 +94,21 @@ class DeliveryOrder extends Model
     public function parent(): BelongsTo
     {
         return $this->belongsTo(self::class, 'parent_do_id');
+    }
+
+    /** The subsheet this delivery order carries (a subsheet's leg, not the CSN's own delivery). */
+    public function subsheet(): BelongsTo
+    {
+        return $this->belongsTo(Subsheet::class);
+    }
+
+    /**
+     * Not the CSN's own (main) delivery order: a subsheet's leg (with or without a main delivery order yet) or a
+     * re-delivery made from a failed one.
+     */
+    public function isSubDo(): bool
+    {
+        return $this->parent_do_id !== null || $this->subsheet_id !== null;
     }
 
     public function duplicates(): HasMany

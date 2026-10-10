@@ -47,7 +47,7 @@
                 </div>
             </div>
             <div class="cor-table-wrap">
-                <table class="cor-table">
+                <table data-og-xtable class="cor-table">
                     <thead>
                         <tr>
                             <th>Portal Order ID</th>

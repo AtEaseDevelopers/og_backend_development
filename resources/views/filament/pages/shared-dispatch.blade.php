@@ -50,7 +50,7 @@
                         </div>
 
                         <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-white/10">
-                            <table class="w-full text-left text-sm">
+                            <table data-og-xtable class="w-full text-left text-sm">
                                 <thead class="bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:bg-white/5 dark:text-gray-400">
                                     <tr>
                                         <th class="px-4 py-2.5">Job sheet</th>

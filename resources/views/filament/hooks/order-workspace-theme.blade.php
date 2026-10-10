@@ -194,6 +194,31 @@
     .ow-fgrid { display: grid; gap: .75rem 1rem; grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .ow-fgrid + .ow-fgrid { margin-top: .75rem; }
     .ow-fgrid-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    /* 7-day date strip (CSN date on the CSN list, created date on Orders): one card per day with its count */
+    .ow-strip-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .25rem 1rem; margin-bottom: .45rem; }
+    .ow-strip-title { font-size: .72rem; font-weight: 600; color: var(--ow-muted); }
+    .ow-strip-range { font-weight: 400; color: var(--ow-faint); }
+    .ow-strip-links { display: flex; gap: 1rem; }
+    .ow-strip { display: flex; align-items: stretch; gap: .5rem; }
+    .ow-strip-nav { flex: none; width: 2.25rem; display: grid; place-items: center; border: 1px solid var(--ow-line); border-radius: .6rem; background: var(--ow-bg); color: var(--ow-muted); cursor: pointer; box-shadow: var(--ow-shadow); transition: background-color .12s, color .12s; }
+    .ow-strip-nav:hover { background: var(--ow-soft-2); color: var(--ow-text); }
+    .ow-strip-nav:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
+    .ow-strip-nav svg { width: 1.1rem; height: 1.1rem; }
+    /* 7 day cards; on narrow screens they keep their width and scroll sideways inside the strip */
+    .ow-strip-days { flex: 1 1 auto; min-width: 0; display: grid; grid-template-columns: repeat(7, minmax(6.25rem, 1fr)); gap: .5rem; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: thin; }
+    .ow-strip-days[aria-busy='true'] { opacity: .6; }
+    .ow-day { scroll-snap-align: start; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .15rem; padding: .55rem .5rem; border: 1px solid var(--ow-line); border-radius: .6rem; background: var(--ow-bg); color: var(--ow-text); text-align: center; cursor: pointer; transition: background-color .12s, border-color .12s, color .12s; }
+    .ow-day:hover { border-color: var(--ow-faint); }
+    .ow-day:focus-visible { outline: 2px solid #3b82f6; outline-offset: -2px; }
+    .ow-day-date { display: inline-flex; align-items: center; gap: .3rem; font-size: .8125rem; font-weight: 600; white-space: nowrap; }
+    .ow-day-dot { width: .4rem; height: .4rem; border-radius: 9999px; background: var(--ow-link); }
+    .ow-day-count { font-size: .72rem; color: var(--ow-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .ow-day.is-empty .ow-day-count { color: var(--ow-faint); }
+    /* selected day (or every day inside a date range): tinted, primary border and text */
+    .ow-day.is-selected { background: rgba(var(--primary-500, 15, 23, 42), .07); border-color: rgb(var(--primary-500, 15, 23, 42)); color: rgb(var(--primary-500, 15, 23, 42)); box-shadow: inset 0 -3px 0 rgb(var(--primary-500, 15, 23, 42)); }
+    .ow-day.is-selected .ow-day-count { color: inherit; opacity: .8; }
+    .dark .ow-day.is-selected { background: rgba(var(--primary-300, 159, 162, 170), .14); border-color: rgb(var(--primary-200, 195, 197, 202)); color: rgb(var(--primary-50, 243, 243, 244)); box-shadow: inset 0 -3px 0 rgb(var(--primary-200, 195, 197, 202)); }
+    .ow-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     /* CSN list: transfer code / Subsheet / Break bulk tags under the CSN number */
     .ow-csn-tags { display: flex; flex-wrap: wrap; gap: .25rem; margin-top: .25rem; }
     .ow-csn-tag { display: inline-flex; align-items: center; padding: .05rem .4rem; border-radius: .3rem; border: 1px solid #fcd34d; background: #fffbeb; color: #92400e; font-size: .68rem; font-weight: 600; white-space: nowrap; }
@@ -212,12 +237,19 @@
     .ow-table th.ow-num { text-align: right; }
     /* Orders list column widths: Order / Customer widest, Amount and Next step compact */
     .ow-orders-table { min-width: 60rem; }
-    .ow-orders-table .ow-col-order { width: 27%; }
-    .ow-orders-table .ow-col-route { width: 18%; }
-    .ow-orders-table .ow-col-stage { width: 20%; }
-    .ow-orders-table .ow-col-payment { width: 17%; }
-    .ow-orders-table .ow-col-amount { width: 9%; }
-    .ow-orders-table .ow-col-next { width: 9%; }
+    .ow-orders-table .ow-col-order { width: 19%; }
+    .ow-orders-table .ow-col-date { width: 8%; }
+    .ow-orders-table .ow-col-route { width: 13%; }
+    .ow-orders-table .ow-col-sp { width: 10%; }
+    .ow-orders-table .ow-col-service { width: 7%; }
+    .ow-orders-table .ow-col-stage { width: 14%; }
+    .ow-orders-table .ow-col-payment { width: 13%; }
+    .ow-orders-table .ow-col-amount { width: 8%; }
+    .ow-orders-table .ow-col-next { width: 8%; }
+    .ow-orders-table .ow-col-toggle { width: 2.75rem; }
+    /* column toggle: the last header cell, its menu opens below it on the right */
+    .ow-table th.ow-th-toggle { position: relative; text-align: right; padding-right: .75rem; }
+    .ow-toggle-panel { position: fixed; text-transform: none; letter-spacing: normal; font-weight: 400; text-align: left; white-space: normal; }
     .ow-table td { padding: .75rem; border-bottom: 1px solid var(--ow-line-2); vertical-align: top; }
     .ow-table tbody tr:last-child td { border-bottom: 0; }
 
@@ -229,6 +261,55 @@
     .ow-sort-ind { font-size: .62rem; line-height: 1; opacity: .35; transition: opacity .12s; }
     .ow-th-sort:hover .ow-sort-ind { opacity: .7; }
     .ow-table th.ow-th-sorted { color: var(--ow-text); }
+    /* Orders: created-date strip between the filters and the table */
+    .ow-orders-strip { padding: 0 1rem 1rem; }
+    /* Excel-style column filter: funnel beside each header; the menu is attached to <body> (fixed), so colours have fallbacks */
+    .ow-th-inner { display: inline-flex; align-items: center; gap: .35rem; }
+    .ow-num .ow-th-inner { justify-content: flex-end; width: 100%; }
+    .ow-cf { display: inline-flex; }
+    .ow-cf-btn { display: inline-grid; place-items: center; width: 1.35rem; height: 1.35rem; border-radius: .3rem; border: 0; background: none; color: var(--ow-faint, #9ca3af); cursor: pointer; }
+    .ow-cf-btn svg { width: .8rem; height: .8rem; }
+    .ow-cf-btn:hover { background: var(--ow-soft-2, #f1f5f9); color: var(--ow-text, #111827); }
+    .ow-cf-btn.is-active { background: #dbeafe; color: #1d4ed8; }
+    /* funnels added by excel-filter.js: next to the header text */
+    .og-xf-th { white-space: nowrap; }
+    .og-xf-btn { margin-left: .25rem; vertical-align: middle; flex: none; }
+    /* Order date header: the date range picker shrunk to an icon button (the calendar opens below it) */
+    .ow-cf-dr.og-dr { min-width: 0; display: inline-flex; }
+    .ow-cf-dr .og-dr-trigger { width: 1.35rem; height: 1.35rem; min-height: 0; padding: 0; justify-content: center; border: 0; border-radius: .3rem; background: none; box-shadow: none; color: var(--ow-faint, #9ca3af); }
+    .ow-cf-dr .og-dr-trigger:hover { background: var(--ow-soft-2, #f1f5f9); color: var(--ow-text, #111827); }
+    .ow-cf-dr .og-dr-icon { width: .85rem; height: .85rem; margin: 0; }
+    .ow-cf-dr .og-dr-text, .ow-cf-dr .og-dr-chevron, .ow-cf-dr .og-dr-clear { display: none; }
+    .ow-cf-dr.has-value .og-dr-trigger { background: #dbeafe; color: #1d4ed8; }
+    .dark .ow-cf-dr.has-value .og-dr-trigger { background: rgb(59 130 246 / .25); color: #93c5fd; }
+    .dark .ow-cf-btn.is-active { background: rgb(59 130 246 / .25); color: #93c5fd; }
+    .ow-cf-panel { position: fixed; z-index: 60; max-height: min(34rem, calc(100vh - 6rem)); overflow-y: auto; padding: .5rem; border: 1px solid #e5e7eb; border-radius: .6rem; background: #fff; color: #111827; box-shadow: 0 12px 32px rgb(15 23 42 / .18); font-size: .82rem; text-transform: none; letter-spacing: normal; font-weight: 400; }
+    .dark .ow-cf-panel { background: #111827; color: #f3f4f6; border-color: #374151; }
+    .ow-cf-sort { display: flex; flex-direction: column; padding-bottom: .4rem; margin-bottom: .4rem; border-bottom: 1px solid #e5e7eb; }
+    .dark .ow-cf-sort { border-color: #374151; }
+    .ow-cf-sort button { text-align: left; padding: .35rem .5rem; border-radius: .35rem; background: none; border: 0; cursor: pointer; color: inherit; font: inherit; }
+    .ow-cf-sort button:hover { background: #f1f5f9; }
+    .dark .ow-cf-sort button:hover { background: #1f2937; }
+    .ow-cf-field + .ow-cf-field { margin-top: .6rem; padding-top: .6rem; border-top: 1px solid #f1f5f9; }
+    .dark .ow-cf-field + .ow-cf-field { border-color: #1f2937; }
+    .ow-cf-label { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #64748b; margin: 0 .25rem .3rem; }
+    .ow-cf-search { width: 100%; padding: .35rem .55rem; border: 1px solid #d1d5db; border-radius: .4rem; background: transparent; color: inherit; font-size: .8rem; }
+    .dark .ow-cf-search, .dark .ow-cf-range input { border-color: #4b5563; }
+    .ow-cf-list { max-height: 11rem; overflow-y: auto; margin-top: .3rem; border: 1px solid #e5e7eb; border-radius: .4rem; padding: .2rem 0; }
+    .dark .ow-cf-list { border-color: #374151; }
+    .ow-cf-item { display: flex; align-items: center; gap: .45rem; padding: .25rem .5rem; cursor: pointer; }
+    .ow-cf-item:hover { background: #f8fafc; }
+    .dark .ow-cf-item:hover { background: #1f2937; }
+    .ow-cf-all { font-weight: 600; border-bottom: 1px solid #f1f5f9; }
+    .dark .ow-cf-all { border-color: #1f2937; }
+    .ow-cf-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ow-cf-count { font-size: .7rem; color: #94a3b8; font-variant-numeric: tabular-nums; }
+    .ow-cf-none { margin: .3rem .5rem; color: #94a3b8; font-size: .78rem; }
+    .ow-cf-range { display: flex; align-items: center; gap: .4rem; }
+    .ow-cf-range input { flex: 1; min-width: 0; padding: .35rem .5rem; border: 1px solid #d1d5db; border-radius: .4rem; background: transparent; color: inherit; font-size: .8rem; }
+    .ow-cf-foot { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-top: .6rem; padding-top: .5rem; border-top: 1px solid #e5e7eb; }
+    .dark .ow-cf-foot { border-color: #374151; }
+    .ow-cf-foot-right { display: flex; gap: .4rem; }
     .ow-th-sorted .ow-sort-ind { opacity: 1; }
     .ow-row { cursor: pointer; transition: background-color .1s; }
     .ow-row:hover td { background: var(--ow-soft); }

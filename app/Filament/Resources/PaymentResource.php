@@ -2,7 +2,11 @@
 
 namespace App\Filament\Resources;
 
+use App\Domains\Billing\Models\Invoice;
 use App\Domains\Billing\Models\Payment;
+use App\Domains\MasterData\Models\Customer;
+use App\Enums\InvoiceStatus;
+use App\Support\CurrentCompany;
 use App\Filament\Resources\PaymentResource\Pages;
 use App\Support\PaymentListingData;
 use Filament\Forms;
@@ -25,23 +29,45 @@ class PaymentResource extends Resource
 
     protected static ?int $navigationSort = 20;
 
+    /**
+     * Create Payment (invoice payment): the branch is the one being viewed (no field); a customer narrows the
+     * invoices to their unpaid ones; several invoices can be paid at once (the amount starts as their total
+     * outstanding and is split over them, oldest first, on save — see CreatePayment). The CSN field is gone: each
+     * invoice brings its own CSN and order, so the order's paid amount / status follow the payment.
+     */
     public static function form(Form $form): Form
     {
         return $form->schema([
-            Forms\Components\Select::make('source_branch_id')
-                ->relationship('sourceBranch', 'name')
-                ->required()
-                ->searchable(),
             Forms\Components\Select::make('customer_id')
-                ->relationship('customer', 'company_name')
-                ->searchable(),
-            Forms\Components\Select::make('consignment_note_id')
-                ->relationship('consignmentNote', 'number')
-                ->searchable(),
-            Forms\Components\Select::make('invoice_id')
-                ->relationship('invoice', 'number')
-                ->searchable(),
-            Forms\Components\TextInput::make('amount')->numeric()->required(),
+                ->label('Customer')
+                ->options(fn () => Customer::query()
+                    ->when(CurrentCompany::id(), fn ($q, $id) => $q->where('company_id', $id))
+                    ->orderBy('company_name')
+                    ->pluck('company_name', 'id'))
+                ->searchable()
+                ->live()
+                ->afterStateUpdated(function (Forms\Set $set, Forms\Get $get): void {
+                    // keep only the invoices of the customer picked
+                    $keep = array_values(array_intersect(array_map('strval', (array) $get('invoice_ids')), array_map('strval', array_keys(static::invoiceOptions($get('customer_id'))))));
+                    $set('invoice_ids', $keep);
+                    $set('amount', static::outstandingTotal($keep) ?: null);
+                }),
+            Forms\Components\Select::make('invoice_ids')
+                ->label('Invoices')
+                ->helperText('Unpaid invoices (with the amount still outstanding). Pick one or more; the amount is split over them, oldest first.')
+                ->options(fn (Forms\Get $get) => static::invoiceOptions($get('customer_id')))
+                ->multiple()
+                ->searchable()
+                ->live()
+                ->afterStateUpdated(fn ($state, Forms\Set $set) => $set('amount', static::outstandingTotal((array) $state) ?: null)),
+            Forms\Components\TextInput::make('amount')
+                ->numeric()
+                ->minValue(0.01)
+                ->prefix('RM')
+                ->required()
+                ->helperText(fn (Forms\Get $get) => ($total = static::outstandingTotal((array) $get('invoice_ids'))) > 0
+                    ? 'Outstanding on the invoices picked: RM '.number_format($total, 2)
+                    : null),
             Forms\Components\Select::make('method')
                 ->options([
                     'cash' => 'Cash',
@@ -56,6 +82,49 @@ class PaymentResource extends Resource
             Forms\Components\TextInput::make('reference'),
             Forms\Components\Textarea::make('remarks'),
         ]);
+    }
+
+    /**
+     * Unpaid invoices of the company (of the customer when one is picked), oldest first:
+     * "INV-0001 · KL-QT-0001 · Demo Trading · outstanding RM 120.00".
+     *
+     * @return array<int, string>
+     */
+    public static function invoiceOptions(mixed $customerId = null): array
+    {
+        return Invoice::query()
+            ->with(['customer:id,company_name', 'quotation:id,number'])
+            ->withSum(['payments as paid_sum' => fn ($q) => $q->where('status', 'completed')], 'amount')
+            ->when(CurrentCompany::id(), fn ($q, $id) => $q->where('company_id', $id))
+            ->when(filled($customerId), fn ($q) => $q->where('customer_id', $customerId))
+            ->whereNotIn('status', [InvoiceStatus::Paid->value, InvoiceStatus::Cancelled->value])
+            ->orderBy('invoice_date')
+            ->orderBy('id')
+            ->get()
+            ->filter(fn (Invoice $invoice) => static::outstanding($invoice) > 0.004)
+            ->mapWithKeys(fn (Invoice $invoice) => [$invoice->id => collect([
+                $invoice->number,
+                $invoice->quotation?->number,
+                $invoice->customer?->company_name,
+                'outstanding RM '.number_format(static::outstanding($invoice), 2),
+            ])->filter()->implode(' · ')])
+            ->all();
+    }
+
+    /** What is still to be paid on an invoice (its total less its completed payments). */
+    public static function outstanding(Invoice $invoice): float
+    {
+        $paid = $invoice->paid_sum ?? $invoice->payments()->where('status', 'completed')->sum('amount');
+
+        return max(0, round((float) $invoice->total_amount - (float) $paid, 2));
+    }
+
+    /** @param  array<int, int|string>  $invoiceIds */
+    public static function outstandingTotal(array $invoiceIds): float
+    {
+        $ids = array_values(array_filter(array_map('intval', $invoiceIds)));
+
+        return $ids === [] ? 0.0 : round(Invoice::query()->whereIn('id', $ids)->get()->sum(fn (Invoice $invoice) => static::outstanding($invoice)), 2);
     }
 
     public static function table(Table $table): Table

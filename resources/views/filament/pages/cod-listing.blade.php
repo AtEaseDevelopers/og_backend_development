@@ -45,7 +45,7 @@
 
     <div class="cl-list-panel">
         <div class="cl-table-wrap">
-            <table class="cl-table">
+            <table data-og-xtable class="cl-table">
                 <thead>
                     <tr>
                         <th>Driver</th>

@@ -82,7 +82,7 @@ class AssignDeliveryOrderToLorry
                 ]
             );
 
-            if ($do->parent_do_id) {
+            if ($do->isSubDo()) {
                 Subsheet::query()
                     ->where('delivery_order_id', $do->id)
                     ->update([
@@ -92,7 +92,7 @@ class AssignDeliveryOrderToLorry
                     ]);
             }
 
-            if ($csn && ! $do->parent_do_id) {
+            if ($csn && ! $do->isSubDo()) {
                 $csn->update(['status' => CsnStatus::Assigned, 'assigned_at' => now()]);
             }
 

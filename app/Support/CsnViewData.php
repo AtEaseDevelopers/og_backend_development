@@ -266,7 +266,7 @@ class CsnViewData
                 'url' => $this->traceabilityUrl(SubsheetResource::class, $s, $csn),
             ])->all(),
             ...$csn->deliveryOrders
-                ->sortBy(fn ($do) => $do->parent_do_id ? 1 : 0)
+                ->sortBy(fn ($do) => $do->isSubDo() ? 1 : 0)
                 ->map(fn ($do) => [
                     'label' => 'Related DO',
                     'value' => $do->number,

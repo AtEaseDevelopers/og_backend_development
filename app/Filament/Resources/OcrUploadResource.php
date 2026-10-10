@@ -31,6 +31,9 @@ class OcrUploadResource extends Resource
 
     protected static ?string $navigationLabel = 'OCR Quotation Processing';
 
+    // opened from Orders ("OCR quotation processing" beside "Create order for customer"), not from the menu (user, 10 Oct 2026)
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?string $pluralModelLabel = 'OCR Uploads';
 
     protected static ?int $navigationSort = 11;

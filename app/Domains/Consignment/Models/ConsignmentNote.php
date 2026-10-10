@@ -130,7 +130,8 @@ class ConsignmentNote extends Model
 
     public function deliveryOrder(): HasOne
     {
-        return $this->hasOne(DeliveryOrder::class)->whereNull('parent_do_id');
+        // the CSN's own delivery: not a subsheet's leg (which may exist before the CSN has a lorry)
+        return $this->hasOne(DeliveryOrder::class)->whereNull('parent_do_id')->whereNull('subsheet_id');
     }
 
     public function deliveryOrders(): HasMany
@@ -140,7 +141,7 @@ class ConsignmentNote extends Model
 
     public function subsheetDeliveryOrders(): HasMany
     {
-        return $this->hasMany(DeliveryOrder::class)->whereNotNull('parent_do_id');
+        return $this->hasMany(DeliveryOrder::class)->where(fn ($query) => $query->whereNotNull('parent_do_id')->orWhereNotNull('subsheet_id'));
     }
 
     public function subsheets(): HasMany

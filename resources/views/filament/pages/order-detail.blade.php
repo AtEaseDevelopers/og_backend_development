@@ -40,11 +40,11 @@
                 </div>
             </div>
             <div class="ow-actions">
-                @if ($d['urls']['full_editor'])
-                    <a href="{{ $d['urls']['full_editor'] }}" class="ow-btn">Edit order</a>
-                @endif
                 @if ($hasDocuments)
                     <button type="button" wire:click="setTab('documents')" class="ow-btn">View documents</button>
+                @endif
+                @if ($d['urls']['full_editor'])
+                    <a href="{{ $d['urls']['full_editor'] }}" class="ow-btn ow-btn-primary">Edit order details</a>
                 @endif
             </div>
         </div>
@@ -179,15 +179,19 @@
 
                         <div class="ow-stack">
                             {{-- right column: ownership first (assign the salesperson), then the admin action --}}
-                            <div class="ow-card ow-card-pad">
-                                <div class="ow-card-title">Ownership &amp; source</div>
+                            <div class="ow-card ow-card-pad" id="og-assign-salesperson" style="scroll-margin-top:6rem">
+                                <div class="ow-card-title">
+                                    Ownership &amp; source
+                                    @if ($can['assign_salesperson'])
+                                        @include('filament.pages.partials.order-card-edit-buttons', ['editing' => $this->editingOwnership, 'edit' => 'editOwnership', 'cancel' => 'cancelOwnership', 'save' => 'saveOwnership'])
+                                    @endif
+                                </div>
                                 <div class="ow-dl">
+                                    <div><div class="ow-dt">Salesperson</div><div class="ow-dd">@include('filament.pages.partials.order-assign-salesperson', ['can' => $can, 'current' => $f['salesperson']])</div></div>
                                     <div><div class="ow-dt">Form origin</div><div class="ow-dd">{{ $ov['ownership']['origin'] }}</div></div>
                                     <div><div class="ow-dt">Entered by</div><div class="ow-dd">{{ $ov['ownership']['entered_by'] }}</div></div>
-                                    <div><div class="ow-dt">Editing</div><div class="ow-dd">{{ $ov['ownership']['editing'] }}</div></div>
                                     <div><div class="ow-dt">Customer acceptance</div><div class="ow-dd">{{ $ov['ownership']['acceptance'] }}</div></div>
                                 </div>
-                                @include('filament.pages.partials.order-assign-salesperson', ['can' => $can, 'current' => $f['salesperson']])
                             </div>
 
                             <div class="ow-card ow-card-pad" id="og-admin-action" style="scroll-margin-top:6rem">
@@ -234,17 +238,52 @@
                     @php $co = $ov['customer_order']; @endphp
                     <div class="ow-grid-overview">
                         <div class="ow-stack">
+                            @php $detailsEditable = $order && ($can['edit_details'] || $can['change_type']); @endphp
                             <div class="ow-card ow-card-pad">
-                                <div class="ow-card-title">Customer &amp; order</div>
+                                <div class="ow-card-title">
+                                    Customer &amp; order
+                                    @if ($detailsEditable)
+                                        @include('filament.pages.partials.order-card-edit-buttons', ['editing' => $this->editingDetails, 'edit' => 'editDetails', 'cancel' => 'cancelDetails', 'save' => 'saveDetails'])
+                                    @endif
+                                </div>
                                 <div class="ow-dl">
                                     <div><div class="ow-dt">Customer</div><div class="ow-dd">{{ $co['customer'] }}</div></div>
+                                    @if ($co['customer_pic'] ?? null)
+                                        <div><div class="ow-dt">Customer PIC</div><div class="ow-dd">{{ $co['customer_pic'] }}</div></div>
+                                    @endif
                                     <div><div class="ow-dt">Salesperson / SA location</div><div class="ow-dd">{{ $co['salesperson_sa'] }}</div></div>
                                     <div><div class="ow-dt">Enquiry</div><div class="ow-dd">@if ($co['enquiry_url'])<a href="{{ $co['enquiry_url'] }}" class="ow-link">{{ $co['enquiry_ref'] }}</a>@else {{ $co['enquiry_ref'] }} @endif</div></div>
                                     <div><div class="ow-dt">Received through</div><div class="ow-dd">{{ $co['received_through'] }}</div></div>
-                                    <div><div class="ow-dt">DO number</div><div class="ow-dd">{{ $co['do_number'] }}</div></div>
-                                    <div><div class="ow-dt">Payment term</div><div class="ow-dd">{{ $co['order_type'] }}</div></div>
+                                    <div>
+                                        <div class="ow-dt">DO number</div>
+                                        @if ($this->editingDetails && $can['edit_details'])
+                                            <input type="text" wire:model="details.do_number" class="ow-input" maxlength="100" aria-label="DO number">
+                                            @error('details.do_number')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                        @else
+                                            <div class="ow-dd">{{ $co['do_number'] }}</div>
+                                        @endif
+                                    </div>
+                                    <div>
+                                        <div class="ow-dt">Payment term</div>
+                                        @if ($this->editingDetails && $can['change_type'])
+                                            <select wire:model="details.order_type" class="ow-select" aria-label="Payment term">
+                                                @foreach ($this->paymentTermOptions() as $value => $label)
+                                                    <option value="{{ $value }}">{{ $label }}</option>
+                                                @endforeach
+                                            </select>
+                                            @error('details.order_type')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                        @else
+                                            <div class="ow-dd">{{ $co['order_type'] }}</div>
+                                        @endif
+                                    </div>
                                     <div><div class="ow-dt">Pricing consent</div><div class="ow-dd">{{ $co['consent'] }}</div></div>
-                                    @if ($co['expected_delivery'])
+                                    @if ($this->editingDetails && $can['edit_details'])
+                                        <div>
+                                            <div class="ow-dt">Expected delivery</div>
+                                            <input type="text" wire:model="details.expected_delivery" class="ow-input" maxlength="255" placeholder="Optional · e.g. 13/10 before noon" aria-label="Expected delivery date">
+                                            @error('details.expected_delivery')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                        </div>
+                                    @elseif ($co['expected_delivery'])
                                         <div><div class="ow-dt">Expected delivery</div><div class="ow-dd">{{ $co['expected_delivery'] }}</div></div>
                                     @endif
                                     @if ($co['consignor_mode'] ?? null)
@@ -274,30 +313,31 @@
                                 <h2 class="ow-section-title" id="og-section-pricing">Items &amp; pricing</h2>
                                 @include('filament.pages.partials.order-pricing', ['d' => $d, 'pr' => $pr, 'can' => $can, 'order' => $order, 'hasOwner' => $hasOwner])
                             </div>
-
-                            {{-- Payment summary under Items & pricing --}}
-                            @include('filament.pages.partials.order-payment', ['d' => $d, 'can' => $can, 'order' => $order])
                         </div>
 
-                        {{-- right column: Record ownership → Linked records --}}
+                        {{-- right column: Record ownership → Payment summary → Linked records --}}
                         <div class="ow-stack">
-                            <div class="ow-card ow-card-pad">
-                                <div class="ow-card-title">Record ownership</div>
+                            <div class="ow-card ow-card-pad" id="og-assign-salesperson" style="scroll-margin-top:6rem">
+                                <div class="ow-card-title">
+                                    Record ownership
+                                    @if ($can['assign_salesperson'])
+                                        @include('filament.pages.partials.order-card-edit-buttons', ['editing' => $this->editingOwnership, 'edit' => 'editOwnership', 'cancel' => 'cancelOwnership', 'save' => 'saveOwnership'])
+                                    @endif
+                                </div>
                                 <div class="ow-dl">
-                                    <div><div class="ow-dt">Handled by</div><div class="ow-dd">{!! $hasOwner ? e($ov['ownership']['handled_by']) : '<span class="ow-pill ow-pill-action">Pending salesperson</span>' !!}</div></div>
-                                    <div><div class="ow-dt">Editing</div><div class="ow-dd">{{ $ov['ownership']['editing'] }}</div></div>
+                                    <div><div class="ow-dt">Handled by</div><div class="ow-dd">@include('filament.pages.partials.order-assign-salesperson', ['can' => $can, 'current' => $hasOwner ? $ov['ownership']['handled_by'] : null])</div></div>
                                     <div><div class="ow-dt">Created</div><div class="ow-dd">{{ $ov['ownership']['created'] }}</div></div>
                                     <div><div class="ow-dt">Last activity</div><div class="ow-dd">{{ $ov['ownership']['last_activity'] }}</div></div>
                                 </div>
-                                @include('filament.pages.partials.order-assign-salesperson', ['can' => $can, 'current' => $hasOwner ? $ov['ownership']['handled_by'] : null])
-                                @if ($can['change_type'] || $can['block_cod'] || $can['unblock_cod'])
+                                {{-- only an order blocked before Block COD was removed: it can still be unblocked --}}
+                                @if ($can['unblock_cod'])
                                     <div class="ow-actions" style="margin-top:.75rem;justify-content:flex-start">
-                                        @if ($can['change_type'])<button type="button" wire:click="mountAction('changeOrderType')" class="ow-btn ow-btn-sm">Change payment term</button>@endif
-                                        @if ($can['block_cod'])<button type="button" wire:click="mountAction('blockCod')" class="ow-btn ow-btn-sm ow-btn-danger">Block COD</button>@endif
-                                        @if ($can['unblock_cod'])<button type="button" wire:click="mountAction('unblockCod')" class="ow-btn ow-btn-sm">Unblock COD</button>@endif
+                                        <button type="button" wire:click="mountAction('unblockCod')" class="ow-btn ow-btn-sm">Unblock COD</button>
                                     </div>
                                 @endif
                             </div>
+
+                            @include('filament.pages.partials.order-payment', ['d' => $d, 'can' => $can, 'order' => $order])
 
                             @include('filament.pages.partials.order-linked-records', ['ov' => $ov, 'can' => $can, 'order' => $order])
                         </div>

@@ -115,7 +115,7 @@ class TransferJobSheetTask
 
             $csn = $do->consignmentNote;
 
-            if ($csn && ! $do->parent_do_id) {
+            if ($csn && ! $do->isSubDo()) {
                 $driverChanged = (int) $fromDriverId !== (int) $toJobSheet->driver_id;
 
                 $csn->update([

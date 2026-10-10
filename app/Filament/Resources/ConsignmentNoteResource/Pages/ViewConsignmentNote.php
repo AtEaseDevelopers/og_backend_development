@@ -7,7 +7,6 @@ use App\Enums\CsnStatus;
 use App\Filament\Resources\ConsignmentNoteResource;
 use App\Support\CsnViewData;
 use Filament\Actions;
-use Filament\Forms\Components\Select;
 use Filament\Infolists;
 use Filament\Infolists\Infolist;
 use Filament\Notifications\Notification;
@@ -56,19 +55,9 @@ class ViewConsignmentNote extends ViewRecord
                 ->label('Add Subsheets')
                 ->icon('heroicon-o-document-duplicate')
                 ->color('warning')
-                ->visible(fn () => $record->deliveryOrder?->job_sheet_id
-                    && $record->status !== CsnStatus::Cancelled)
-                ->form([
-                    Select::make('sub_lorry_ids')
-                        ->label('Lorries for subsheets')
-                        ->options(fn () => ConsignmentNoteResource::lorryOptions(
-                            excludeIds: array_filter([(int) $record->deliveryOrder?->lorry_id])
-                        ))
-                        ->multiple()
-                        ->required()
-                        ->searchable(),
-                    ...ConsignmentNoteResource::subsheetOptionFields(),
-                ])
+                // no lorry needed on the CSN first; the subsheet's own lorry is optional (assigned later)
+                ->visible(fn () => $record->status !== CsnStatus::Cancelled)
+                ->form(ConsignmentNoteResource::subsheetCreateForm())
                 ->action(function (array $data) use ($record) {
                     try {
                         $created = ConsignmentNoteResource::createSubsheetsForLorries(

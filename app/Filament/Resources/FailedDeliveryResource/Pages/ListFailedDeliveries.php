@@ -14,9 +14,12 @@ use Filament\Actions;
 use Filament\Facades\Filament;
 use Filament\Resources\Pages\ListRecords;
 use Illuminate\Database\Eloquent\Builder;
+use App\Filament\Concerns\HasExcelColumnFilters;
 
 class ListFailedDeliveries extends ListRecords
 {
+    use HasExcelColumnFilters;
+
     protected static string $resource = FailedDeliveryResource::class;
 
     protected static string $view = 'filament.resources.failed-delivery-resource.pages.list-failed-deliveries';

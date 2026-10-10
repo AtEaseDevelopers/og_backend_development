@@ -13,9 +13,12 @@ use Filament\Resources\Pages\ListRecords;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
+use App\Filament\Concerns\HasExcelColumnFilters;
 
 class ListJobSheets extends ListRecords
 {
+    use HasExcelColumnFilters;
+
     protected static string $resource = JobSheetResource::class;
 
     protected static string $view = 'filament.resources.job-sheet-resource.pages.list-job-sheets';

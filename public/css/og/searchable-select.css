@@ -283,3 +283,54 @@ select[data-og-ss-open]:not(.fi-select-input) {
 .dark .fi-input-wrp:not(.fi-invalid):has(select[data-og-ss-open]) {
     --tw-ring-color: rgba(var(--primary-500), 1);
 }
+
+/* options with a tag (data-og-tag) and / or a second line (data-og-sub) */
+.og-ss-body {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+
+.og-ss-top {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+}
+
+.og-ss-top .og-ss-label {
+    flex: 0 1 auto;
+}
+
+.og-ss-tag {
+    flex: none;
+    padding: 0.05rem 0.4rem;
+    border-radius: 0.3rem;
+    border: 1px solid rgb(226 232 240);
+    background: rgb(248 250 252);
+    color: rgb(71 85 105);
+    font-size: 0.68rem;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.og-ss-tag-cash { border-color: #bbf7d0; background: #f0fdf4; color: #15803d; }
+.og-ss-tag-cod { border-color: #fde68a; background: #fffbeb; color: #b45309; }
+.og-ss-tag-credit { border-color: #bfdbfe; background: #eff6ff; color: #1d4ed8; }
+
+.og-ss-sub {
+    /* the whole second line (address, From, PIC, contact) stays readable: it wraps instead of cutting off */
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: rgb(var(--og-ss-gray-500));
+}
+
+.dark .og-ss-tag { border-color: rgb(55 65 81); background: rgb(31 41 55); color: rgb(203 213 225); }
+.dark .og-ss-tag-cash { border-color: rgb(34 197 94 / .4); background: rgb(34 197 94 / .15); color: #86efac; }
+.dark .og-ss-tag-cod { border-color: rgb(245 158 11 / .4); background: rgb(245 158 11 / .15); color: #fcd34d; }
+.dark .og-ss-tag-credit { border-color: rgb(59 130 246 / .4); background: rgb(59 130 246 / .15); color: #93c5fd; }
+.dark .og-ss-sub { color: rgb(var(--og-ss-gray-400)); }

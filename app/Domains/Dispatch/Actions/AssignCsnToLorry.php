@@ -113,6 +113,14 @@ class AssignCsnToLorry
                 'transfer_claim_pending' => false,
             ]);
 
+            // subsheets put on a lorry before the CSN itself: their legs now hang under this main delivery order
+            DeliveryOrder::query()
+                ->where('consignment_note_id', $csn->id)
+                ->whereNotNull('subsheet_id')
+                ->whereNull('parent_do_id')
+                ->update(['parent_do_id' => $do->id]);
+            $csn->subsheets()->whereNull('main_lorry_id')->update(['main_lorry_id' => $lorry->id, 'main_driver_id' => $do->driver_id]);
+
             $this->notifyDriver($do->load(['consignmentNote', 'jobSheet', 'lorry', 'driver']));
 
             return $do;

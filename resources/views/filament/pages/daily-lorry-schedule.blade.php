@@ -1,6 +1,7 @@
 @php
     $schedule = $this->getSchedule();
     $day = $schedule['date'];
+    $stripDays = $this->stripDays();
 @endphp
 
 <x-filament-panels::page>
@@ -11,9 +12,6 @@
                     <span class="fi-fo-field-wrp-label text-sm font-medium text-gray-950 dark:text-white">Operating date</span>
                     <x-og.date-range single from="date" :from-value="$date" label="Operating date" style="min-width: 0; width: 12.5rem" />
                 </div>
-                <x-filament::button color="gray" outlined size="sm" wire:click="shiftDate(-1)" title="Previous day">‹</x-filament::button>
-                <x-filament::button color="gray" outlined size="sm" wire:click="today">Today</x-filament::button>
-                <x-filament::button color="gray" outlined size="sm" wire:click="shiftDate(1)" title="Next day">›</x-filament::button>
             </div>
             <div>
                 <label class="fi-fo-field-wrp-label text-sm font-medium text-gray-950 dark:text-white" for="schedule-branch">Branch</label>
@@ -30,6 +28,52 @@
             </div>
         </div>
     </x-filament::section>
+
+    {{-- date strip (as on Orders / CSN management): 7 days with their trip counts for the branch; click a day to show it --}}
+    <section class="ow-page" aria-label="Operating date">
+        <div class="ow-strip-head">
+            <span class="ow-strip-title">Operating date <span class="ow-strip-range">· {{ $this->stripRangeLabel() }}</span></span>
+            <span class="ow-strip-links">
+                @unless ($this->stripShowsToday())
+                    <button type="button" wire:click="stripToday" class="ow-btn-link">Today</button>
+                @endunless
+            </span>
+        </div>
+
+        <div class="ow-strip">
+            <button type="button" class="ow-strip-nav" wire:click="shiftStrip(-7)" aria-label="Previous 7 days">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M12.5 15l-5-5 5-5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            </button>
+
+            <div class="ow-strip-days" role="group" aria-label="Days" wire:loading.attr="aria-busy" wire:target="selectStripDay, shiftStrip, stripToday">
+                @foreach ($stripDays as $stripDay)
+                    <button type="button"
+                            wire:key="dls-day-{{ $stripDay['date'] }}"
+                            wire:click="selectStripDay('{{ $stripDay['date'] }}')"
+                            aria-pressed="{{ $stripDay['selected'] ? 'true' : 'false' }}"
+                            @if ($stripDay['today']) title="Today" @endif
+                            @class([
+                                'ow-day',
+                                'is-selected' => $stripDay['selected'],
+                                'is-today' => $stripDay['today'],
+                                'is-empty' => $stripDay['count'] === 0,
+                            ])>
+                        <span class="ow-day-date">
+                            @if ($stripDay['today'])
+                                <span class="ow-day-dot" aria-hidden="true"></span><span class="ow-sr">Today,</span>
+                            @endif
+                            {{ $stripDay['label'] }}
+                        </span>
+                        <span class="ow-day-count">{{ $stripDay['count'] === 0 ? 'No trip' : $stripDay['count'].' '.\Illuminate\Support\Str::plural('trip', $stripDay['count']) }}</span>
+                    </button>
+                @endforeach
+            </div>
+
+            <button type="button" class="ow-strip-nav" wire:click="shiftStrip(7)" aria-label="Next 7 days">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M7.5 5l5 5-5 5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            </button>
+        </div>
+    </section>
 
     @if ($schedule['branches'] === [])
         <x-filament::section>
@@ -48,7 +92,7 @@
             </x-slot>
 
             <div class="overflow-x-auto">
-                <table class="w-full text-left text-sm">
+                <table data-og-xtable class="w-full text-left text-sm">
                     <thead class="bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:bg-white/5 dark:text-gray-400">
                         <tr>
                             <th class="px-3 py-2">Job sheet</th>

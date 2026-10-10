@@ -724,11 +724,6 @@ class ConsignmentNoteForm
         $set('customer_id', (string) $quotation->customer_id);
         static::fillFromCustomer((string) $quotation->customer_id, $set);
 
-        // the CSN date of an order's CSN is the order's expected delivery date
-        if ($quotation->expected_delivery_date) {
-            $set('issued_at', $quotation->expected_delivery_date->toDateString());
-        }
-
         static::applyMatrixWithTotals(
             app(CsnTransportMatrix::class)->fromQuotation($quotation),
             null,

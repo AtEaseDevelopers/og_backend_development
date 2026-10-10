@@ -210,6 +210,14 @@ class AdminPanelProvider extends PanelProvider
             )
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
+                fn (): View => view('filament.hooks.excel-filter'),
+            )
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): View => view('filament.hooks.datatable-header'),
+            )
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
                 fn (): View => view('filament.hooks.date-range-picker'),
             )
             ->middleware([

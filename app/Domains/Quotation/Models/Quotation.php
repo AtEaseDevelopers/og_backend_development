@@ -16,6 +16,7 @@ use App\Domains\MasterData\Models\SaLocation;
 use App\Domains\Notification\Models\NotificationLog;
 use App\Enums\BillingStatus;
 use App\Enums\OrderType;
+use App\Enums\PaymentSubmissionStatus;
 use App\Enums\QuotationStatus;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -38,9 +39,11 @@ class Quotation extends Model
         'from_location_id', 'to_location_id',
         'consignor_brn', 'pickup_location', 'consignee_name', 'consignee_brn',
         'consignee_address', 'drop_off_location', 'customer_address',
-        // consignor picked up or brought to an O&G store (service_type + store_branch_id); person in charge per side
-        'store_branch_id', 'consignor_pic_name', 'consignor_pic_phone', 'consignee_pic_name', 'consignee_pic_phone',
-        'attention', 'customer_fax', 'customer_phone_alt', 'issued_by_name', 'terms_of_payment',
+        // consignor picked up or brought to a store (service_type + store_id; store_branch_id = the store's branch);
+        // person in charge per side
+        'store_branch_id', 'store_id', 'consignor_pic_name', 'consignor_pic_phone', 'consignee_pic_name', 'consignee_pic_phone',
+        // the customer's person in charge (attention) and contact number
+        'attention', 'customer_pic_phone', 'customer_fax', 'customer_phone_alt', 'issued_by_name', 'terms_of_payment',
         'pricing_source', 'subtotal', 'tax_amount',
         'total_amount', 'notes', 'rejection_reason', 'sent_at', 'confirmed_at',
         'converted_at', 'created_by',
@@ -49,7 +52,8 @@ class Quotation extends Model
         'confirmation_channel', 'confirmed_by_name', 'consent_evidence',
         'order_type', 'service_type', 'payment_method', 'customer_do_number', 'sa_location_id', 'salesperson_locked',
         'pricing_override_reason', 'price_overrides',
-        'attachments', 'destination_types', 'pricing_reconfirmation_required',
+        // photos per product: {product name: [{path, name, mime, …}]}
+        'attachments', 'item_attachments', 'destination_types', 'pricing_reconfirmation_required',
         'rejection_category', 'pending_review_since', 'closed_at', 'closed_reason',
         'cod_blocked', 'cod_block_reason', 'cod_blocked_by', 'cod_blocked_at',
         'released_at', 'released_by', 'release_reason', 'release_outstanding',
@@ -66,6 +70,7 @@ class Quotation extends Model
             'price_overrides' => 'array',
             'billing_status' => BillingStatus::class,
             'attachments' => 'array',
+            'item_attachments' => 'array',
             'destination_types' => 'array',
             'salesperson_locked' => 'boolean',
             'pricing_reconfirmation_required' => 'boolean',
@@ -81,7 +86,6 @@ class Quotation extends Model
             'lock_heartbeat_at' => 'datetime',
             'valid_until' => 'date',
             'quoted_at' => 'date',
-            'expected_delivery_date' => 'date',
             'is_active' => 'boolean',
             'subtotal' => 'decimal:2',
             'tax_amount' => 'decimal:2',
@@ -117,10 +121,16 @@ class Quotation extends Model
         return $this->belongsTo(\App\Domains\MasterData\Models\Location::class, 'to_location_id');
     }
 
-    /** The O&G branch (store) the consignor brings the goods to, when service_type is Store. */
+    /** The branch of the store the consignor brings the goods to (older Store records: the store itself). */
     public function storeBranch(): BelongsTo
     {
         return $this->belongsTo(Branch::class, 'store_branch_id');
+    }
+
+    /** The store (Master Data → Stores) the consignor brings the goods to, when service_type is Store. */
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\MasterData\Models\Store::class);
     }
 
     public function salesperson(): BelongsTo
@@ -256,6 +266,43 @@ class Quotation extends Model
     public function orderType(): ?OrderType
     {
         return $this->order_type instanceof OrderType ? $this->order_type : OrderType::tryFrom((string) $this->order_type);
+    }
+
+    /**
+     * Payment terms this record can have: any until the customer confirms or a payment is recorded (Credit / Term
+     * only for a credit customer, or when it already is Credit / Term); after that the payment term is fixed.
+     *
+     * @return list<OrderType>
+     */
+    public function allowedOrderTypes(): array
+    {
+        $current = $this->orderType();
+
+        if ($current && $this->paymentTermLocked()) {
+            return [$current];
+        }
+
+        return array_values(array_filter(
+            OrderType::cases(),
+            fn (OrderType $type) => $type !== OrderType::Term || $type === $current || (bool) $this->customer?->is_credit,
+        ));
+    }
+
+    /** The payment term is fixed once the customer has confirmed or any payment has been recorded for the record. */
+    public function paymentTermLocked(): bool
+    {
+        if ($this->status instanceof QuotationStatus && $this->status->isConfirmedOrLater()) {
+            return true;
+        }
+
+        return (float) $this->paid_amount > 0
+            || $this->payments()->exists()
+            || $this->paymentSubmissions()->whereNotIn('status', [PaymentSubmissionStatus::Rejected->value, PaymentSubmissionStatus::Cancelled->value])->exists();
+    }
+
+    public function canChangeOrderTypeTo(OrderType $to): bool
+    {
+        return in_array($to, $this->allowedOrderTypes(), true);
     }
 
     public function billingStatus(): BillingStatus

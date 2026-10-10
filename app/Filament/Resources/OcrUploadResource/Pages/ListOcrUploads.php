@@ -13,9 +13,12 @@ use Filament\Resources\Pages\ListRecords;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
 use Throwable;
+use App\Filament\Concerns\HasExcelColumnFilters;
 
 class ListOcrUploads extends ListRecords
 {
+    use HasExcelColumnFilters;
+
     use WithFileUploads;
 
     protected static string $resource = OcrUploadResource::class;

@@ -179,7 +179,7 @@
             <span class="mc-record-count">{{ number_format($total) }} Records</span>
         </div>
         <div class="mc-table-wrap">
-            <table class="mc-table">
+            <table data-og-xtable class="mc-table">
                 <thead>
                     <tr>
                         <th>CSN Number</th>

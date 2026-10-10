@@ -88,6 +88,15 @@ class OrderDetail extends Page
 
     public ?string $assignSalespersonId = null;
 
+    /** Record ownership card in edit mode: the salesperson becomes a dropdown (Save / Cancel at the top right). */
+    public bool $editingOwnership = false;
+
+    /** Customer & order card in edit mode: payment term, DO number and expected delivery date. */
+    public bool $editingDetails = false;
+
+    /** @var array{order_type?: string, do_number?: string, expected_delivery?: string} */
+    public array $details = [];
+
     public bool $showRejectForm = false;
 
     public string $rejectReason = '';
@@ -241,7 +250,173 @@ class OrderDetail extends Page
     public function focusAssign(): void
     {
         $this->tab = 'overview';
+        $this->editOwnership();
         $this->dispatch('og-scroll', id: 'og-assign-salesperson');
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Inline edit: Record ownership (salesperson) and Customer & order
+    |--------------------------------------------------------------------------
+    */
+
+    public function editOwnership(): void
+    {
+        if ($this->refuseOnOldVersion() || ! ($this->detail()['can']['assign_salesperson'] ?? false)) {
+            return;
+        }
+
+        $this->assignSalespersonId = (string) ($this->currentSalespersonId() ?? '');
+        $this->editingOwnership = true;
+    }
+
+    public function cancelOwnership(): void
+    {
+        $this->editingOwnership = false;
+        $this->assignSalespersonId = null;
+    }
+
+    /** Save of the Record ownership card: the salesperson picked (audited, see assignSalesperson); unchanged = nothing to do. */
+    public function saveOwnership(): void
+    {
+        if ((string) $this->assignSalespersonId === (string) ($this->currentSalespersonId() ?? '')) {
+            $this->cancelOwnership();
+
+            return;
+        }
+
+        $this->assignSalesperson();
+
+        // assigned: assignSalesperson clears the picked id
+        if ($this->assignSalespersonId === null) {
+            $this->editingOwnership = false;
+        }
+    }
+
+    protected function currentSalespersonId(): ?int
+    {
+        $detail = $this->detail();
+        $id = $detail['order']?->salesperson_id ?? $detail['enquiry']?->salesperson_id ?? null;
+
+        return $id ? (int) $id : null;
+    }
+
+    public function editDetails(): void
+    {
+        $order = $this->order();
+        $can = $this->detail()['can'] ?? [];
+
+        if (! $order || $this->refuseOnOldVersion() || ! (($can['edit_details'] ?? false) || ($can['change_type'] ?? false))) {
+            return;
+        }
+
+        $this->details = [
+            'order_type' => (string) ($order->orderType()?->value ?? ''),
+            'do_number' => (string) ($order->customer_do_number ?? ''),
+            'expected_delivery' => (string) ($order->expected_delivery_date ?? ''),
+        ];
+        $this->resetErrorBag();
+        $this->editingDetails = true;
+    }
+
+    public function cancelDetails(): void
+    {
+        $this->editingDetails = false;
+        $this->details = [];
+        $this->resetErrorBag();
+    }
+
+    /**
+     * Payment terms the order can change to (Quotation::allowedOrderTypes: any until the customer confirms or a
+     * payment is recorded), its current one first; Credit / Term only for a credit customer.
+     *
+     * @return array<string, string>
+     */
+    public function paymentTermOptions(): array
+    {
+        $order = $this->order();
+        $current = $order?->orderType();
+        $allowed = $order ? $order->allowedOrderTypes() : OrderType::cases();
+
+        return collect($current ? [$current, ...$allowed] : $allowed)
+            ->unique(fn (OrderType $t) => $t->value)
+            ->reject(fn (OrderType $t) => $t === OrderType::Term && $t !== $current && ! $order?->customer?->is_credit)
+            ->mapWithKeys(fn (OrderType $t) => [$t->value => $t->getLabel()])
+            ->all();
+    }
+
+    /** Save of the Customer & order card: DO number / expected delivery date on the record, then the payment term (ChangeOrderType). */
+    public function saveDetails(): void
+    {
+        $order = $this->order();
+        $can = $this->detail()['can'] ?? [];
+
+        if (! $order || $this->refuseOnOldVersion()) {
+            return;
+        }
+
+        $rules = [];
+
+        if ($can['edit_details'] ?? false) {
+            $rules['details.do_number'] = 'required|string|max:100';
+            $rules['details.expected_delivery'] = 'nullable|string|max:255';
+        }
+
+        if ($can['change_type'] ?? false) {
+            $rules['details.order_type'] = 'required|in:'.implode(',', array_keys($this->paymentTermOptions()));
+        }
+
+        $this->validate($rules, [], [
+            'details.do_number' => 'DO number',
+            'details.expected_delivery' => 'expected delivery date',
+            'details.order_type' => 'payment term',
+        ]);
+
+        $changes = [];
+
+        try {
+            if ($can['edit_details'] ?? false) {
+                $do = trim((string) ($this->details['do_number'] ?? ''));
+                $delivery = trim((string) ($this->details['expected_delivery'] ?? ''));
+                $fields = [];
+
+                if ($do !== trim((string) $order->customer_do_number)) {
+                    $fields['customer_do_number'] = $do;
+                    $changes[] = 'DO number '.($order->customer_do_number ?: '—').' → '.$do;
+                }
+
+                if ($delivery !== trim((string) $order->expected_delivery_date)) {
+                    $fields['expected_delivery_date'] = $delivery !== '' ? $delivery : null;
+                    $changes[] = 'expected delivery '.($order->expected_delivery_date ?: '—').' → '.($delivery !== '' ? $delivery : '—');
+                }
+
+                if ($fields !== []) {
+                    $order->update($fields);
+                    QuotationStatusLog::query()->create([
+                        'quotation_id' => $order->id,
+                        'from_status' => $order->status->value,
+                        'to_status' => $order->status->value,
+                        'user_id' => auth()->id(),
+                        'remarks' => 'Order details edited: '.implode(' · ', $changes),
+                    ]);
+                }
+            }
+
+            $type = OrderType::tryFrom((string) ($this->details['order_type'] ?? ''));
+
+            if (($can['change_type'] ?? false) && $type && $type !== $order->orderType()) {
+                app(ChangeOrderType::class)->execute($order->fresh(), $type, auth()->user());
+                $changes[] = 'payment term → '.$type->getLabel();
+            }
+        } catch (Throwable $e) {
+            Notification::make()->title($e->getMessage())->danger()->send();
+
+            return;
+        }
+
+        $this->cancelDetails();
+        $this->refreshDetail();
+        Notification::make()->title($changes === [] ? 'Nothing changed' : 'Order details saved')->body($changes === [] ? null : ucfirst(implode(' · ', $changes)))->success()->send();
     }
 
     public function assignSalesperson(): void
@@ -1091,15 +1266,14 @@ class OrderDetail extends Page
                     ->label('New payment term')
                     ->options(function () {
                         $order = $this->order();
-                        $current = $order?->orderType();
-                        $allowed = $current ? $current->allowedTransitions() : OrderType::cases();
+                        $allowed = $order ? $order->allowedOrderTypes() : OrderType::cases();
 
                         return collect($allowed)
                             ->reject(fn (OrderType $t) => $t === OrderType::Term && ! $order?->customer?->is_credit)
                             ->mapWithKeys(fn (OrderType $t) => [$t->value => $t->getLabel()]);
                     })
                     ->required()
-                    ->helperText('Term → Term / Cash / COD · COD → Cash only · Cash cannot change.'),
+                    ->helperText('The payment term can change until the customer confirms or a payment is recorded.'),
                 Forms\Components\Textarea::make('reason')->label('Reason'),
             ])
             ->action(function (array $data): void {

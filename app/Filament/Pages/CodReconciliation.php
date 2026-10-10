@@ -18,6 +18,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Throwable;
+use App\Filament\Concerns\HasExcelColumnFilters;
 
 /**
  * Every COD payment of a day (date filter, today by default): collections the driver recorded on delivery,
@@ -27,7 +28,10 @@ use Throwable;
  */
 class CodReconciliation extends Page implements HasTable
 {
-    use InteractsWithTable;
+    use HasExcelColumnFilters, InteractsWithTable {
+        HasExcelColumnFilters::filterTableQuery insteadof InteractsWithTable;
+        InteractsWithTable::filterTableQuery as filamentFilterTableQuery;
+    }
 
     protected static ?string $navigationIcon = 'heroicon-o-arrows-right-left';
 

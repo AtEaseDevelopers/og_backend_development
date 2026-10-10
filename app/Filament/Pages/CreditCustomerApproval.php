@@ -17,6 +17,9 @@ class CreditCustomerApproval extends Page
 
     protected static ?string $navigationLabel = 'Credit Customer Approval';
 
+    // removed from the menu (user, 10 Oct 2026); the page itself stays reachable
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?int $navigationSort = 10;
 
     protected static string $view = 'filament.pages.credit-customer-approval';

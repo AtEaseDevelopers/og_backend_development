@@ -84,10 +84,10 @@ class EditOrder extends CreateOrder
     public array $originalForm = [];
 
     /**
-     * Payment terms of the order's records when the page opened: while the order keeps its customer, a new
-     * term must be one every record may change to (OrderType::allowedTransitions, as the save enforces).
+     * Payment terms each record of the order may have (Quotation::allowedOrderTypes, as the save enforces) when
+     * the page opened: while the order keeps its customer, a new term must be allowed on every record.
      *
-     * @var list<string>
+     * @var list<list<string>>
      */
     #[Locked]
     public array $recordOrderTypes = [];
@@ -150,7 +150,7 @@ class EditOrder extends CreateOrder
         $this->lockedRecordIds = $records->reject(fn (Quotation $q) => UpdateOrderRecords::isEditable($q))->map(fn (Quotation $q) => (int) $q->id)->values()->all();
         $this->removableRecordIds = $enquiry ? $records->filter(fn (Quotation $q) => UpdateOrderRecords::isRemovable($q))->map(fn (Quotation $q) => (int) $q->id)->values()->all() : [];
         $this->knownRecordIds = $records->map(fn (Quotation $q) => (int) $q->id)->values()->all();
-        $this->recordOrderTypes = $records->map(fn (Quotation $q) => $q->orderType()?->value)->filter()->unique()->values()->all();
+        $this->recordOrderTypes = $records->map(fn (Quotation $q) => array_map(fn (OrderType $type) => $type->value, $q->allowedOrderTypes()))->values()->all();
         $this->salespersonLocked =$enquiry && $enquiry->salesperson_locked && $enquiry->salesperson_id && ! $user?->isSuperadmin();
 
         $this->form = $this->formFrom($enquiry, $records);
@@ -227,6 +227,7 @@ class EditOrder extends CreateOrder
         return [
             'customer_id' => (string) ($enquiry?->customer_id ?? $first?->customer_id ?? ''),
             'customer_address' => UpdateOrderRecords::billingAddressFor($enquiry, $records),
+            ...$this->customerPicFor($enquiry, $records),
             'received_through' => (string) $receivedThrough,
             'salesperson_id' => (string) ($enquiry?->salesperson_id ?? $first?->salesperson_id ?? ''),
             'order_type' => ($first?->orderType() ?? $enquiry?->order_type)?->value ?? OrderType::Cash->value,
@@ -234,28 +235,58 @@ class EditOrder extends CreateOrder
     }
 
     /**
-     * Pickup / store state of a block: a Store block shows its store (an older Store record without one: the
-     * order's branch) and keeps the customer's default pickup address ready for a switch to Pickup; a Pickup
-     * block shows its pickup location (the saved address it came from, else typed as a new address).
+     * The customer's person in charge and contact number as the page shows them: the first record's (an order not
+     * priced yet: the ones saved on its order form), else the customer's default.
      *
-     * @return array{service_type: string, store_branch_id: string, pickup_preset: string, pickup_location: string}
+     * @param  Collection<int, Quotation>  $records
+     * @return array{customer_pic_name: string, customer_pic_phone: string}
      */
-    protected function consignorModeState(?string $customerId, ?string $serviceType, mixed $storeBranchId, ?string $pickupLocation, mixed $fallbackBranchId): array
+    protected function customerPicFor(?PortalEnquiry $enquiry, Collection $records): array
+    {
+        $first = $records->first();
+        $saved = $first
+            ? ['attention' => $first->attention, 'customer_pic_phone' => $first->customer_pic_phone]
+            : (collect($enquiry?->payload['destinations'] ?? [])->first(fn ($d) => is_array($d)) ?? []);
+        $customerId = $enquiry?->customer_id ?? $first?->customer_id;
+        $default = $customerId ? OrderFormOptions::consignorStateForCustomer((string) $customerId, withPickupPreset: false) : [];
+        // saved on the record / order form (blank stays blank); an older order without them: the customer's default
+        $value = fn (string $key) => (string) (array_key_exists($key, $saved) ? ($saved[$key] ?? '') : ($default[$key] ?? ''));
+
+        return [
+            'customer_pic_name' => trim($value('attention')),
+            'customer_pic_phone' => trim($value('customer_pic_phone')),
+        ];
+    }
+
+    /**
+     * Pickup / store state of a block: a Store block shows its store and its pickup location, and keeps the
+     * customer's default pickup address ready for a switch to Pickup (an older Store record chose a branch, not a
+     * store: it keeps that branch until a store is picked); a Pickup block shows its pickup location (the saved
+     * address it came from, else typed as a new address).
+     *
+     * @return array{service_type: string, store_id: string, legacy_store_branch_id: string, pickup_preset: string, pickup_location: string, pickup_restore?: array{preset: string, location: string}}
+     */
+    protected function consignorModeState(?string $customerId, ?string $serviceType, mixed $storeId, mixed $storeBranchId, ?string $pickupLocation): array
     {
         if ($serviceType === ServiceType::Store->value) {
             $default = $customerId ? OrderFormOptions::consignorStateForCustomer($customerId) : [];
+            $storeId = filled($storeId) ? (string) $storeId : '';
+            $pickup = trim((string) $pickupLocation);
 
             return [
                 'service_type' => ServiceType::Store->value,
-                'store_branch_id' => (string) ($storeBranchId ?: ($fallbackBranchId ?: '')),
-                'pickup_preset' => (string) ($default['pickup_location_preset'] ?? ''),
-                'pickup_location' => (string) ($default['pickup_location'] ?? ''),
+                'store_id' => $storeId,
+                'legacy_store_branch_id' => $storeId === '' && filled($storeBranchId) ? (string) $storeBranchId : '',
+                'pickup_preset' => $pickup !== '' ? OrderFormOptions::NEW_ADDRESS : '',
+                'pickup_location' => $pickup,
+                'pickup_restore' => ['preset' => (string) ($default['pickup_location_preset'] ?? ''), 'location' => (string) ($default['pickup_location'] ?? '')],
             ];
         }
 
         return [
             'service_type' => ServiceType::Pickup->value,
-            'store_branch_id' => '',
+            'store_id' => '',
+            'legacy_store_branch_id' => '',
             'pickup_preset' => OrderFormOptions::pickupPresetFor($customerId, $pickupLocation),
             'pickup_location' => trim((string) $pickupLocation),
         ];
@@ -283,7 +314,7 @@ class EditOrder extends CreateOrder
             $type = collect($q->destination_types ?? [])->first()['drop_off_type'] ?? $q->destinations->sortBy('sequence')->first()?->drop_off_type;
             $type = $type instanceof \BackedEnum ? $type->value : $type;
             $items = array_map(fn (array $item) => $this->formItem($item), $service->itemsForRecord($q, $enquiry, $records));
-            $mode = $this->consignorModeState($q->customer_id ? (string) $q->customer_id : null, $q->service_type?->value, $q->store_branch_id, $q->pickup_location, $q->branch_id);
+            $mode = $this->consignorModeState($q->customer_id ? (string) $q->customer_id : null, $q->service_type?->value, $q->store_id, $q->store_branch_id, $q->pickup_location);
 
             return [
                 'record_id' => (int) $q->id,
@@ -296,7 +327,9 @@ class EditOrder extends CreateOrder
                 // blank on the record stays blank (no customer name filled in)
                 'consignor_name' => (string) ($q->consignor_name ?? ''),
                 'service_type' => $mode['service_type'],
-                'store_branch_id' => $mode['store_branch_id'],
+                'store_id' => $mode['store_id'],
+                'legacy_store_branch_id' => $mode['legacy_store_branch_id'],
+                ...(isset($mode['pickup_restore']) ? ['pickup_restore' => $mode['pickup_restore']] : []),
                 'from_location_id' => (string) ($q->from_location_id ?? ''),
                 'consignor_pic_name' => (string) ($q->consignor_pic_name ?? ''),
                 'consignor_pic_phone' => (string) ($q->consignor_pic_phone ?? ''),
@@ -310,9 +343,8 @@ class EditOrder extends CreateOrder
                 'drop_off_preset' => OrderFormOptions::pickupPresetFor($q->customer_id ? (string) $q->customer_id : null, $q->drop_off_location),
                 'drop_off_location' => trim((string) ($q->drop_off_location ?? '')),
                 'customer_do_number' => (string) ($q->customer_do_number ?? ''),
-                'expected_delivery_date' => $q->expected_delivery_date?->toDateString() ?? '',
+                'expected_delivery_date' => (string) ($q->expected_delivery_date ?? ''),
                 'drop_off_type' => DropOffType::tryFrom((string) $type)?->value ?? DropOffType::Other->value,
-                'photos' => [],
                 'existing_photos' => $this->recordPhotos($q, $enquiry),
                 'instructions' => UpdateOrderRecords::instructionsFromNotes($q->notes),
                 'items' => $items !== [] ? $items : [$this->itemTemplate()],
@@ -387,9 +419,9 @@ class EditOrder extends CreateOrder
             $mode = $this->consignorModeState(
                 $enquiry->customer_id ? (string) $enquiry->customer_id : null,
                 (string) (($d['service_type'] ?? null) ?: ($enquiry->service_type?->value ?? ServiceType::Pickup->value)),
+                $d['store_id'] ?? null,
                 $d['store_branch_id'] ?? null,
                 (string) ($d['pickup_location'] ?? $enquiry->pickup_address ?? ''),
-                $enquiry->branch_id,
             );
             $dropOff = trim((string) ($d['drop_off_location'] ?? $p['drop_off_location'] ?? ''));
 
@@ -404,7 +436,9 @@ class EditOrder extends CreateOrder
                 // saved on the order form (blank stays blank); a portal destination has none: starts as the customer
                 'consignor_name' => (string) (array_key_exists('consignor_name', $d) ? ($d['consignor_name'] ?? '') : $customerName),
                 'service_type' => $mode['service_type'],
-                'store_branch_id' => $mode['store_branch_id'],
+                'store_id' => $mode['store_id'],
+                'legacy_store_branch_id' => $mode['legacy_store_branch_id'],
+                ...(isset($mode['pickup_restore']) ? ['pickup_restore' => $mode['pickup_restore']] : []),
                 'from_location_id' => (string) ($d['from_location_id'] ?? $consignor['from_location_id'] ?? ''),
                 'consignor_pic_name' => (string) ($d['consignor_pic_name'] ?? ''),
                 'consignor_pic_phone' => (string) ($d['consignor_pic_phone'] ?? ''),
@@ -419,10 +453,9 @@ class EditOrder extends CreateOrder
                 'drop_off_preset' => OrderFormOptions::pickupPresetFor($enquiry->customer_id ? (string) $enquiry->customer_id : null, $dropOff),
                 'drop_off_location' => $dropOff,
                 'customer_do_number' => (string) ($d['customer_do_number'] ?? $enquiry->customer_do_number ?? ''),
-                'expected_delivery_date' => (string) ($d['expected_delivery_date'] ?? $enquiry->preferred_delivery_date?->toDateString() ?? ''),
+                'expected_delivery_date' => (string) (array_key_exists('expected_delivery_date', $d) ? ($d['expected_delivery_date'] ?? '') : ($enquiry->preferred_delivery_date?->format('d/m/Y') ?? '')),
                 'drop_off_type' => DropOffType::tryFrom((string) ($d['drop_off_type'] ?? ''))?->value ?? DropOffType::Other->value,
-                'photos' => [],
-                // photos saved for this block on the order form (they go to its record when pricing starts)
+                // photos saved for this block on the order form before photos were kept per product (shown read-only)
                 'existing_photos' => $this->photoList(array_values(array_filter($d['attachments'] ?? [], 'is_array'))),
                 'instructions' => (string) (array_key_exists('instructions', $d) ? ($d['instructions'] ?? '') : ($i === 0 ? ($enquiry->special_requirements ?? '') : '')),
                 'items' => $items !== [] ? $items : [$this->itemTemplate()],
@@ -448,6 +481,10 @@ class EditOrder extends CreateOrder
             'tier' => $priced ? 'Current price · kept' : null,
             'source' => $priced ? 'existing' : null,
             'available' => null,
+            'manual_price' => '',
+            // photos of this product: saved ones shown, new ones picked on the page
+            'photos' => [],
+            'existing_photos' => $this->photoList(array_values(array_filter($item['attachments'] ?? [], fn ($file) => is_array($file) || is_string($file)))),
         ];
     }
 
@@ -660,9 +697,9 @@ class EditOrder extends CreateOrder
         if ($sameCustomer && ! $this->headerLocked && $this->recordOrderTypes !== []) {
             $allowed = null;
 
-            foreach ($this->recordOrderTypes as $value) {
-                $transitions = array_map(fn (OrderType $type) => $type->value, OrderType::tryFrom((string) $value)?->allowedTransitions() ?? []);
-                $allowed = $allowed === null ? $transitions : array_values(array_intersect($allowed, $transitions));
+            foreach ($this->recordOrderTypes as $values) {
+                $values = array_values((array) $values);
+                $allowed = $allowed === null ? $values : array_values(array_intersect($allowed, $values));
             }
 
             $options = array_intersect_key($options, array_flip($allowed ?? []));
@@ -683,7 +720,7 @@ class EditOrder extends CreateOrder
 
     public function updatedForm($value, string $key): void
     {
-        $readOnly = ($this->headerLocked && in_array($key, ['customer_id', 'customer_address', 'received_through', 'order_type'], true))
+        $readOnly = ($this->headerLocked && in_array($key, ['customer_id', 'customer_address', 'customer_pic_name', 'customer_pic_phone', 'received_through', 'order_type'], true))
             || ($key === 'salesperson_id' && ($this->salespersonLocked || (blank($value) && ! $this->allowNoSalesperson())));
 
         if ($readOnly) {
@@ -799,6 +836,13 @@ class EditOrder extends CreateOrder
             }
         }
 
+        // an older Store record chose a branch, not a store: it can be saved as it is until a store is picked
+        foreach ($this->pairs as $index => $pair) {
+            if (isset($rules['pairs.'.$index.'.store_id']) && filled($pair['legacy_store_branch_id'] ?? null)) {
+                $rules['pairs.'.$index.'.store_id'] = 'nullable|exists:stores,id';
+            }
+        }
+
         $rules['pairs.*.record_id'] = 'nullable|integer';
 
         return $rules;
@@ -808,7 +852,7 @@ class EditOrder extends CreateOrder
     {
         // read-only header fields always keep their original value
         if ($this->headerLocked) {
-            foreach (['customer_id', 'customer_address', 'received_through', 'order_type'] as $key) {
+            foreach (['customer_id', 'customer_address', 'customer_pic_name', 'customer_pic_phone', 'received_through', 'order_type'] as $key) {
                 $this->form[$key] = $this->originalForm[$key] ?? '';
             }
         }
@@ -831,27 +875,27 @@ class EditOrder extends CreateOrder
 
         try {
             // same block data as Create order (pickup / store, drop-off), plus the record / order-form position and
-            // the photos picked for the block (stored now, added to its record / order-form destination); a locked
-            // block cannot take photos
+            // the photos picked for each product (stored now, added to its record / order-form destination); a
+            // locked block cannot take photos
             $blocks = array_values($this->pairs);
             $pairs = array_map(fn (array $pair, int $index) => [
                 'record_id' => filled($pair['record_id'] ?? null) ? (int) $pair['record_id'] : null,
                 'payload_index' => $pair['payload_index'] ?? null,
-            ] + $this->pairData($pair, $index) + [
-                'attachments' => $this->isPairLocked($index) ? [] : $this->storePairPhotos($pair),
-            ], $blocks, array_keys($blocks));
+            ] + $this->pairDataWithPhotos($pair, $index), $blocks, array_keys($blocks));
 
             $result = app(UpdateOrderRecords::class)->execute($enquiry, $single, [
                 'customer_id' => $this->form['customer_id'],
                 // the order's billing address (every record's customer_address)
                 'customer_address' => trim((string) ($this->form['customer_address'] ?? '')),
+                'customer_pic_name' => trim((string) ($this->form['customer_pic_name'] ?? '')),
+                'customer_pic_phone' => trim((string) ($this->form['customer_pic_phone'] ?? '')),
                 'received_through' => (string) ($this->form['received_through'] ?? ''),
                 'salesperson_id' => $this->form['salesperson_id'] ?: null,
                 'order_type' => $this->form['order_type'],
                 // the order form's pickup / store (the first block's); each record takes its own block's
                 'service_type' => $pairs[0]['service_type'] ?? null,
                 // only a header value the user changed is applied to every record (one set per record is kept)
-                'header_changed' => collect(['order_type', 'customer_address'])
+                'header_changed' => collect(['order_type', 'customer_address', 'customer_pic_name', 'customer_pic_phone'])
                     ->mapWithKeys(fn (string $key) => [$key => trim((string) ($this->form[$key] ?? '')) !== trim((string) ($this->originalForm[$key] ?? ''))])
                     ->all(),
                 'known_record_ids' => $this->knownRecordIds,

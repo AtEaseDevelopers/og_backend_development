@@ -15,9 +15,12 @@ use Filament\Actions;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ListRecords;
 use Illuminate\Database\Eloquent\Builder;
+use App\Filament\Concerns\HasExcelColumnFilters;
 
 class ListMissingCsnLogs extends ListRecords
 {
+    use HasExcelColumnFilters;
+
     protected static string $resource = MissingCsnLogResource::class;
 
     protected static string $view = 'filament.resources.missing-csn-log-resource.pages.list-missing-csn-logs';

@@ -12,59 +12,96 @@
     {{-- CSN list only: filter card fields on phones, the column toggle in the table header row and the CSN date strip. The ow-* classes come from order-workspace-theme. --}}
     <style>
         .csn-list { display: grid; gap: .75rem; grid-template-columns: minmax(0, 1fr); }
+        /* one filter row: the fields share the width (search a bit wider), Filters + / Reset at the end */
+        .csn-list .ow-filter-top > .ow-field { flex: 1 1 10rem; min-width: 0; }
+        .csn-list .ow-filter-top > .ow-field.ow-search { flex: 1.6 1 15rem; max-width: none; }
         @media (max-width: 639px) {
             .csn-list .ow-filter-top > .ow-field { flex: 1 1 100%; max-width: none; }
             .csn-list .ow-filter-top .ow-actions { margin-left: 0; }
         }
 
-        /*
-         * Filament's toolbar above the table only holds the column toggle here (no table search, filters or bulk
-         * actions), so it leaves the flow and sits over the right end of the table's header row (3rem high).
-         * It is outside the sideways scroller, so the button stays at the right edge while the table scrolls.
-         * --csn-head-bg matches the header row: gray-50, or 5% white over the dark table in dark mode.
-         */
-        .fi-resource-consignment-notes.fi-resource-list-records-page .fi-ta > .fi-ta-ctn { position: relative; --csn-head-bg: rgb(var(--gray-50, 248, 250, 252)); }
-        .dark .fi-resource-consignment-notes.fi-resource-list-records-page .fi-ta > .fi-ta-ctn { --csn-head-bg: rgb(29 36 50); }
-        .fi-resource-consignment-notes.fi-resource-list-records-page .fi-ta > .fi-ta-ctn > .fi-ta-header-ctn { position: absolute; top: 1px; right: 1px; z-index: 4; height: 3rem; margin: 0; border: 0; border-radius: 0 calc(.75rem - 1px) 0 0; background: var(--csn-head-bg); box-shadow: none; overflow: visible; }
-        /* header labels scrolled under the button fade out instead of being cut off */
-        .fi-resource-consignment-notes.fi-resource-list-records-page .fi-ta > .fi-ta-ctn > .fi-ta-header-ctn::before { content: ''; position: absolute; top: 0; bottom: 0; right: 100%; width: 1rem; background: linear-gradient(to right, transparent, var(--csn-head-bg)); pointer-events: none; }
-        .fi-resource-consignment-notes.fi-resource-list-records-page .fi-ta > .fi-ta-ctn > .fi-ta-header-ctn > .fi-ta-header-toolbar { height: 100%; min-height: 0; padding: 0 1.25rem 0 .75rem !important; }
-        /* no rows: no header row either, the button just sits in the top corner of the empty state */
-        .fi-resource-consignment-notes.fi-resource-list-records-page .fi-ta > .fi-ta-ctn:not(:has(thead)) > .fi-ta-header-ctn { background: transparent; }
-        .fi-resource-consignment-notes.fi-resource-list-records-page .fi-ta > .fi-ta-ctn:not(:has(thead)) > .fi-ta-header-ctn::before { content: none; }
-        /* room for the button in the last header cell (the empty actions header) */
-        .fi-resource-consignment-notes.fi-resource-list-records-page .fi-ta-table > thead > tr > th:last-child { padding-inline-end: 3.75rem; }
+        /* the column toggle sits in the last header cell (shared: public/js/og/excel-filter.js) */
         /* the CSN theme clips the table card; scroll sideways instead (the CSN no. column stays fixed, see datatable-theme) */
         .fi-resource-consignment-notes.fi-resource-list-records-page .fi-ta > .fi-ta-ctn > .fi-ta-content { overflow-x: auto; overflow-y: hidden; }
 
-        .csn-strip-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .25rem 1rem; margin-bottom: .45rem; }
-        .csn-strip-title { font-size: .72rem; font-weight: 600; color: var(--ow-muted); }
-        .csn-strip-range { font-weight: 400; color: var(--ow-faint); }
-        .csn-strip-links { display: flex; gap: 1rem; }
-        .csn-strip { display: flex; align-items: stretch; gap: .5rem; }
-        .csn-strip-nav { flex: none; width: 2.25rem; display: grid; place-items: center; border: 1px solid var(--ow-line); border-radius: .6rem; background: var(--ow-bg); color: var(--ow-muted); cursor: pointer; box-shadow: var(--ow-shadow); transition: background-color .12s, color .12s; }
-        .csn-strip-nav:hover { background: var(--ow-soft-2); color: var(--ow-text); }
-        .csn-strip-nav:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
-        .csn-strip-nav svg { width: 1.1rem; height: 1.1rem; }
-        /* 7 day cards; on narrow screens they keep their width and scroll sideways inside the strip */
-        .csn-strip-days { flex: 1 1 auto; min-width: 0; display: grid; grid-template-columns: repeat(7, minmax(6.25rem, 1fr)); gap: .5rem; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: thin; }
-        .csn-strip-days[aria-busy='true'] { opacity: .6; }
-        .csn-day { scroll-snap-align: start; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .15rem; padding: .55rem .5rem; border: 1px solid var(--ow-line); border-radius: .6rem; background: var(--ow-bg); color: var(--ow-text); text-align: center; cursor: pointer; transition: background-color .12s, border-color .12s, color .12s; }
-        .csn-day:hover { border-color: var(--ow-faint); }
-        .csn-day:focus-visible { outline: 2px solid #3b82f6; outline-offset: -2px; }
-        .csn-day-date { display: inline-flex; align-items: center; gap: .3rem; font-size: .8125rem; font-weight: 600; white-space: nowrap; }
-        .csn-day-dot { width: .4rem; height: .4rem; border-radius: 9999px; background: var(--ow-link); }
-        .csn-day-count { font-size: .72rem; color: var(--ow-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
-        .csn-day.is-empty .csn-day-count { color: var(--ow-faint); }
-        /* selected day (or every day inside a CSN date range): tinted, primary border and text */
-        .csn-day.is-selected { background: rgba(var(--primary-500, 15, 23, 42), .07); border-color: rgb(var(--primary-500, 15, 23, 42)); color: rgb(var(--primary-500, 15, 23, 42)); box-shadow: inset 0 -3px 0 rgb(var(--primary-500, 15, 23, 42)); }
-        .csn-day.is-selected .csn-day-count { color: inherit; opacity: .8; }
-        .dark .csn-day.is-selected { background: rgba(var(--primary-300, 159, 162, 170), .14); border-color: rgb(var(--primary-200, 195, 197, 202)); color: rgb(var(--primary-50, 243, 243, 244)); box-shadow: inset 0 -3px 0 rgb(var(--primary-200, 195, 197, 202)); }
-        .csn-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+        /* "CSN returned" and "Payment status" headers on two lines (narrower columns); the room goes to the CSN number column */
+        .fi-resource-consignment-notes .fi-table-header-cell-return-status > [role="button"],
+        .fi-resource-consignment-notes .fi-table-header-cell-payment-status > [role="button"] { white-space: normal; }
+        .fi-resource-consignment-notes .fi-table-header-cell-return-status .fi-ta-header-cell-label,
+        .fi-resource-consignment-notes .fi-table-header-cell-payment-status .fi-ta-header-cell-label { display: block; flex: none; max-width: 5.6rem; white-space: normal; line-height: 1.3; }
+        .fi-resource-consignment-notes td.fi-table-cell-number { min-width: 19rem; }
+
+        /* lorry plate with a lorry icon (the CSN's lorry, each subsheet's) */
+        .ow-lorry-plate { display: inline-flex; align-items: center; gap: .2rem; font-weight: 600; white-space: nowrap; }
+        .ow-lorry-icon { width: .95rem; height: .95rem; flex: none; }
+
+        /* Status / Service / Transfer code toggles in one wrapping row, each with its caption above it */
+        .csn-toggles { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-end; gap: .75rem 1rem; }
+        .csn-toggle-field { display: flex; flex-direction: column; gap: .3rem; min-width: 0; max-width: 100%; }
+        .csn-toggle-field nav { margin-left: 0; margin-right: 0; }
+        .csn-toggle-caption { padding-left: .35rem; font-size: .75rem; font-weight: 500; color: rgb(100 116 139); }
+        .dark .csn-toggle-caption { color: rgb(148 163 184); }
+
+        /* a CSN's subsheets: one line each under its number (tick = select for Assign to lorry) */
+        .ow-sub-lines { display: grid; gap: .2rem; margin-top: .35rem; }
+        /* orange: a subsheet, not the CSN itself (blue once ticked) */
+        .ow-sub-line { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; padding: .2rem .35rem; border: 1px dashed rgb(249 115 22); border-radius: .4rem; background: rgb(255 247 237); font-size: .72rem; color: rgb(124 45 18); cursor: default; }
+        .dark .ow-sub-line { border-color: rgb(251 146 60 / .7); background: rgb(124 45 18 / .25); color: rgb(254 215 170); }
+        .ow-sub-line .ow-sub-arrow { color: rgb(234 88 12); }
+        .ow-sub-line .ow-sub-lorry { color: rgb(154 52 18); }
+        .dark .ow-sub-line .ow-sub-arrow, .dark .ow-sub-line .ow-sub-lorry { color: rgb(253 186 116); }
+        .ow-sub-line:has(.ow-sub-tick:checked) { border-style: solid; border-color: rgb(59 130 246); background: rgb(239 246 255); }
+        .dark .ow-sub-line:has(.ow-sub-tick:checked) { background: rgb(30 58 138 / .35); }
+        .ow-sub-tick { width: .9rem; height: .9rem; margin: 0; border-radius: .2rem; cursor: pointer; }
+        .ow-sub-tick-gap { display: inline-block; width: .9rem; }
+        .ow-sub-arrow { color: rgb(148 163 184); }
+        .ow-sub-no { font-weight: 600; font-variant-numeric: tabular-nums; }
+        .ow-sub-lorry { color: rgb(100 116 139); }
+        .ow-sub-line .ow-csn-tag { margin: 0; }
+        .ow-sub-type-transfer { border-color: rgb(191 219 254) !important; color: rgb(29 78 216) !important; background: rgb(239 246 255) !important; }
+        .ow-sub-type-break_bulk { border-color: rgb(254 202 202) !important; color: rgb(185 28 28) !important; background: rgb(254 242 242) !important; }
+
     </style>
 
     <div class="flex flex-col gap-y-6">
-        <x-filament-panels::resources.tabs />
+        {{-- Status toggle, then the Service and Transfer code toggles beside it; each named by a caption above it --}}
+        <div class="csn-toggles">
+            <div class="csn-toggle-field">
+                <span class="csn-toggle-caption">Status</span>
+                <x-filament-panels::resources.tabs />
+            </div>
+
+            <div class="csn-toggle-field">
+                <span class="csn-toggle-caption">Service</span>
+                <x-filament::tabs label="Service">
+                    @foreach ($this->serviceToggles() as $toggle)
+                        <x-filament::tabs.item
+                            :active="(string) $serviceType === $toggle['value']"
+                            :badge="$toggle['count']"
+                            wire:click="$set('serviceType', '{{ $toggle['value'] }}')"
+                        >
+                            {{ $toggle['label'] }}
+                        </x-filament::tabs.item>
+                    @endforeach
+                </x-filament::tabs>
+            </div>
+
+            <div class="csn-toggle-field">
+                <span class="csn-toggle-caption">Transfer code</span>
+                <x-filament::tabs label="Transfer code">
+                    @foreach ($this->transferToggles() as $toggle)
+                        <x-filament::tabs.item
+                            :active="(string) $transferCode === $toggle['value']"
+                            :badge="$toggle['count']"
+                            wire:click="$set('transferCode', '{{ $toggle['value'] }}')"
+                            :title="$toggle['title']"
+                        >
+                            {{ $toggle['label'] }}
+                        </x-filament::tabs.item>
+                    @endforeach
+                </x-filament::tabs>
+            </div>
+        </div>
 
         <div class="ow-page csn-list">
             {{-- Filters: same layout as the Orders page --}}
@@ -79,28 +116,11 @@
                                    class="ow-input"
                                    placeholder="Search CSN, customer, DO, order or invoice no.…">
                         </div>
-                        {{-- The date ranges are used most, so they are always shown (not behind "Filters +") --}}
+                        {{-- one row: search, CSN date, customer, order type, payment status (the rest behind "Filters +") --}}
                         <div class="ow-field">
                             <label>CSN date</label>
                             <x-og.date-range from="csnFrom" to="csnTo" :from-value="$csnFrom" :to-value="$csnTo" label="CSN date" />
                         </div>
-                        <div class="ow-field">
-                            <label>Job date</label>
-                            <x-og.date-range from="jobFrom" to="jobTo" :from-value="$jobFrom" :to-value="$jobTo" label="Job date" />
-                        </div>
-                        <div class="ow-field">
-                            <label>Created date</label>
-                            <x-og.date-range from="createdFrom" to="createdTo" :from-value="$createdFrom" :to-value="$createdTo" label="Created date" />
-                        </div>
-                        <div class="ow-actions">
-                            <button type="button" wire:click="toggleFilters" @class(['ow-btn', 'ow-pill-dark' => $filtersOpen])>
-                                Filters {{ $filtersOpen ? '−' : '+' }}
-                            </button>
-                            <button type="button" wire:click="resetFilters" class="ow-btn-link">Reset</button>
-                        </div>
-                    </div>
-
-                    <div class="ow-fgrid ow-fgrid-5">
                         <div class="ow-field">
                             <label>Customer</label>
                             <select wire:model.live="customer" class="ow-select">
@@ -118,14 +138,6 @@
                             </select>
                         </div>
                         <div class="ow-field">
-                            <label>Service</label>
-                            <select wire:model.live="serviceType" class="ow-select">
-                                @foreach ($this->serviceTypeOptions() as $value => $label)
-                                    <option value="{{ $value }}">{{ $label }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div class="ow-field">
                             <label>Payment status</label>
                             <select wire:model.live="paymentStatus" class="ow-select">
                                 @foreach ($this->paymentStatusOptions() as $value => $label)
@@ -133,13 +145,11 @@
                                 @endforeach
                             </select>
                         </div>
-                        <div class="ow-field">
-                            <label>Transfer code</label>
-                            <select wire:model.live="transferCode" class="ow-select">
-                                @foreach ($this->transferCodeOptions() as $value => $label)
-                                    <option value="{{ $value }}">{{ $label }}</option>
-                                @endforeach
-                            </select>
+                        <div class="ow-actions">
+                            <button type="button" wire:click="toggleFilters" @class(['ow-btn', 'ow-pill-dark' => $filtersOpen])>
+                                Filters {{ $filtersOpen ? '−' : '+' }}
+                            </button>
+                            <button type="button" wire:click="resetFilters" class="ow-btn-link">Reset</button>
                         </div>
                     </div>
 
@@ -236,9 +246,9 @@
 
             {{-- CSN date strip: one card per day with its CSN count (other filters and the tab apply); click a day to show only that day --}}
             <section aria-label="CSN date">
-                <div class="csn-strip-head">
-                    <span class="csn-strip-title">CSN date <span class="csn-strip-range">· {{ $this->stripRangeLabel() }}</span></span>
-                    <span class="csn-strip-links">
+                <div class="ow-strip-head">
+                    <span class="ow-strip-title">CSN date <span class="ow-strip-range">· {{ $this->stripRangeLabel() }}</span></span>
+                    <span class="ow-strip-links">
                         @unless ($this->stripShowsToday())
                             <button type="button" wire:click="stripToday" class="ow-btn-link">Today</button>
                         @endunless
@@ -248,37 +258,37 @@
                     </span>
                 </div>
 
-                <div class="csn-strip">
-                    <button type="button" class="csn-strip-nav" wire:click="shiftStrip(-7)" aria-label="Previous 7 days">
+                <div class="ow-strip">
+                    <button type="button" class="ow-strip-nav" wire:click="shiftStrip(-7)" aria-label="Previous 7 days">
                         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M12.5 15l-5-5 5-5" stroke-linecap="round" stroke-linejoin="round" /></svg>
                     </button>
 
-                    <div class="csn-strip-days" role="group" aria-label="Days" wire:loading.attr="aria-busy" wire:target="selectStripDay, shiftStrip, stripToday">
+                    <div class="ow-strip-days" role="group" aria-label="Days" wire:loading.attr="aria-busy" wire:target="selectStripDay, shiftStrip, stripToday">
                         @foreach ($stripDays as $day)
                             <button type="button"
-                                    wire:key="csn-day-{{ $day['date'] }}"
+                                    wire:key="ow-day-{{ $day['date'] }}"
                                     wire:click="selectStripDay('{{ $day['date'] }}')"
                                     aria-pressed="{{ $day['selected'] ? 'true' : 'false' }}"
                                     @if ($day['today']) title="Today" @endif
                                     @class([
-                                        'csn-day',
+                                        'ow-day',
                                         'is-selected' => $day['selected'],
                                         'is-today' => $day['today'],
                                         'is-empty' => $day['count'] === 0,
                                     ])>
-                                <span class="csn-day-date">
+                                <span class="ow-day-date">
                                     @if ($day['today'])
-                                        <span class="csn-day-dot" aria-hidden="true"></span><span class="csn-sr">Today,</span>
+                                        <span class="ow-day-dot" aria-hidden="true"></span><span class="ow-sr">Today,</span>
                                     @endif
                                     {{ $day['label'] }}
                                 </span>
                                 {{-- written out: Str::plural('CSN') follows the word's case and gives "CSNS" --}}
-                                <span class="csn-day-count">{{ $day['count'] === 0 ? 'No CSN' : $day['count'].' CSN'.($day['count'] === 1 ? '' : 's') }}</span>
+                                <span class="ow-day-count">{{ $day['count'] === 0 ? 'No CSN' : $day['count'].' CSN'.($day['count'] === 1 ? '' : 's') }}</span>
                             </button>
                         @endforeach
                     </div>
 
-                    <button type="button" class="csn-strip-nav" wire:click="shiftStrip(7)" aria-label="Next 7 days">
+                    <button type="button" class="ow-strip-nav" wire:click="shiftStrip(7)" aria-label="Next 7 days">
                         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M7.5 5l5 5-5 5" stroke-linecap="round" stroke-linejoin="round" /></svg>
                     </button>
                 </div>

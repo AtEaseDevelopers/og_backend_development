@@ -54,6 +54,21 @@
         .ow-page .ow-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 1.85rem; height: 1.85rem; padding: 0; border: 1px solid var(--ow-line); border-radius: .45rem; background: var(--ow-bg); color: var(--ow-muted); cursor: pointer; }
         .ow-page .ow-icon-btn:hover, .ow-page .ow-icon-btn:focus-visible { color: var(--ow-link); border-color: var(--ow-link); outline: none; }
         .ow-page .ow-icon-btn svg { width: 1rem; height: 1rem; }
+        /* product row: photos (small tiles, click to view) and the price keyed in when there is no rate */
+        .ow-page .ow-item-photos { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
+        .ow-page .ow-item-photo { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 2.4rem; height: 2.4rem; border: 1px solid var(--ow-line); border-radius: .4rem; overflow: hidden; background: var(--ow-soft-2); color: var(--ow-muted); font-size: .58rem; font-weight: 700; text-decoration: none; cursor: zoom-in; }
+        .ow-page .ow-item-photo:hover, .ow-page .ow-item-photo:focus-visible { border-color: var(--ow-link); outline: none; }
+        .ow-page .ow-item-photo img { width: 100%; height: 100%; object-fit: cover; }
+        .ow-page .ow-item-photo.ow-item-photo-new { border-color: var(--ow-progress-bd); }
+        .ow-page .ow-item-photo .ow-item-photo-x { position: absolute; top: 1px; right: 1px; display: inline-flex; align-items: center; justify-content: center; width: .95rem; height: .95rem; padding: 0; border: 0; border-radius: 999px; background: rgb(15 23 42 / .75); color: #fff; font-size: .55rem; line-height: 1; cursor: pointer; }
+        .ow-page .ow-item-photo .ow-item-photo-x:hover, .ow-page .ow-item-photo .ow-item-photo-x:focus-visible { background: #b91c1c; outline: none; }
+        .ow-page .ow-item-photo-add { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 2.4rem; height: 2.4rem; border: 1px dashed var(--ow-line); border-radius: .4rem; color: var(--ow-muted); cursor: pointer; }
+        .ow-page .ow-item-photo-add:hover, .ow-page .ow-item-photo-add:focus-within { color: var(--ow-link); border-color: var(--ow-link); }
+        .ow-page .ow-item-photo-add input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+        .ow-page .ow-item-photo-add svg { width: 1.05rem; height: 1.05rem; pointer-events: none; }
+        .ow-page .ow-manual-price { display: inline-flex; align-items: center; gap: .35rem; }
+        .ow-page .ow-manual-price span { font-size: .78rem; color: var(--ow-muted); }
+        .ow-page .ow-manual-price .ow-input { width: 7.5rem; text-align: right; }
     </style>
     @if ($editing)
         <style>
@@ -103,32 +118,29 @@
         {{-- 1. Customer & ownership --}}
         <div class="ow-card ow-card-pad">
             <div class="ow-card-title">1. Customer &amp; ownership</div>
-            {{-- one grid, visual order = DOM (tab) order: Customer · Billing address (2 columns, once a customer is picked) · Received through, then the rest; on 2-column widths Customer takes its own row so Billing address does not leave a gap beside it --}}
-            @php $billingShown = filled($form['customer_id'] ?? null); @endphp
+            {{-- one grid, visual order = DOM (tab) order: Customer · Billing address (2 columns) · Received through, then PIC · Contact number and the rest; on 2-column widths Customer takes its own row so Billing address does not leave a gap beside it --}}
+            @php $customerTags = $this->customerTypeTags(); @endphp
             <style>
                 .ow-page .ow-fgrid-cust .ow-field-wide { grid-column: span 2 / span 2; min-width: 0; }
                 .ow-page .ow-fgrid-cust .ow-field-wide .ow-textarea { resize: vertical; }
                 @media (max-width: 900px) { .ow-page .ow-fgrid-cust .ow-field-lead { grid-column: 1 / -1; } }
             </style>
             <div class="ow-fgrid ow-fgrid-cust">
-                <div @class(['ow-field', 'ow-field-lead' => $billingShown])>
+                <div class="ow-field ow-field-lead">
                     <label>Customer <span class="ow-req">*</span></label>
                     <select wire:model.live="form.customer_id" class="ow-select" @disabled(! $headerEditable)>
                         <option value="">— Select customer —</option>
                         @foreach ($this->customerOptions() as $id => $label)
-                            <option value="{{ $id }}">{{ $label }}</option>
+                            <option value="{{ $id }}" @if (isset($customerTags[$id])) data-og-tag="{{ $customerTags[$id]['label'] }}" data-og-tag-tone="{{ $customerTags[$id]['tone'] }}" @endif>{{ $label }}</option>
                         @endforeach
                     </select>
                     @error('form.customer_id')<div class="ow-field-error">{{ $message }}</div>@enderror
                 </div>
-                @if ($billingShown)
-                    <div class="ow-field ow-field-wide" wire:key="ow-billing-address">
-                        <label for="ow-billing-address">Billing address</label>
-                        <textarea id="ow-billing-address" wire:model="form.customer_address" rows="2" class="ow-textarea" placeholder="Customer's billing address" @disabled(! $headerEditable)></textarea>
-                        <div class="ow-note" style="margin-top:.2rem">From the customer's saved address · edit it for this order. Used on every record of the order.</div>
-                        @error('form.customer_address')<div class="ow-field-error">{{ $message }}</div>@enderror
-                    </div>
-                @endif
+                <div class="ow-field ow-field-wide" wire:key="ow-billing-address">
+                    <label for="ow-billing-address">Billing address</label>
+                    <textarea id="ow-billing-address" wire:model="form.customer_address" rows="2" class="ow-textarea" placeholder="{{ filled($form['customer_id'] ?? null) ? 'Customer\'s billing address' : 'Select a customer to fill in the billing address' }}" @disabled(! $headerEditable)></textarea>
+                    @error('form.customer_address')<div class="ow-field-error">{{ $message }}</div>@enderror
+                </div>
                 @if ($this->showReceivedThrough())
                     <div class="ow-field">
                         <label>Received through (optional)</label>
@@ -143,6 +155,16 @@
                         @error('form.received_through')<div class="ow-field-error">{{ $message }}</div>@enderror
                     </div>
                 @endif
+                <div class="ow-field">
+                    <label for="ow-customer-pic">PIC name</label>
+                    <input id="ow-customer-pic" type="text" wire:model="form.customer_pic_name" class="ow-input" autocomplete="off" placeholder="Customer's person in charge" @disabled(! $headerEditable)>
+                    @error('form.customer_pic_name')<div class="ow-field-error">{{ $message }}</div>@enderror
+                </div>
+                <div class="ow-field">
+                    <label for="ow-customer-phone">Contact number</label>
+                    <input id="ow-customer-phone" type="tel" inputmode="tel" wire:model="form.customer_pic_phone" class="ow-input" autocomplete="off" @disabled(! $headerEditable)>
+                    @error('form.customer_pic_phone')<div class="ow-field-error">{{ $message }}</div>@enderror
+                </div>
                 <div class="ow-field">
                     <label>Salesperson</label>
                     <select wire:model.live="form.salesperson_id" class="ow-select" @disabled(! $this->salespersonEditable())>
@@ -248,31 +270,39 @@
                             @error('pairs.'.$i.'.consignor_name')<div class="ow-field-error">{{ $message }}</div>@enderror
                         </div>
                         @if ($isStore)
-                            @php $storeInfo = $this->storeInfo($pair['store_branch_id'] ?? null); @endphp
+                            @php $storeInfo = $this->storeInfo($pair['store_id'] ?? null); @endphp
                             <div class="ow-field" wire:key="ow-pair-{{ $i }}-store">
-                                <label for="{{ $fieldId }}-store">Store <span class="ow-req">*</span></label>
-                                <select id="{{ $fieldId }}-store" wire:model.live="pairs.{{ $i }}.store_branch_id" class="ow-select">
+                                <div class="ow-label-row">
+                                    <label for="{{ $fieldId }}-store">Store <span class="ow-req">*</span></label>
+                                    <span class="ow-quick">
+                                        @if ($storeInfo && $storeInfo['edit_url'])
+                                            <a href="{{ $storeInfo['edit_url'] }}" target="_blank" rel="noopener" class="ow-btn-link">Edit store</a>
+                                        @endif
+                                        <a href="{{ \App\Filament\Resources\StoreResource::getUrl('create') }}" target="_blank" rel="noopener" class="ow-btn-link">New store</a>
+                                    </span>
+                                </div>
+                                <select id="{{ $fieldId }}-store" wire:model.live="pairs.{{ $i }}.store_id" class="ow-select" @disabled($locked)>
                                     <option value="">— Select store —</option>
-                                    @foreach ($stores as $id => $label)
-                                        <option value="{{ $id }}">{{ $label }}</option>
+                                    @foreach ($stores as $id => $store)
+                                        <option value="{{ $id }}" @if ($store['sub'] !== '') data-og-sub="{{ $store['sub'] }}" @endif>{{ $store['label'] }}</option>
                                     @endforeach
                                 </select>
-                                @error('pairs.'.$i.'.store_branch_id')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                @error('pairs.'.$i.'.store_id')<div class="ow-field-error">{{ $message }}</div>@enderror
                                 @if ($storeInfo)
                                     <div class="ow-store-card">
                                         @if ($storeInfo['address'] !== '')
                                             <div class="ow-store-address">{{ $storeInfo['address'] }}</div>
                                         @else
-                                            <div class="ow-note">
-                                                No address saved for {{ $storeInfo['name'] }} yet ·
-                                                @if ($storeInfo['edit_url'])<a href="{{ $storeInfo['edit_url'] }}" target="_blank" rel="noopener" class="ow-link">add it in Branches</a>@else add it in Master Data → Branches @endif.
-                                                Until then the store name is used as the pickup address.
-                                            </div>
+                                            <div class="ow-note">No address saved for {{ $storeInfo['name'] }} yet · the store name is used as the pickup location.</div>
                                         @endif
-                                        @if ($storeInfo['phone'] !== '')
-                                            <div class="ow-note">Tel {{ $storeInfo['phone'] }}</div>
+                                        @if ($storeInfo['branch'] !== '' || $storeInfo['pic'] !== '' || $storeInfo['phone'] !== '')
+                                            <div class="ow-note">{{ collect([$storeInfo['branch'] !== '' ? 'Branch '.$storeInfo['branch'] : null, $storeInfo['pic'] !== '' ? 'PIC '.$storeInfo['pic'] : null, $storeInfo['phone'] !== '' ? 'Tel '.$storeInfo['phone'] : null])->filter()->implode(' · ') }}</div>
                                         @endif
                                     </div>
+                                @elseif (filled($pair['legacy_store_branch_id'] ?? null))
+                                    <div class="ow-note" style="margin-top:.25rem">This record was saved with the branch {{ \App\Domains\MasterData\Models\Branch::query()->whereKey($pair['legacy_store_branch_id'])->value('name') ?? '' }} as its store. Pick a store to replace it.</div>
+                                @elseif ($stores === [])
+                                    <div class="ow-note" style="margin-top:.25rem">No store yet · add one in Master Data → Stores.</div>
                                 @endif
                             </div>
                         @endif
@@ -297,7 +327,14 @@
                                 @error('pairs.'.$i.'.consignor_pic_phone')<div class="ow-field-error">{{ $message }}</div>@enderror
                             </div>
                         </div>
-                        @unless ($isStore)
+                        @if ($isStore)
+                            <div class="ow-field" wire:key="ow-pair-{{ $i }}-pickup-store">
+                                <label for="{{ $fieldId }}-pickup-store">Pickup location</label>
+                                <textarea id="{{ $fieldId }}-pickup-store" wire:model="pairs.{{ $i }}.pickup_location" rows="2" class="ow-textarea" style="resize:vertical" placeholder="The store's address"></textarea>
+                                <div class="ow-note" style="margin-top:.2rem">From the store · edit it for this record.</div>
+                                @error('pairs.'.$i.'.pickup_location')<div class="ow-field-error">{{ $message }}</div>@enderror
+                            </div>
+                        @else
                             <div class="ow-field" wire:key="ow-pair-{{ $i }}-pickup">
                                 <label for="{{ $fieldId }}-pickup">Pickup location</label>
                                 <select id="{{ $fieldId }}-pickup" wire:model.live="pairs.{{ $i }}.pickup_preset" class="ow-select">
@@ -314,7 +351,7 @@
                                 @endif
                                 @error('pairs.'.$i.'.pickup_location')<div class="ow-field-error">{{ $message }}</div>@enderror
                             </div>
-                        @endunless
+                        @endif
                     </div>
 
                     <div class="ow-party">
@@ -382,9 +419,8 @@
                         @error('pairs.'.$i.'.customer_do_number')<div class="ow-field-error">{{ $message }}</div>@enderror
                     </div>
                     <div class="ow-field">
-                        <label for="{{ $fieldId }}-delivery">Expected delivery date <span class="ow-req">*</span></label>
-                        <input id="{{ $fieldId }}-delivery" type="date" wire:model="pairs.{{ $i }}.expected_delivery_date" class="ow-input">
-                        <div class="ow-note" style="margin-top:.2rem">Becomes the CSN date when the CSN is created.</div>
+                        <label for="{{ $fieldId }}-delivery">Expected delivery date</label>
+                        <input id="{{ $fieldId }}-delivery" type="text" wire:model="pairs.{{ $i }}.expected_delivery_date" class="ow-input" maxlength="255" autocomplete="off" placeholder="Optional · e.g. 13/10 before noon">
                         @error('pairs.'.$i.'.expected_delivery_date')<div class="ow-field-error">{{ $message }}</div>@enderror
                     </div>
                 </div>
@@ -395,6 +431,7 @@
                             <tr>
                                 <th>Product <span class="ow-req">*</span></th>
                                 <th>Quantity <span class="ow-req">*</span></th>
+                                <th>Photos</th>
                                 <th class="ow-num">Unit price</th>
                                 <th class="ow-num">Line total</th>
                                 <th></th>
@@ -423,6 +460,34 @@
                                         <input type="number" min="1" step="1" inputmode="numeric" x-on:keydown="if (['.', ',', 'e', 'E', '-', '+'].includes($event.key)) $event.preventDefault()" wire:model.live.debounce.500ms="pairs.{{ $i }}.items.{{ $j }}.quantity" class="ow-input" @disabled(($item['line_type'] ?? 'uom') !== 'uom')>
                                         @error('pairs.'.$i.'.items.'.$j.'.quantity')<div class="ow-field-error">{{ $message }}</div>@enderror
                                     </td>
+                                    <td style="min-width:7.5rem">
+                                        {{-- photos of this product: saved ones and the ones picked now (click a tile to view it) --}}
+                                        @php $newItemPhotos = $this->newPhotos($i, $j); @endphp
+                                        <div class="ow-item-photos">
+                                            @foreach ($item['existing_photos'] ?? [] as $photo)
+                                                <a href="{{ $photo['url'] }}" target="_blank" rel="noopener" class="ow-item-photo" data-og-view data-url="{{ $photo['url'] }}" data-name="{{ $photo['name'] }}" data-image="{{ $photo['is_image'] ? '1' : '0' }}" title="{{ $photo['name'] }}">
+                                                    @if ($photo['is_image'])<img src="{{ $photo['url'] }}" alt="{{ $photo['name'] }}" loading="lazy">@else{{ strtoupper(pathinfo($photo['name'], PATHINFO_EXTENSION) ?: 'FILE') }}@endif
+                                                </a>
+                                            @endforeach
+                                            @foreach ($newItemPhotos as $k => $photo)
+                                                <span class="ow-item-photo ow-item-photo-new" wire:key="ow-pair-{{ $i }}-item-{{ $j }}-photo-{{ $k }}" @if ($photo['url']) data-og-view data-url="{{ $photo['url'] }}" data-name="{{ $photo['name'] }}" data-image="1" tabindex="0" role="button" @endif title="{{ $photo['name'] }} · new">
+                                                    @if ($photo['url'])<img src="{{ $photo['url'] }}" alt="{{ $photo['name'] }}">@else{{ strtoupper(pathinfo($photo['name'], PATHINFO_EXTENSION) ?: 'FILE') }}@endif
+                                                    @unless ($locked)
+                                                        <button type="button" wire:click="removePhoto({{ $i }}, {{ $j }}, {{ $k }})" class="ow-item-photo-x" title="Remove" aria-label="Remove {{ $photo['name'] }}">✕</button>
+                                                    @endunless
+                                                </span>
+                                            @endforeach
+                                            @unless ($locked)
+                                                <label class="ow-item-photo-add" title="Add photos (JPG, PNG, WEBP or PDF · up to 8 MB each)">
+                                                    <input type="file" wire:model="photoUploads.{{ $i }}.{{ $j }}" multiple accept="image/*,application/pdf" aria-label="Add photos for {{ $item['item_name'] ?: 'this product' }}" x-on:livewire-upload-finish="$el.value = ''" x-on:livewire-upload-error="$el.value = ''">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                                                </label>
+                                            @endunless
+                                        </div>
+                                        <div wire:loading wire:target="photoUploads.{{ $i }}.{{ $j }}" class="ow-note">Uploading…</div>
+                                        @error('pairs.'.$i.'.items.'.$j.'.photos')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                        @error('pairs.'.$i.'.items.'.$j.'.photos.*')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                    </td>
                                     <td class="ow-num" style="width:15rem;white-space:normal">
                                         @if (! $showPrices)
                                             <span class="ow-note">Select a salesperson to see prices</span>
@@ -433,21 +498,26 @@
                                             <span class="ow-note">Select the "To" location</span>
                                             @if ($item['available'] ?? null)<div class="ow-price-hint">Rated: {{ $item['available'] }}</div>@endif
                                         @elseif (filled($item['item_name']))
-                                            <span class="ow-note ow-price-diff">No rate for this location</span>
-                                            <div class="ow-price-hint">{{ ($item['available'] ?? null) ? 'Rated: '.$item['available'] : 'No price list rate for this product' }}</div>
-                                            <div class="ow-price-hint">Saved without a price · price it under Items &amp; pricing</div>
+                                            {{-- no special / price-list rate: the price is keyed in here (blank = priced later under Items & pricing) --}}
+                                            <label class="ow-manual-price">
+                                                <span>RM</span>
+                                                <input type="number" min="0" step="0.01" inputmode="decimal" wire:model.live.debounce.500ms="pairs.{{ $i }}.items.{{ $j }}.manual_price" class="ow-input" placeholder="0.00" aria-label="Unit price for {{ $item['item_name'] }}" @disabled($locked)>
+                                            </label>
+                                            <div class="ow-price-hint ow-price-diff">No rate for this location · key in the price</div>
+                                            @if ($item['available'] ?? null)<div class="ow-price-hint">Rated: {{ $item['available'] }}</div>@endif
+                                            @error('pairs.'.$i.'.items.'.$j.'.manual_price')<div class="ow-field-error">{{ $message }}</div>@enderror
                                         @else
                                             <span class="ow-note">—</span>
                                         @endif
                                     </td>
                                     <td class="ow-num" style="width:8rem">
-                                        {{ $showPrices && $item['unit_price'] !== null ? 'RM '.number_format($totals['lines'][$i][$j] ?? 0, 2) : '—' }}
+                                        {{ $showPrices && $this->effectivePrice($item) !== null ? 'RM '.number_format($totals['lines'][$i][$j] ?? 0, 2) : '—' }}
                                     </td>
                                     <td style="width:4.5rem;white-space:nowrap">
                                         <span class="ow-row-actions">
                                             @if (! $locked && filled($form['customer_id'] ?? null) && filled($item['item_name'] ?? null))
                                                 {{-- previous records of this product for the customer (information only) --}}
-                                                <button type="button" wire:click="mountAction('productHistory', { pair: {{ $i }}, item: {{ $j }} })" class="ow-icon-btn" title="Previous records of this product for the customer" aria-label="Previous records of {{ $item['item_name'] }} for this customer">
+                                                <button type="button" wire:click="mountAction('productHistory', { pair: {{ $i }}, item: {{ $j }} })" class="ow-icon-btn" title="Prices &amp; previous records of this product" aria-label="Previous records of {{ $item['item_name'] }} for this customer">
                                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></svg>
                                                 </button>
                                             @endif
@@ -465,17 +535,14 @@
                     <button type="button" wire:click="addItem({{ $i }})" class="ow-btn-link" style="margin-top:.5rem">+ Add product</button>
                 @endif
 
-                {{-- photos / DO attachments of this consignor & consignee (saved with its record) --}}
-                @php
-                    $savedPhotos = $pair['existing_photos'] ?? [];
-                    $pickedPhotos = $this->newPhotos($i);
-                @endphp
+                {{-- photos / DO attachments saved for this consignor & consignee before photos were kept per product (read-only) --}}
+                @php $savedPhotos = $pair['existing_photos'] ?? []; @endphp
+                @if ($savedPhotos !== [])
                 <div class="ow-field" style="margin-top:.85rem" wire:key="ow-pair-{{ $i }}-photos">
-                    <label for="{{ $fieldId }}-photos">Photos / DO attachments</label>
-                    @if ($savedPhotos !== [] || $pickedPhotos !== [])
+                    <label>Photos / DO attachments saved with this record</label>
                         <div class="ow-photo-grid">
                             @foreach ($savedPhotos as $photo)
-                                <a href="{{ $photo['url'] }}" target="_blank" rel="noopener" class="ow-photo" title="{{ $photo['name'] }}">
+                                <a href="{{ $photo['url'] }}" target="_blank" rel="noopener" class="ow-photo" data-og-view data-url="{{ $photo['url'] }}" data-name="{{ $photo['name'] }}" data-image="{{ $photo['is_image'] ? '1' : '0' }}" title="{{ $photo['name'] }}">
                                     @if ($photo['is_image'])
                                         <img src="{{ $photo['url'] }}" alt="{{ $photo['name'] }}" loading="lazy">
                                     @else
@@ -484,32 +551,10 @@
                                     <span class="ow-photo-name">{{ $photo['name'] }}</span>
                                 </a>
                             @endforeach
-                            @foreach ($pickedPhotos as $k => $photo)
-                                <div class="ow-photo" title="{{ $photo['name'] }}" wire:key="ow-pair-{{ $i }}-photo-{{ $k }}">
-                                    @if ($photo['url'])
-                                        <img src="{{ $photo['url'] }}" alt="{{ $photo['name'] }}">
-                                    @else
-                                        <span class="ow-photo-file">{{ strtoupper(pathinfo($photo['name'], PATHINFO_EXTENSION) ?: 'FILE') }}</span>
-                                    @endif
-                                    <span class="ow-photo-tag">New</span>
-                                    @unless ($locked)
-                                        <button type="button" wire:click="removePhoto({{ $i }}, {{ $k }})" class="ow-photo-remove" title="Remove" aria-label="Remove {{ $photo['name'] }}">✕</button>
-                                    @endunless
-                                    <span class="ow-photo-name">{{ $photo['name'] }}</span>
-                                </div>
-                            @endforeach
                         </div>
-                    @endif
-                    @unless ($locked)
-                        <input id="{{ $fieldId }}-photos" type="file" wire:model="photoUploads.{{ $i }}" multiple accept="image/*,application/pdf" class="ow-input" x-on:livewire-upload-finish="$el.value = ''" x-on:livewire-upload-error="$el.value = ''">
-                        <div wire:loading wire:target="photoUploads.{{ $i }}" class="ow-note">Uploading…</div>
-                        <div class="ow-note" style="margin-top:.2rem">JPG, PNG, WEBP or PDF · up to 8 MB each · saved with this record when the order is saved.</div>
-                    @endunless
-                    @error('pairs.'.$i.'.photos')<div class="ow-field-error">{{ $message }}</div>@enderror
-                    @error('pairs.'.$i.'.photos.*')<div class="ow-field-error">{{ $message }}</div>@enderror
-                    @error('photoUploads.'.$i)<div class="ow-field-error">{{ $message }}</div>@enderror
-                    @error('photoUploads.'.$i.'.*')<div class="ow-field-error">{{ $message }}</div>@enderror
+                    <div class="ow-note">New photos are added per product in the table above.</div>
                 </div>
+                @endif
 
                 <div class="ow-field" style="margin-top:.85rem">
                     <label>Instructions</label>
@@ -532,7 +577,7 @@
                 <div class="ow-card-title">Order photos / DO attachments (whole order)</div>
                 <div class="ow-photo-grid">
                     @foreach ($sharedFiles as $photo)
-                        <a href="{{ $photo['url'] }}" target="_blank" rel="noopener" class="ow-photo" title="{{ $photo['name'] }}">
+                        <a href="{{ $photo['url'] }}" target="_blank" rel="noopener" class="ow-photo" data-og-view data-url="{{ $photo['url'] }}" data-name="{{ $photo['name'] }}" data-image="{{ $photo['is_image'] ? '1' : '0' }}" title="{{ $photo['name'] }}">
                             @if ($photo['is_image'])
                                 <img src="{{ $photo['url'] }}" alt="{{ $photo['name'] }}" loading="lazy">
                             @else
@@ -542,7 +587,7 @@
                         </a>
                     @endforeach
                 </div>
-                <p class="ow-note">Saved for the whole order. New photos are added in each consignor &amp; consignee section above.</p>
+                <p class="ow-note">Saved for the whole order. New photos are added per product in each consignor &amp; consignee section above.</p>
             </div>
         @endif
 
@@ -563,4 +608,51 @@
             </div>
         </div>
     </div>
+    {{-- photo viewer: a product photo / saved file opens here (same viewer as the payment slips) --}}
+    <div x-data="{ view: null }"
+         x-on:og-file-view.window="view = $event.detail"
+         x-on:keydown.escape.window="view = null">
+        <template x-teleport="body">
+            <div x-show="view" x-cloak x-transition.opacity class="ow-file-viewer" x-on:click.self="view = null" role="dialog" aria-modal="true" aria-label="Photo">
+                <div class="ow-file-viewer-box" x-show="view">
+                    <div class="ow-file-viewer-head">
+                        <span class="ow-file-viewer-name" x-text="view?.name"></span>
+                        <a x-bind:href="view?.url" target="_blank" rel="noopener" class="ow-file-viewer-link">Open in new tab</a>
+                        <button type="button" class="ow-file-viewer-close" x-on:click="view = null" aria-label="Close">&times;</button>
+                    </div>
+                    <div class="ow-file-viewer-body">
+                        <template x-if="view && view.image"><img x-bind:src="view.url" x-bind:alt="view.name"></template>
+                        <template x-if="view && ! view.image"><iframe x-bind:src="view.url" x-bind:title="view.name"></iframe></template>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+    <script>
+        (() => {
+            if (window.ogOrderPhotoViewerReady) return;
+            window.ogOrderPhotoViewerReady = true;
+
+            const open = (tile) => window.dispatchEvent(new CustomEvent('og-file-view', { detail: {
+                url: tile.dataset.url,
+                name: tile.dataset.name || '',
+                image: tile.dataset.image === '1',
+            } }));
+
+            // a photo tile (product row / saved files) opens the viewer instead of a new tab
+            document.addEventListener('click', (event) => {
+                const tile = event.target.closest('[data-og-view]');
+                if (! tile || event.target.closest('button') || event.ctrlKey || event.metaKey || event.shiftKey) return;
+                event.preventDefault();
+                open(tile);
+            });
+            document.addEventListener('keydown', (event) => {
+                const tile = event.target.closest?.('span[data-og-view]');
+                if (tile && (event.key === 'Enter' || event.key === ' ')) {
+                    event.preventDefault();
+                    open(tile);
+                }
+            });
+        })();
+    </script>
 </x-filament-panels::page>

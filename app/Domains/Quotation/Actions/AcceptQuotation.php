@@ -100,10 +100,11 @@ class AcceptQuotation
 
             $this->proforma->execute($quotation);
 
-            // Credit approval gate (section C / existing phase-2 rules)
+            // Credit approval gate (section C / existing phase-2 rules): Credit / Term orders only; a credit
+            // customer's Cash or COD order needs no credit approval
             $needsApproval = false;
 
-            if ($quotation->customer?->is_credit && $reviewer) {
+            if ($quotation->customer?->is_credit && $reviewer && $quotation->fresh()->orderType() === OrderType::Term) {
                 $result = $this->credit->execute($quotation->fresh(['customer', 'branch']), $reviewer, createRequest: true);
                 $needsApproval = ! $result['allowed'];
             }

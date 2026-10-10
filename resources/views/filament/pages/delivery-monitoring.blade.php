@@ -131,7 +131,7 @@
 
     <div class="dm-table-card">
         <div class="dm-table-wrap">
-            <table class="dm-table">
+            <table data-og-xtable class="dm-table">
                 <thead>
                     <tr>
                         <th>DO / Task Ref</th>
@@ -199,7 +199,7 @@
                 Rule: For delivery tasks scheduled on the selected date, tasks that remain not completed after 4PM are listed for Admin follow-up.
             </p>
             <div class="dm-table-wrap">
-                <table class="dm-table dm-alert-table">
+                <table data-og-xtable class="dm-table dm-alert-table">
                     <thead>
                         <tr>
                             <th>DO / Task Ref</th>

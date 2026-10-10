@@ -57,7 +57,7 @@
             @endif
 
             <div class="cca-table-wrap">
-                <table class="cca-table">
+                <table data-og-xtable class="cca-table">
                     <thead>
                         <tr>
                             <th>Customer Name</th>

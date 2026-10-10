@@ -24,11 +24,15 @@ use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use App\Filament\Concerns\HasExcelColumnFilters;
 
 class ReportsHub extends Page implements HasForms, HasTable
 {
     use InteractsWithForms;
-    use InteractsWithTable;
+    use HasExcelColumnFilters, InteractsWithTable {
+        HasExcelColumnFilters::filterTableQuery insteadof InteractsWithTable;
+        InteractsWithTable::filterTableQuery as filamentFilterTableQuery;
+    }
 
     protected static ?string $navigationIcon = 'heroicon-o-chart-bar';
 

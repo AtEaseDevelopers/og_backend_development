@@ -82,9 +82,11 @@ class CreateOrderFromEnquiry
                 $column = $this->columnLabel($pair);
                 $rows = $this->rows($enquiry, $pair, $column);
                 $explicit = ! empty($pair['explicit']);
-                // Pickup or Store: the store (an O&G branch) is kept only on a Store record
+                // Pickup or Store: the store (and its branch) is kept only on a Store record
                 $serviceType = ServiceType::tryFrom((string) ($pair['service_type'] ?? ''))?->value ?? $enquiry->service_type?->value;
-                $storeBranchId = $serviceType === ServiceType::Store->value && filled($pair['store_branch_id'] ?? null) ? (int) $pair['store_branch_id'] : null;
+                $isStore = $serviceType === ServiceType::Store->value;
+                $storeId = $isStore && filled($pair['store_id'] ?? null) ? (int) $pair['store_id'] : null;
+                $storeBranchId = $isStore && filled($pair['store_branch_id'] ?? null) ? (int) $pair['store_branch_id'] : null;
 
                 $data = array_merge($consignor, [
                     'company_id' => $enquiry->company_id,
@@ -101,6 +103,11 @@ class CreateOrderFromEnquiry
                     'order_type' => $enquiry->order_type?->value ?? $enquiry->customer?->default_order_type,
                     'service_type' => $serviceType,
                     'store_branch_id' => $storeBranchId,
+                    'store_id' => $storeId,
+                    // the customer's person in charge and contact number of the order page (blank stays blank);
+                    // a pair without them (portal / older callers): the customer's default
+                    'attention' => array_key_exists('attention', $pair) ? (filled($pair['attention']) ? trim((string) $pair['attention']) : null) : ($consignor['attention'] ?? null),
+                    'customer_pic_phone' => array_key_exists('customer_pic_phone', $pair) ? (filled($pair['customer_pic_phone']) ? trim((string) $pair['customer_pic_phone']) : null) : ($consignor['customer_pic_phone'] ?? null),
                     'consignor_pic_name' => $pair['consignor_pic_name'] ?? null,
                     'consignor_pic_phone' => $pair['consignor_pic_phone'] ?? null,
                     'consignee_pic_name' => $pair['consignee_pic_name'] ?? null,
@@ -108,7 +115,8 @@ class CreateOrderFromEnquiry
                     // admin entries leave it blank (captured when the payment is recorded); portal orders keep theirs
                     'payment_method' => $enquiry->payment_method,
                     'customer_do_number' => $explicit ? ($pair['customer_do_number'] ?? null) : ($pair['customer_do_number'] ?? $enquiry->customer_do_number),
-                    'expected_delivery_date' => $pair['expected_delivery_date'] ?? $enquiry->preferred_delivery_date?->toDateString(),
+                    // free text (a portal order: the date the customer asked for)
+                    'expected_delivery_date' => $explicit ? ($pair['expected_delivery_date'] ?? null) : ($pair['expected_delivery_date'] ?? $enquiry->preferred_delivery_date?->format('d/m/Y')),
                     'from_location_id' => $pair['from_location_id'] ?? ($consignor['from_location_id'] ?? null),
                     'consignor_brn' => $pair['consignor_brn'] ?? ($consignor['consignor_brn'] ?? $enquiry->customer?->brn),
                     'customer_address' => $pair['customer_address'] ?? ($consignor['customer_address'] ?? $enquiry->customer?->address),
@@ -131,6 +139,8 @@ class CreateOrderFromEnquiry
                     'attachments' => collect($enquiry->attachments ?? [])->pluck('path')
                         ->merge(static::attachmentPaths($pair['attachments'] ?? []))
                         ->filter()->unique()->values()->all(),
+                    // photos of each product, by product name
+                    'item_attachments' => static::itemAttachments($pair['items'] ?? []) ?: null,
                     'pricing_source' => 'portal',
                     'notes' => $this->notes($enquiry, $pair),
                     'title' => 'Quotation Of Transport Charges',
@@ -216,8 +226,11 @@ class CreateOrderFromEnquiry
                 'consignor_brn' => $stored('consignor_brn'),
                 'customer_address' => $stored('customer_address'),
                 'pickup_location' => $stored('pickup_location'),
-                // Store block: the O&G branch the consignor brings the goods to; person in charge on each side
+                // Store block: the store the consignor brings the goods to (and its branch); person in charge on each side
                 'store_branch_id' => $stored('store_branch_id'),
+                'store_id' => $stored('store_id'),
+                // the customer's person in charge and contact number saved on the order form (when it has them)
+                ...array_intersect_key($destination, ['attention' => true, 'customer_pic_phone' => true]),
                 'consignor_pic_name' => $stored('consignor_pic_name'),
                 'consignor_pic_phone' => $stored('consignor_pic_phone'),
                 'consignee_pic_name' => $stored('consignee_pic_name'),
@@ -242,6 +255,8 @@ class CreateOrderFromEnquiry
                     'uom' => strtoupper(trim((string) ($item['uom'] ?? ''))),
                     'quantity' => max(1, (int) round((float) ($item['quantity'] ?? 1))),
                     'catalog_key' => null,
+                    // photos uploaded for this product on the order form
+                    'attachments' => array_values(array_filter($item['attachments'] ?? [], 'is_array')),
                 ])->filter(fn (array $item) => $item['item_name'] !== '')->values()->all(),
             ];
         })->all();
@@ -280,6 +295,29 @@ class CreateOrderFromEnquiry
             ->filter(fn ($path) => is_string($path) && $path !== '')
             ->values()
             ->all();
+    }
+
+    /**
+     * Photos of a block's products by product name ({path, name, mime, …} each); a product listed twice keeps
+     * the photos of both rows.
+     *
+     * @param  array<int, mixed>  $items
+     * @return array<string, list<array<string, mixed>>>
+     */
+    public static function itemAttachments(array $items): array
+    {
+        $byName = [];
+
+        foreach ($items as $item) {
+            $name = is_array($item) ? trim((string) ($item['item_name'] ?? '')) : '';
+            $files = is_array($item) ? array_values(array_filter($item['attachments'] ?? [], fn ($file) => is_array($file) && filled($file['path'] ?? null))) : [];
+
+            if ($name !== '' && $files !== []) {
+                $byName[$name] = array_values(array_merge($byName[$name] ?? [], $files));
+            }
+        }
+
+        return $byName;
     }
 
     /** Matrix column: the price-list location name when known (so UOM tiers resolve), else the consignee. */

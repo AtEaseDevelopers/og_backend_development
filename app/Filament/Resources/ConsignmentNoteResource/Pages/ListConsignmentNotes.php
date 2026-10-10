@@ -5,6 +5,7 @@ namespace App\Filament\Resources\ConsignmentNoteResource\Pages;
 use App\Domains\Consignment\Models\ConsignmentNote;
 use App\Domains\Delivery\Actions\RecordReturnedCsn;
 use App\Domains\Delivery\Actions\UndoReturnedCsn;
+use App\Domains\Dispatch\Models\Subsheet;
 use App\Domains\MasterData\Models\Customer;
 use App\Domains\MasterData\Models\SaLocation;
 use App\Domains\MasterData\Models\TransferCode;
@@ -24,8 +25,10 @@ use Filament\Resources\Components\Tab;
 use Filament\Resources\Pages\ListRecords;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Livewire\Attributes\Url;
 use Throwable;
+use App\Filament\Concerns\HasExcelColumnFilters;
 
 /**
  * CSN management. Filters work like the Orders page: a search with the CSN / job / created date ranges
@@ -35,6 +38,8 @@ use Throwable;
  */
 class ListConsignmentNotes extends ListRecords
 {
+    use HasExcelColumnFilters;
+
     protected static string $resource = ConsignmentNoteResource::class;
 
     protected static string $view = 'filament.resources.consignment-note-resource.pages.list-consignment-notes';
@@ -132,6 +137,14 @@ class ListConsignmentNotes extends ListRecords
 
     public bool $filtersOpen = false;
 
+    /**
+     * Subsheet lines ticked under their CSNs (ids of subsheets without a lorry yet): assigned to a lorry with
+     * "Assign to lorry", alone or together with the CSNs ticked in the table.
+     *
+     * @var list<int|string>
+     */
+    public array $selectedSubsheets = [];
+
     /** First day (Y-m-d) of the 7-day CSN date strip. */
     public string $stripStart = '';
 
@@ -175,7 +188,7 @@ class ListConsignmentNotes extends ListRecords
     protected function getTableQuery(): Builder
     {
         return $this->applyFilterBar(parent::getTableQuery())
-            ->with(['deliveryOrder.lorry', 'deliveryOrders.failedDelivery', 'quotation', 'transferCode', 'subsheets', 'returnedCsn.receivedBy'])
+            ->with(['deliveryOrder.lorry', 'deliveryOrders.failedDelivery', 'quotation', 'transferCode', 'subsheets.subLorry', 'returnedCsn.receivedBy'])
             ->withCount('breakBulks');
     }
 
@@ -197,8 +210,8 @@ class ListConsignmentNotes extends ListRecords
         // the latest main DO failed (not delivered or cancelled since)
         $failed = fn (Builder $query): Builder => $query
             ->whereNotIn('status', [CsnStatus::Delivered->value, CsnStatus::Cancelled->value])
-            ->whereHas('deliveryOrders', fn (Builder $do): Builder => $do->whereNull('parent_do_id')->where('status', 'failed')
-                ->whereRaw('delivery_orders.id = (select max(d2.id) from delivery_orders d2 where d2.consignment_note_id = delivery_orders.consignment_note_id and d2.parent_do_id is null)'));
+            ->whereHas('deliveryOrders', fn (Builder $do): Builder => $do->whereNull('parent_do_id')->whereNull('subsheet_id')->where('status', 'failed')
+                ->whereRaw('delivery_orders.id = (select max(d2.id) from delivery_orders d2 where d2.consignment_note_id = delivery_orders.consignment_note_id and d2.parent_do_id is null and d2.subsheet_id is null)'));
 
         return [
             'all' => Tab::make('All')
@@ -378,9 +391,7 @@ class ListConsignmentNotes extends ListRecords
         }
 
         if (filled($this->transferCode)) {
-            $code = TransferCode::query()->whereKey($this->transferCode)->value('code');
-            $query->where(fn (Builder $q) => $q->where('transfer_code_id', $this->transferCode)
-                ->when($code, fn (Builder $w) => $w->orWhereHas('subsheets', fn (Builder $s) => $s->where('transfer_code', $code))));
+            $this->withTransferCode($query, $this->transferCode);
         }
 
         if (filled($this->driver)) {
@@ -438,6 +449,87 @@ class ListConsignmentNotes extends ListRecords
                 $this->centreStrip($day);
             }
         }
+    }
+
+    /** The ticked subsheet lines that can still go on a lorry (no lorry yet, CSN not cancelled, this company). */
+    public function selectedSubsheetRecords(): Collection
+    {
+        $ids = array_values(array_filter(array_map('intval', $this->selectedSubsheets)));
+
+        if ($ids === []) {
+            return collect();
+        }
+
+        return Subsheet::query()
+            ->whereIn('id', $ids)
+            ->whereNull('delivery_order_id')
+            ->whereIn('consignment_note_id', ConsignmentNoteResource::getEloquentQuery()->where('status', '!=', CsnStatus::Cancelled->value)->select('consignment_notes.id'))
+            ->with('consignmentNote')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Service / Transfer code toggles (beside the status toggle)
+    |--------------------------------------------------------------------------
+    */
+
+    /** @return list<array{value: string, label: string, count: int}> */
+    public function serviceToggles(): array
+    {
+        $counts = $this->filteredWithout('serviceType')
+            ->toBase()
+            ->selectRaw('service_type, count(*) as aggregate')
+            ->groupBy('service_type')
+            ->pluck('aggregate', 'service_type');
+
+        return collect(['' => 'All'] + ServiceType::options())
+            ->map(fn (string $label, string $value): array => [
+                'value' => $value,
+                'label' => $value === '' ? 'All' : $label,
+                'count' => (int) ($value === '' ? $counts->sum() : ($counts[$value] ?? 0)),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /** @return list<array{value: string, label: string, title: string, count: int}> */
+    public function transferToggles(): array
+    {
+        $codes = TransferCode::query()->where('is_active', true)->orderBy('code')->get();
+
+        return collect([['value' => '', 'label' => 'All', 'title' => 'Any transfer code', 'count' => $this->filteredWithout('transferCode')->count()]])
+            ->concat($codes->map(fn (TransferCode $code): array => [
+                'value' => (string) $code->id,
+                'label' => $code->code,
+                'title' => filled($code->name) ? $code->code.' — '.$code->name : $code->code,
+                'count' => $this->withTransferCode($this->filteredWithout('transferCode'), (string) $code->id)->count(),
+            ]))
+            ->values()
+            ->all();
+    }
+
+    /** The CSN list with every filter except one (its own toggle shows the counts of its choices). */
+    protected function filteredWithout(string $property): Builder
+    {
+        $saved = $this->{$property};
+        $this->{$property} = '';
+
+        try {
+            return $this->applyFilterBar(ConsignmentNoteResource::getEloquentQuery());
+        } finally {
+            $this->{$property} = $saved;
+        }
+    }
+
+    /** CSNs of a transfer code: set on the CSN, or on one of its subsheets. */
+    protected function withTransferCode(Builder $query, string $id): Builder
+    {
+        $code = TransferCode::query()->whereKey($id)->value('code');
+
+        return $query->where(fn (Builder $q) => $q->where('transfer_code_id', $id)
+            ->when($code, fn (Builder $w) => $w->orWhereHas('subsheets', fn (Builder $s) => $s->where('transfer_code', $code))));
     }
 
     public function toggleFilters(): void

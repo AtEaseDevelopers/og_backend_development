@@ -5,9 +5,12 @@ namespace App\Filament\Resources\FleetVehicleResource\Pages;
 use App\Filament\Resources\FleetVehicleResource;
 use Filament\Actions;
 use Filament\Resources\Pages\ListRecords;
+use App\Filament\Concerns\HasExcelColumnFilters;
 
 class ListFleetVehicles extends ListRecords
 {
+    use HasExcelColumnFilters;
+
     protected static string $resource = FleetVehicleResource::class;
 
     protected function getHeaderActions(): array

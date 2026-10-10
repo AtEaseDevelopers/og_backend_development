@@ -25,7 +25,7 @@
         <div class="ow-card-title">Admin pricing <span class="ow-pill ow-pill-action">Pending salesperson</span></div>
         <p>Product prices are hidden until a salesperson owns this order. Assign one under <strong>Record ownership</strong>; the rates from the UOM price list are then filled in automatically.</p>
         <div class="ow-actions" style="margin-top:.75rem">
-            <button type="button" x-on:click="document.getElementById('og-assign-salesperson')?.scrollIntoView({ behavior: 'smooth', block: 'center' })" class="ow-btn ow-btn-primary">Assign salesperson →</button>
+            <button type="button" wire:click="focusAssign" class="ow-btn ow-btn-primary">Assign salesperson →</button>
         </div>
     </div>
 @elseif ($showPreview && $order)
@@ -76,30 +76,12 @@
                 }
             }
         }
-        $b = $pr['before'];
         // products kept on the order without a price yet (saved as lines without a unit price, left out of the total)
         $unpricedRows = collect($this->pricing['rows'] ?? [])
             ->filter(fn ($row) => filled($row['item_name'] ?? null) && collect($row['prices'] ?? [])->filter(fn ($p) => filled($p))->isEmpty())
             ->pluck('item_name')->unique()->values();
     @endphp
     <div class="ow-stack">
-        <div class="ow-card ow-card-pad">
-            <div class="ow-card-title">Before proceeding</div>
-            <div class="ow-dl" style="grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr))">
-                <div><div class="ow-dt">DO number</div><div class="ow-dd">{{ $b['do_number'] }}</div></div>
-                <div><div class="ow-dt">Salesperson</div><div class="ow-dd">{{ $b['salesperson'] }}</div></div>
-                <div><div class="ow-dt">Customer consent</div><div class="ow-dd">{{ $b['consent'] }}</div></div>
-                <div><div class="ow-dt">Quotation</div><div class="ow-dd ow-mono">{{ $b['quotation'] }}</div></div>
-                <div><div class="ow-dt">Version</div><div class="ow-dd">{{ $b['version'] }}</div></div>
-                <div><div class="ow-dt">Payment</div><div class="ow-dd">{{ $b['payment'] }}</div></div>
-                <div><div class="ow-dt">Invoice / CSN</div><div class="ow-dd">{{ $b['billing'] }}</div></div>
-            </div>
-            <p class="ow-note" style="margin-top:.85rem">A price entered by Admin is a proposal. Customer confirmation is a separate stage.</p>
-            @if ($d['urls']['full_editor'])
-                <a href="{{ $d['urls']['full_editor'] }}" class="ow-link" style="display:inline-block;margin-top:.5rem;font-size:.8rem">Edit order details →</a>
-            @endif
-        </div>
-
         <div class="ow-card ow-card-pad">
             <div class="ow-card-title">Admin pricing</div>
             <div>{{ $d['customer'] }} · {{ $pr['preview']['route'] }}</div>

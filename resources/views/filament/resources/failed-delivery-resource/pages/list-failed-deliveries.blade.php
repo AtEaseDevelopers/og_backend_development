@@ -100,7 +100,7 @@
             <span class="fd-record-count">{{ number_format($count) }} Records</span>
         </div>
         <div class="fd-table-wrap">
-            <table class="fd-table">
+            <table data-og-xtable class="fd-table">
                 <thead>
                     <tr>
                         <th>DO / Task Ref</th>

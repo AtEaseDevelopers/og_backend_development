@@ -13,9 +13,12 @@ use Filament\Forms;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ListRecords;
 use Throwable;
+use App\Filament\Concerns\HasExcelColumnFilters;
 
 class ListPaymentSubmissions extends ListRecords
 {
+    use HasExcelColumnFilters;
+
     protected static string $resource = PaymentSubmissionResource::class;
 
     public function getHeading(): string

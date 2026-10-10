@@ -45,7 +45,7 @@
         <section class="ocr-queue-card">
             <h2 class="ocr-card-title">Active Queue</h2>
             <div class="ocr-table-wrap">
-                <table class="ocr-table">
+                <table data-og-xtable class="ocr-table">
                     <thead>
                         <tr>
                             <th>File Name</th>

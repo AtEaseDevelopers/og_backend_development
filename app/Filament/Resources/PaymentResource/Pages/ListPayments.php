@@ -2,16 +2,18 @@
 
 namespace App\Filament\Resources\PaymentResource\Pages;
 
-use App\Filament\Pages\CashBillCalculator;
 use App\Filament\Resources\PaymentResource;
 use App\Support\PaymentListingData;
 use Filament\Actions;
 use Filament\Resources\Pages\ListRecords;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use App\Filament\Concerns\HasExcelColumnFilters;
 
 class ListPayments extends ListRecords
 {
+    use HasExcelColumnFilters;
+
     protected static string $resource = PaymentResource::class;
 
     protected static string $view = 'filament.resources.payment-resource.pages.list-payments';
@@ -69,10 +71,6 @@ class ListPayments extends ListRecords
                 ->label('Create Invoice Payment')
                 ->icon('heroicon-o-plus')
                 ->url(fn (): string => PaymentResource::getUrl('create')),
-            Actions\Action::make('createCashBillPayment')
-                ->label('Create Cash Bill Payment')
-                ->icon('heroicon-o-plus')
-                ->url(fn (): string => CashBillCalculator::getUrl()),
         ];
     }
 

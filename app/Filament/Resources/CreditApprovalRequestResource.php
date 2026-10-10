@@ -71,6 +71,7 @@ class CreditApprovalRequestResource extends Resource
                         'pending' => 'gray',
                         'approved' => 'success',
                         'rejected' => 'danger',
+                        'cancelled' => 'gray',
                         default => 'gray',
                     }),
                 Tables\Columns\TextColumn::make('created_at')->dateTime()->sortable(),
@@ -81,6 +82,8 @@ class CreditApprovalRequestResource extends Resource
                     'pending' => 'Pending',
                     'approved' => 'Approved',
                     'rejected' => 'Rejected',
+                    // no longer needed: the order's payment term changed to Cash / COD
+                    'cancelled' => 'Cancelled',
                 ]),
             ])
             ->actions([

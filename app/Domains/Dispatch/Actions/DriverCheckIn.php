@@ -70,6 +70,7 @@ class DriverCheckIn
             // main-DO CSNs move to In Transit (operational sequence, flowchart step 17)
             $csnIds = $jobSheet->deliveryOrders()
                 ->whereNull('parent_do_id')
+                ->whereNull('subsheet_id')
                 ->pluck('consignment_note_id');
 
             ConsignmentNote::query()

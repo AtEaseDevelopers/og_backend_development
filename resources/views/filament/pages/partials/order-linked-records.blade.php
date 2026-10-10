@@ -33,13 +33,16 @@
             <div class="ow-dt">Attachments ({{ count($files) }})</div>
             <div class="ow-pay-files">
                 @foreach ($files as $file)
-                    <a href="{{ $file['url'] }}" target="_blank" rel="noopener" class="ow-pay-file" title="{{ $file['name'] }} · {{ $file['source'] }}">
+                    {{-- opens in the file viewer of the payment card when it is on the page, else in a new tab --}}
+                    <a href="{{ $file['url'] }}" target="_blank" rel="noopener" class="ow-pay-file" title="{{ $file['name'] }} · {{ $file['source'] }}"
+                       data-url="{{ $file['url'] }}" data-name="{{ $file['source'] }} · {{ $file['name'] }}" data-image="{{ $file['is_image'] ? '1' : '0' }}"
+                       onclick="if (window.ogSlipViewerReady) { event.preventDefault(); window.dispatchEvent(new CustomEvent('og-file-view', { detail: { url: this.dataset.url, name: this.dataset.name, image: this.dataset.image === '1' } })); }">
                         @if ($file['is_image'])
                             <img src="{{ $file['url'] }}" alt="{{ $file['name'] }}" loading="lazy">
                         @else
                             <span class="ow-pay-file-ext">{{ strtoupper(pathinfo($file['name'], PATHINFO_EXTENSION) ?: 'file') }}</span>
                         @endif
-                        <span class="ow-pay-file-name">{{ $file['name'] }}</span>
+                        <span class="ow-pay-file-name">{{ str_starts_with($file['source'], 'Product photo · ') ? \Illuminate\Support\Str::after($file['source'], 'Product photo · ') : $file['name'] }}</span>
                     </a>
                 @endforeach
             </div>

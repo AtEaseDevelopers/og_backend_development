@@ -15,6 +15,20 @@ class Subsheet extends Model
 {
     use LogsActivity;
 
+    /**
+     * Type of a subsheet (task_type): Subsheet = pick up and bring the goods to the hub; Transfer = hand the goods
+     * over to another lorry to deliver (the default of a subsheet made by Admin); Break bulk = set from the driver
+     * app (Admin cannot choose it).
+     */
+    public const TYPES = [
+        'incoming_psi' => 'Subsheet',
+        'transfer' => 'Transfer',
+        'break_bulk' => 'Break bulk',
+    ];
+
+    /** Types Admin can choose when creating / assigning a subsheet. */
+    public const ADMIN_TYPES = ['incoming_psi', 'transfer'];
+
     protected $fillable = [
         'number', 'job_sheet_id', 'delivery_order_id', 'consignment_note_id',
         'transfer_code', 'task_type', 'notes',
@@ -34,6 +48,17 @@ class Subsheet extends Model
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()->logFillable()->logOnlyDirty();
+    }
+
+    public function typeLabel(): string
+    {
+        return self::TYPES[(string) $this->task_type] ?? ucfirst(str_replace('_', ' ', (string) $this->task_type));
+    }
+
+    /** On a lorry (its own delivery order and job sheet task). */
+    public function isAssigned(): bool
+    {
+        return $this->delivery_order_id !== null;
     }
 
     public function jobSheet(): BelongsTo

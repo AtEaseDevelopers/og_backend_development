@@ -58,8 +58,15 @@ class CreateAdminOrder
             : null;
         // one billing address for the whole order (every record's customer_address); blank = the customer's saved address
         $billingAddress = filled($data['customer_address'] ?? null) ? trim((string) $data['customer_address']) : null;
+        // the customer's person in charge and contact number (blank stays blank); older callers: the customer's default
+        $customerPic = array_key_exists('customer_pic_name', $data) || array_key_exists('customer_pic_phone', $data)
+            ? [
+                'attention' => filled($data['customer_pic_name'] ?? null) ? trim((string) $data['customer_pic_name']) : null,
+                'customer_pic_phone' => filled($data['customer_pic_phone'] ?? null) ? trim((string) $data['customer_pic_phone']) : null,
+            ]
+            : [];
 
-        return DB::transaction(function () use ($data, $actor, $branch, $company, $customer, $pairs, $salesperson, $receivedThrough, $billingAddress): array {
+        return DB::transaction(function () use ($data, $actor, $branch, $company, $customer, $pairs, $salesperson, $receivedThrough, $billingAddress, $customerPic): array {
             $first = $pairs->first();
 
             $enquiry = PortalEnquiry::query()->create([
@@ -78,7 +85,8 @@ class CreateAdminOrder
                 'payment_method' => $data['payment_method'] ?? null,
                 'customer_do_number' => $first['customer_do_number'] ?? null,
                 'pickup_address' => $first['pickup_location'] ?? null,
-                'preferred_delivery_date' => $first['expected_delivery_date'] ?? null,
+                // the expected delivery date is a free-text remark: only a real date fills the enquiry's date
+                'preferred_delivery_date' => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($first['expected_delivery_date'] ?? '')) ? $first['expected_delivery_date'] : null,
                 'special_requirements' => $pairs->pluck('instructions')->filter()->implode("\n") ?: null,
                 'status' => PortalEnquiryStatus::InReview->value,
                 'attended_by' => $actor->id,
@@ -100,19 +108,23 @@ class CreateAdminOrder
                         // consignor (pickup or store) and the person in charge on each side
                         'consignor_name' => $pair['consignor_name'] ?? null,
                         'store_branch_id' => $pair['store_branch_id'] ?? null,
+                        'store_id' => $pair['store_id'] ?? null,
                         'consignor_pic_name' => $pair['consignor_pic_name'] ?? null,
                         'consignor_pic_phone' => $pair['consignor_pic_phone'] ?? null,
                         'consignee_pic_name' => $pair['consignee_pic_name'] ?? null,
                         'consignee_pic_phone' => $pair['consignee_pic_phone'] ?? null,
+                        'customer_address' => $billingAddress,
                         // photos / DO attachments uploaded for this block ({path, name, mime, size, …})
                         'attachments' => array_values(array_filter($pair['attachments'] ?? [], 'is_array')),
-                    ])->values()->all(),
+                    ] + $customerPic)->values()->all(),
                     'items' => $pairs->flatMap(fn (array $pair, int $index) => collect($pair['items'] ?? [])->map(fn (array $item) => [
                         'item_name' => $item['item_name'] ?? null,
                         'uom' => $item['uom'] ?? null,
                         'quantity' => $item['quantity'] ?? 1,
                         'catalog_key' => $item['catalog_key'] ?? null,
                         'line_type' => $item['line_type'] ?? null,
+                        // photos uploaded for this product ({path, name, mime, …})
+                        'attachments' => array_values(array_filter($item['attachments'] ?? [], 'is_array')),
                         'destination_index' => $index,
                     ]))->values()->all(),
                 ],
@@ -123,8 +135,8 @@ class CreateAdminOrder
                 $enquiry->refresh();
             }
 
-            $orders = $this->createOrders->execute($enquiry, $actor, $pairs->map(function (array $pair) use ($data, $billingAddress): array {
-                return [
+            $orders = $this->createOrders->execute($enquiry, $actor, $pairs->map(function (array $pair) use ($data, $billingAddress, $customerPic): array {
+                return $customerPic + [
                     // each block's own DO number / instructions (blank stays blank, not block 1's)
                     'explicit' => true,
                     'consignor_name' => $pair['consignor_name'] ?? null,
@@ -139,6 +151,7 @@ class CreateAdminOrder
                     // Pickup or Store (with the branch) per block
                     'service_type' => $pair['service_type'] ?? ($data['service_type'] ?? null),
                     'store_branch_id' => $pair['store_branch_id'] ?? null,
+                    'store_id' => $pair['store_id'] ?? null,
                     'consignor_pic_name' => $pair['consignor_pic_name'] ?? null,
                     'consignor_pic_phone' => $pair['consignor_pic_phone'] ?? null,
                     'consignee_pic_name' => $pair['consignee_pic_name'] ?? null,
@@ -154,6 +167,9 @@ class CreateAdminOrder
                         'quantity' => $item['quantity'] ?? 1,
                         'catalog_key' => $item['catalog_key'] ?? null,
                         'line_type' => $item['line_type'] ?? null,
+                        // price keyed in on the page for a product without a rate (used only when there is none)
+                        'unit_price' => $item['unit_price'] ?? null,
+                        'attachments' => array_values(array_filter($item['attachments'] ?? [], 'is_array')),
                     ])->filter(fn (array $item) => filled($item['item_name']))->values()->all(),
                 ];
             })->all());

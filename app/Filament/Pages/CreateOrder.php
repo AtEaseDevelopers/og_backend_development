@@ -4,13 +4,15 @@ namespace App\Filament\Pages;
 
 use App\Domains\MasterData\Models\Branch;
 use App\Domains\MasterData\Models\Customer;
+use App\Domains\MasterData\Models\CustomerPricing;
 use App\Domains\MasterData\Models\CustomerAddress;
 use App\Domains\MasterData\Models\Location;
+use App\Domains\MasterData\Models\Store;
 use App\Domains\Quotation\Actions\CreateAdminOrder;
 use App\Enums\DropOffType;
 use App\Enums\OrderType;
 use App\Enums\ServiceType;
-use App\Filament\Resources\BranchResource;
+use App\Filament\Resources\StoreResource;
 use App\Models\User;
 use App\Support\CurrentCompany;
 use App\Support\CustomerQuotationPriceHistory;
@@ -45,16 +47,17 @@ class CreateOrder extends Page
     public array $form = [];
 
     /**
-     * One consignor & consignee block per entry; its photos picked on the page (not saved yet) are in 'photos'
-     * (TemporaryUploadedFile list), the ones already saved on an edited record in 'existing_photos'.
+     * One consignor & consignee block per entry. Each product row keeps its photos picked on the page (not saved
+     * yet) in 'photos' (TemporaryUploadedFile list) and the ones already saved on an edited record in
+     * 'existing_photos'; 'manual_price' is the price keyed in for a product without a rate.
      *
      * @var list<array<string, mixed>>
      */
     public array $pairs = [];
 
     /**
-     * Photo picker of each block (block index => files just uploaded): moved into that block's 'photos' as soon
-     * as the upload finishes, so picking more files adds to the ones already chosen.
+     * Photo picker of each product row ([block index][row index] => files just uploaded): moved into that row's
+     * 'photos' as soon as the upload finishes, so picking more files adds to the ones already chosen.
      *
      * @var array<int|string, mixed>
      */
@@ -84,6 +87,9 @@ class CreateOrder extends Page
             'customer_id' => '',
             // the order's billing address (every record's customer_address), prefilled from the customer
             'customer_address' => '',
+            // the customer's person in charge and contact number (every record's attention / customer_pic_phone)
+            'customer_pic_name' => '',
+            'customer_pic_phone' => '',
             // optional: how the order reached us
             'received_through' => '',
             'salesperson_id' => '',
@@ -222,6 +228,24 @@ class CreateOrder extends Page
         return $query->get()->mapWithKeys(fn (Customer $c) => [$c->id => trim(($c->code ? $c->code.' — ' : '').$c->company_name)])->all();
     }
 
+    /**
+     * The customer type tag shown beside each customer in the picker (as in the Orders list).
+     *
+     * @return array<int|string, array{label: string, tone: string}>
+     */
+    public function customerTypeTags(): array
+    {
+        return Customer::query()
+            ->when(CurrentCompany::id(), fn ($query, $id) => $query->where('company_id', $id))
+            ->get(['id', 'default_order_type', 'is_credit'])
+            ->mapWithKeys(function (Customer $c) {
+                $type = $c->customerType();
+
+                return [$c->id => ['label' => $type->shortLabel(), 'tone' => $type === OrderType::Term ? 'credit' : $type->value]];
+            })
+            ->all();
+    }
+
     /** @return array<int|string, string> */
     public function salespersonOptions(): array
     {
@@ -296,39 +320,41 @@ class CreateOrder extends Page
     }
 
     /**
-     * Stores (O&G branches) for the consignor's Store mode; a branch already chosen on a block stays listed.
+     * Stores (Master Data → Stores) for the consignor's Store mode, each with its address / From / PIC line; a
+     * store already chosen on a block stays listed.
      *
-     * @return array<int, string>
+     * @return array<int, array{label: string, sub: string}>
      */
     public function storeOptions(): array
     {
-        return OrderFormOptions::storeOptions(array_column($this->pairs, 'store_branch_id'));
+        return OrderFormOptions::storeOptions(array_column($this->pairs, 'store_id'));
     }
 
     /**
-     * What the page shows of the chosen store: its address and phone from the Branches master, and where to
-     * add them when missing.
+     * What the page shows of the chosen store: its branch, address, PIC and contact number, and where to edit it.
      *
-     * @return array{name: string, address: string, phone: string, edit_url: ?string}|null
+     * @return array{name: string, branch: string, address: string, pic: string, phone: string, edit_url: ?string}|null
      */
-    public function storeInfo(mixed $branchId): ?array
+    public function storeInfo(mixed $storeId): ?array
     {
-        $branch = filled($branchId) ? Branch::query()->find($branchId) : null;
+        $store = filled($storeId) ? Store::query()->with('branch')->find($storeId) : null;
 
-        if (! $branch) {
+        if (! $store) {
             return null;
         }
 
         try {
-            $editUrl = BranchResource::getUrl('edit', ['record' => $branch]);
+            $editUrl = StoreResource::getUrl('edit', ['record' => $store]);
         } catch (Throwable) {
             $editUrl = null;
         }
 
         return [
-            'name' => (string) $branch->name,
-            'address' => trim((string) $branch->address),
-            'phone' => trim((string) $branch->phone),
+            'name' => (string) $store->name,
+            'branch' => (string) ($store->branch?->name ?? ''),
+            'address' => trim((string) $store->address),
+            'pic' => trim((string) $store->pic_name),
+            'phone' => trim((string) $store->pic_phone),
             'edit_url' => $editUrl,
         ];
     }
@@ -381,9 +407,9 @@ class CreateOrder extends Page
         return [
             // consignor: starts as the customer (optional: cleared, it is saved blank)
             'consignor_name' => $this->customerName() ?? '',
-            // Pickup (collected from the consignor) or Store (the consignor brings the goods to an O&G branch)
+            // Pickup (collected from the consignor) or Store (the consignor brings the goods to a store, Master Data → Stores)
             'service_type' => ServiceType::Pickup->value,
-            'store_branch_id' => '',
+            'store_id' => '',
             'from_location_id' => $consignor['from_location_id'] ?? '',
             'consignor_pic_name' => '',
             'consignor_pic_phone' => '',
@@ -400,8 +426,6 @@ class CreateOrder extends Page
             'drop_off_type' => DropOffType::Other->value,
             'customer_do_number' => '',
             'expected_delivery_date' => '',
-            // photos / DO attachments picked for this block (saved with its record)
-            'photos' => [],
             'instructions' => '',
             'items' => [$this->itemTemplate()],
         ];
@@ -410,7 +434,14 @@ class CreateOrder extends Page
     /** @return array<string, mixed> */
     protected function itemTemplate(): array
     {
-        return ['line_type' => 'uom', 'catalog_key' => '', 'item_name' => '', 'uom' => '', 'quantity' => 1, 'unit_price' => null, 'tier' => null, 'source' => null, 'available' => null];
+        return [
+            'line_type' => 'uom', 'catalog_key' => '', 'item_name' => '', 'uom' => '', 'quantity' => 1,
+            'unit_price' => null, 'tier' => null, 'source' => null, 'available' => null,
+            // price keyed in when the product has no special / price-list rate
+            'manual_price' => '',
+            // photos of this product: picked on the page (not saved yet) / already saved on the record
+            'photos' => [], 'existing_photos' => [],
+        ];
     }
 
     /** Runs before the new value is set: remembers which customer the billing address on the page belongs to. */
@@ -446,6 +477,9 @@ class CreateOrder extends Page
             $this->form['customer_address'] = filled($value)
                 ? (string) ($this->billingAddresses[(string) $value] ?? ($consignor['customer_address'] ?? ''))
                 : '';
+            // the customer's person in charge and contact number
+            $this->form['customer_pic_name'] = (string) ($consignor['attention'] ?? '');
+            $this->form['customer_pic_phone'] = (string) ($consignor['customer_pic_phone'] ?? '');
 
             foreach ($this->pairs as &$pair) {
                 // keep a consignor the user typed; replace the default (a customer name) when the customer changes.
@@ -459,13 +493,15 @@ class CreateOrder extends Page
                     $pair['drop_off_preset'] = filled($pair['drop_off_location'] ?? null) ? OrderFormOptions::NEW_ADDRESS : '';
                 }
                 // a Store block keeps its store and the From that came with it (a switch back to Pickup takes the new customer's)
+                // (and its pickup location: the store's address; a switch back to Pickup takes the new customer's)
                 if (($pair['service_type'] ?? ServiceType::Pickup->value) !== ServiceType::Store->value) {
                     $pair['from_location_id'] = $consignor['from_location_id'] ?? '';
+                    $pair['pickup_preset'] = $consignor['pickup_location_preset'] ?? '';
+                    $pair['pickup_location'] = $consignor['pickup_location'] ?? '';
                 } else {
                     $pair['pickup_from_location_id'] = $consignor['from_location_id'] ?? '';
+                    $pair['pickup_restore'] = ['preset' => $consignor['pickup_location_preset'] ?? '', 'location' => $consignor['pickup_location'] ?? ''];
                 }
-                $pair['pickup_preset'] = $consignor['pickup_location_preset'] ?? '';
-                $pair['pickup_location'] = $consignor['pickup_location'] ?? '';
             }
             unset($pair);
 
@@ -482,44 +518,79 @@ class CreateOrder extends Page
 
     public function updatedPairs($value, string $key): void
     {
-        if (preg_match('/^(\d+)\.(service_type|store_branch_id)$/', $key, $m)) {
+        if (preg_match('/^(\d+)\.(service_type|store_id)$/', $key, $m)) {
             $index = (int) $m[1];
             $pair = &$this->pairs[$index];
+            $store = OrderFormOptions::storeDefaults($pair['store_id'] ?? null);
 
             if (($pair['service_type'] ?? '') !== ServiceType::Store->value) {
                 $pair['service_type'] = ServiceType::Pickup->value;
 
-                // back to Pickup: a From still set to the store's price-list location returns to the Pickup one
-                // (the From before Store was chosen, else the customer's default); a From picked by hand stays
-                $storeFrom = $m[2] === 'service_type' && filled($pair['store_branch_id'] ?? null)
-                    ? OrderFormOptions::fromLocationIdForBranch((int) $pair['store_branch_id'])
-                    : null;
+                // back to Pickup: what still came from the store returns to the Pickup values (the From and pickup
+                // location before Store was chosen, else the customer's defaults); anything changed by hand stays
+                if ($m[2] === 'service_type' && $store) {
+                    $customer = OrderFormOptions::consignorStateForCustomer(filled($this->form['customer_id'] ?? null) ? (string) $this->form['customer_id'] : null);
 
-                if ($storeFrom && (string) ($pair['from_location_id'] ?? '') === (string) $storeFrom) {
-                    $pair['from_location_id'] = array_key_exists('pickup_from_location_id', $pair)
-                        ? (string) $pair['pickup_from_location_id']
-                        : (string) (OrderFormOptions::consignorStateForCustomer(filled($this->form['customer_id'] ?? null) ? (string) $this->form['customer_id'] : null, withPickupPreset: false)['from_location_id'] ?? '');
+                    if ((string) ($pair['from_location_id'] ?? '') === $store['from_location_id']) {
+                        $pair['from_location_id'] = array_key_exists('pickup_from_location_id', $pair)
+                            ? (string) $pair['pickup_from_location_id']
+                            : (string) ($customer['from_location_id'] ?? '');
+                    }
+
+                    if (trim((string) ($pair['pickup_location'] ?? '')) === $store['pickup_location']) {
+                        $restore = $pair['pickup_restore'] ?? ['preset' => $customer['pickup_location_preset'] ?? '', 'location' => $customer['pickup_location'] ?? ''];
+                        $pair['pickup_preset'] = (string) ($restore['preset'] ?? '');
+                        $pair['pickup_location'] = (string) ($restore['location'] ?? '');
+                    }
+
+                    foreach (['consignor_pic_name', 'consignor_pic_phone'] as $field) {
+                        if ($store[$field] !== '' && trim((string) ($pair[$field] ?? '')) === $store[$field]) {
+                            $pair[$field] = '';
+                        }
+                    }
                 }
 
-                unset($pair['pickup_from_location_id']);
+                unset($pair['pickup_from_location_id'], $pair['pickup_restore']);
 
                 return;
             }
 
-            // Store: the order's branch until another store is picked; its price-list location becomes From
-            if ($m[2] === 'service_type' && blank($pair['store_branch_id'] ?? null)) {
-                $pair['store_branch_id'] = (string) (CurrentCompany::branchId() ?? '');
+            if ($m[2] === 'service_type') {
+                // remember the Pickup From and pickup location (before the store's replace them) for a switch back
+                if (! array_key_exists('pickup_from_location_id', $pair)) {
+                    $pair['pickup_from_location_id'] = (string) ($pair['from_location_id'] ?? '');
+                }
+
+                if (! array_key_exists('pickup_restore', $pair)) {
+                    $pair['pickup_restore'] = ['preset' => (string) ($pair['pickup_preset'] ?? ''), 'location' => (string) ($pair['pickup_location'] ?? '')];
+                }
+
+                // no store picked yet: the only store of the order's branch, when it has just one
+                if (! $store) {
+                    $branchStores = Store::query()->active()->where('branch_id', CurrentCompany::branchId())->pluck('id');
+
+                    if ($branchStores->count() === 1) {
+                        $pair['store_id'] = (string) $branchStores->first();
+                        $store = OrderFormOptions::storeDefaults($pair['store_id']);
+                    }
+                }
             }
 
-            // remember the Pickup From (before the store's replaces it) for a switch back to Pickup
-            if ($m[2] === 'service_type' && ! array_key_exists('pickup_from_location_id', $pair)) {
-                $pair['pickup_from_location_id'] = (string) ($pair['from_location_id'] ?? '');
-            }
+            // the store's address is the pickup location; its From, PIC and contact number fill the consignor fields
+            if ($store) {
+                $pair['legacy_store_branch_id'] = '';
+                $pair['pickup_preset'] = OrderFormOptions::NEW_ADDRESS;
+                $pair['pickup_location'] = $store['pickup_location'];
 
-            $fromId = filled($pair['store_branch_id'] ?? null) ? OrderFormOptions::fromLocationIdForBranch((int) $pair['store_branch_id']) : null;
+                if ($store['from_location_id'] !== '') {
+                    $pair['from_location_id'] = $store['from_location_id'];
+                }
 
-            if ($fromId) {
-                $pair['from_location_id'] = (string) $fromId;
+                foreach (['consignor_pic_name', 'consignor_pic_phone'] as $field) {
+                    if ($store[$field] !== '') {
+                        $pair[$field] = $store[$field];
+                    }
+                }
             }
 
             return;
@@ -704,36 +775,41 @@ class CreateOrder extends Page
 
         unset($this->pairs[$index]['items'][$itemIndex]);
         $this->pairs[$index]['items'] = array_values($this->pairs[$index]['items']);
+        // a picker still uploading belonged to a row that may have moved
+        $this->photoUploads = [];
     }
 
     /*
     |--------------------------------------------------------------------------
-    | Photos per consignor & consignee block
+    | Photos per product row
     |--------------------------------------------------------------------------
     */
 
     /**
-     * Files just uploaded with a block's photo picker: checked (images / PDF, 8 MB) and added to the block's
-     * photos; a file that fails is left out with its message under the picker.
+     * Files just uploaded with a product row's photo picker: checked (images / PDF, 8 MB) and added to the row's
+     * photos; a file that fails is left out with its message under the row.
      */
     public function updatedPhotoUploads(mixed $value, ?string $key = null): void
     {
-        $index = (int) explode('.', (string) $key)[0];
-        $files = array_values(array_filter(Arr::wrap($this->photoUploads[$index] ?? []), fn ($file) => $file instanceof TemporaryUploadedFile));
-        $this->photoUploads[$index] = [];
+        $parts = explode('.', (string) $key);
+        $index = (int) ($parts[0] ?? -1);
+        $itemIndex = (int) ($parts[1] ?? -1);
+        $files = array_values(array_filter(Arr::wrap($this->photoUploads[$index][$itemIndex] ?? []), fn ($file) => $file instanceof TemporaryUploadedFile));
+        $this->photoUploads[$index][$itemIndex] = [];
 
-        if (! isset($this->pairs[$index]) || $this->isPairLocked($index) || $files === []) {
+        if (! isset($this->pairs[$index]['items'][$itemIndex]) || $this->isPairLocked($index) || $files === []) {
             return;
         }
 
-        $this->resetErrorBag(['pairs.'.$index.'.photos', 'photoUploads.'.$index]);
+        $errorKey = 'pairs.'.$index.'.items.'.$itemIndex.'.photos';
+        $this->resetErrorBag([$errorKey, 'photoUploads.'.$index.'.'.$itemIndex]);
         $accepted = [];
 
         foreach ($files as $file) {
             $check = Validator::make(['photo' => $file], ['photo' => self::PHOTO_RULE], [], ['photo' => $file->getClientOriginalName()]);
 
             if ($check->fails()) {
-                $this->addError('pairs.'.$index.'.photos', $check->errors()->first('photo'));
+                $this->addError($errorKey, $check->errors()->first('photo'));
 
                 continue;
             }
@@ -741,31 +817,32 @@ class CreateOrder extends Page
             $accepted[] = $file;
         }
 
-        $this->pairs[$index]['photos'] = array_values(array_merge(
-            array_filter($this->pairs[$index]['photos'] ?? [], fn ($file) => $file instanceof TemporaryUploadedFile),
+        $item = &$this->pairs[$index]['items'][$itemIndex];
+        $item['photos'] = array_values(array_merge(
+            array_filter($item['photos'] ?? [], fn ($file) => $file instanceof TemporaryUploadedFile),
             $accepted,
         ));
     }
 
-    /** Takes a photo picked on the page off its block before the order is saved. */
-    public function removePhoto(int $index, int $photoIndex): void
+    /** Takes a photo picked on the page off its product row before the order is saved. */
+    public function removePhoto(int $index, int $itemIndex, int $photoIndex): void
     {
-        if (! isset($this->pairs[$index]['photos'][$photoIndex]) || $this->isPairLocked($index)) {
+        if (! isset($this->pairs[$index]['items'][$itemIndex]['photos'][$photoIndex]) || $this->isPairLocked($index)) {
             return;
         }
 
-        unset($this->pairs[$index]['photos'][$photoIndex]);
-        $this->pairs[$index]['photos'] = array_values($this->pairs[$index]['photos']);
+        unset($this->pairs[$index]['items'][$itemIndex]['photos'][$photoIndex]);
+        $this->pairs[$index]['items'][$itemIndex]['photos'] = array_values($this->pairs[$index]['items'][$itemIndex]['photos']);
     }
 
     /**
-     * Photos picked for a block as the page shows them (not saved yet).
+     * Photos picked for a product row as the page shows them (not saved yet).
      *
      * @return list<array{name: string, url: ?string, is_image: bool}>
      */
-    public function newPhotos(int $index): array
+    public function newPhotos(int $index, int $itemIndex): array
     {
-        return collect($this->pairs[$index]['photos'] ?? [])
+        return collect($this->pairs[$index]['items'][$itemIndex]['photos'] ?? [])
             ->filter(fn ($file) => $file instanceof TemporaryUploadedFile)
             ->map(function (TemporaryUploadedFile $file): array {
                 $image = str_starts_with((string) $file->getMimeType(), 'image/');
@@ -783,17 +860,36 @@ class CreateOrder extends Page
     }
 
     /**
-     * Stores a block's picked photos on the public disk, each under its own folder with its original (cleaned)
-     * name, so a record's file list reads well.
+     * A block as the order actions take it (pairData) with the photos picked for each product row stored now
+     * (none for a locked block). Photos are kept per product; the block itself takes none.
      *
      * @param  array<string, mixed>  $pair
+     * @return array<string, mixed>
+     */
+    protected function pairDataWithPhotos(array $pair, int $index): array
+    {
+        $data = $this->pairData($pair, $index);
+        $data['attachments'] = [];
+
+        foreach ($data['items'] as $j => $item) {
+            $data['items'][$j]['attachments'] = $this->isPairLocked($index) ? [] : $this->storePhotos($pair['items'][$j]['photos'] ?? []);
+        }
+
+        return $data;
+    }
+
+    /**
+     * Stores picked photos on the public disk, each under its own folder with its original (cleaned) name, so a
+     * record's file list reads well.
+     *
+     * @param  array<int, mixed>  $photos
      * @return list<array{path: string, name: string, mime: ?string, size: int|false, uploaded_by: ?string, uploaded_at: string}>
      */
-    protected function storePairPhotos(array $pair): array
+    protected function storePhotos(array $photos): array
     {
         $files = [];
 
-        foreach ($pair['photos'] ?? [] as $file) {
+        foreach ($photos as $file) {
             if (! $file instanceof TemporaryUploadedFile) {
                 continue;
             }
@@ -815,13 +911,13 @@ class CreateOrder extends Page
     |--------------------------------------------------------------------------
     */
 
-    /** History icon of a product row: the customer's previous order lines of that product (information only). */
+    /** History icon of a product row: the customer's special price, the price list and previous order lines of that product (information only). */
     public function productHistoryAction(): Action
     {
         return Action::make('productHistory')
             ->label('Previous records')
-            ->modalHeading(fn (array $arguments) => 'Previous records · '.($this->historyItem($arguments)['item_name'] ?? 'product'))
-            ->modalDescription(fn () => $this->customerName() ? 'Earlier orders of '.$this->customerName().' for this product, newest first.' : null)
+            ->modalHeading(fn (array $arguments) => 'Prices & previous records · '.($this->historyItem($arguments)['item_name'] ?? 'product'))
+            ->modalDescription(fn () => $this->customerName() ? 'Special price, price list and earlier orders of '.$this->customerName().' for this product.' : null)
             ->modalContent(fn (array $arguments) => view('filament.pages.partials.order-product-history', $this->productHistoryData($arguments)))
             ->modalWidth(MaxWidth::FourExtraLarge)
             ->modalSubmitAction(false)
@@ -844,14 +940,73 @@ class CreateOrder extends Page
         $toLocationId = $this->pairs[(int) ($arguments['pair'] ?? -1)]['to_location_id'] ?? null;
         $location = filled($toLocationId) ? Location::query()->whereKey($toLocationId)->value('name') : null;
 
+        $name = (string) ($item['item_name'] ?? '');
+        $quantity = max(0.01, (float) (($item['quantity'] ?? 1) ?: 1));
+
         return [
-            'item_name' => $item['item_name'] ?? '',
+            'item_name' => $name,
             'location' => $location,
             'customer' => $this->customerName(),
+            'special' => $customerId && $name !== '' ? $this->specialPricesFor((int) $customerId, $name, $location) : [],
+            'default' => $name !== '' ? $this->defaultPricesFor($name, $location, $quantity) : [],
             'rows' => $customerId && filled($item['item_name'] ?? null)
                 ? app(CustomerQuotationPriceHistory::class)->productHistory((int) $customerId, (string) $item['item_name'], $location, $this->historyExcludedQuotationIds(), companyId: CurrentCompany::id())
                 : [],
         ];
+    }
+
+    /**
+     * The customer's special prices for the product (Customer → Special pricing), this row's destination first.
+     *
+     * @return list<array{destination: string, uom: ?string, price: ?float, min_charge: ?float, same: bool}>
+     */
+    protected function specialPricesFor(int $customerId, string $itemName, ?string $location): array
+    {
+        return CustomerPricing::query()
+            ->where('customer_id', $customerId)
+            ->where('is_active', true)
+            ->where('item_name', $itemName)
+            ->get()
+            ->map(fn (CustomerPricing $row) => [
+                'destination' => filled($row->destination) ? (string) $row->destination : 'All destinations',
+                'uom' => filled($row->uom) ? (string) $row->uom : null,
+                'price' => ($row->unit_rate ?? $row->base_price) !== null ? (float) ($row->unit_rate ?? $row->base_price) : null,
+                'min_charge' => $row->min_charge !== null ? (float) $row->min_charge : null,
+                'same' => $location !== null && (string) $row->destination === $location,
+            ])
+            ->sortBy(fn (array $row) => [$row['same'] ? 0 : 1, $row['destination']])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * The product's price-list (default) rates per location: the quantity tiers of a UOM product, else the one
+     * rate of a transport item / lorry; this row's destination first, with the tier its quantity falls in.
+     *
+     * @return list<array{location: string, same: bool, tiers: list<array{range: string, price: float, active: bool}>, price: ?float}>
+     */
+    protected function defaultPricesFor(string $itemName, ?string $location, float $quantity): array
+    {
+        $lookup = app(QuotationPricingLookup::class);
+
+        return Location::query()->where('is_active', true)->orderBy('name')->pluck('name')
+            ->map(function (string $name) use ($lookup, $itemName, $location, $quantity): ?array {
+                $active = $lookup->matchedUomTier($itemName, $name, $quantity);
+                $tiers = collect($lookup->uomTierBreakdown($itemName, $name))
+                    ->map(fn (array $tier) => $tier + ['active' => $active !== null && abs((float) $active->price - $tier['price']) < 0.001 && $tier['range'] === ($active->max_qty ? number_format((float) $active->min_qty, 0).'–'.number_format((float) $active->max_qty, 0) : number_format((float) $active->min_qty, 0).'+')])
+                    ->all();
+                $price = $tiers === [] ? $lookup->lookup($itemName, $name, $quantity) : null;
+
+                if ($tiers === [] && $price === null) {
+                    return null;
+                }
+
+                return ['location' => $name, 'same' => $name === $location, 'tiers' => $tiers, 'price' => $price];
+            })
+            ->filter()
+            ->sortBy(fn (array $row) => [$row['same'] ? 0 : 1, $row['location']])
+            ->values()
+            ->all();
     }
 
     /** @return array<string, mixed>|null */
@@ -872,12 +1027,23 @@ class CreateOrder extends Page
             foreach ($pair['items'] as $j => $item) {
                 // non-UOM rows only exist when editing an order: they keep the record's quantity
                 $qty = max(0.01, (float) ($item['quantity'] ?: 1));
-                $lines[$i][$j] = $item['unit_price'] !== null ? round((float) $item['unit_price'] * $qty, 2) : 0.0;
+                $price = $this->effectivePrice($item);
+                $lines[$i][$j] = $price !== null ? round($price * $qty, 2) : 0.0;
                 $total += $lines[$i][$j];
             }
         }
 
         return ['items' => round($total, 2), 'lines' => $lines];
+    }
+
+    /** A row's unit price: its rate, else the price keyed in for a product without one. */
+    public function effectivePrice(array $item): ?float
+    {
+        if ($item['unit_price'] !== null) {
+            return (float) $item['unit_price'];
+        }
+
+        return is_numeric($item['manual_price'] ?? null) ? round((float) $item['manual_price'], 2) : null;
     }
 
     /*
@@ -892,6 +1058,8 @@ class CreateOrder extends Page
         return [
             'form.customer_id' => 'required|exists:customers,id',
             'form.customer_address' => 'nullable|string|max:2000',
+            'form.customer_pic_name' => 'nullable|string|max:255',
+            'form.customer_pic_phone' => 'nullable|string|max:50',
             // optional; when picked it must be one of the listed channels
             'form.received_through' => 'nullable|in:'.implode(',', array_keys($this->receivedThroughOptions())),
             'form.salesperson_id' => 'nullable|exists:users,id',
@@ -902,7 +1070,7 @@ class CreateOrder extends Page
             'pairs.*.consignor_name' => 'nullable|string|max:255',
             'pairs.*.consignee_name' => 'nullable|string|max:255',
             'pairs.*.service_type' => 'required|in:'.implode(',', array_keys($this->serviceTypeOptions())),
-            'pairs.*.store_branch_id' => 'nullable|required_if:pairs.*.service_type,'.ServiceType::Store->value.'|exists:branches,id',
+            'pairs.*.store_id' => 'nullable|required_if:pairs.*.service_type,'.ServiceType::Store->value.'|exists:stores,id',
             'pairs.*.consignor_pic_name' => 'nullable|string|max:255',
             'pairs.*.consignor_pic_phone' => 'nullable|string|max:50',
             'pairs.*.consignee_pic_name' => 'nullable|string|max:255',
@@ -913,14 +1081,17 @@ class CreateOrder extends Page
             'pairs.*.from_location_id' => 'nullable|exists:locations,id',
             'pairs.*.customer_do_number' => 'required|string|max:100',
             // becomes the CSN date when the record's CSN is created
-            'pairs.*.expected_delivery_date' => 'required|date',
+            // optional free text (a remark, e.g. "Mon 13/10 before noon"); not the CSN date
+            'pairs.*.expected_delivery_date' => 'nullable|string|max:255',
             'pairs.*.drop_off_type' => 'required|in:'.implode(',', array_keys(DropOffType::options())),
             'pairs.*.items' => 'required|array|min:1',
             'pairs.*.items.*.item_name' => 'required|string|max:255',
             'pairs.*.items.*.quantity' => 'required|integer|min:1',
-            // photos / DO attachments of each block (same file rule as before: images or PDF, 8 MB)
-            'pairs.*.photos' => 'nullable|array',
-            'pairs.*.photos.*' => self::PHOTO_RULE,
+            // price keyed in for a product without a rate
+            'pairs.*.items.*.manual_price' => 'nullable|numeric|min:0|max:9999999',
+            // photos of each product row (same file rule as before: images or PDF, 8 MB)
+            'pairs.*.items.*.photos' => 'nullable|array',
+            'pairs.*.items.*.photos.*' => self::PHOTO_RULE,
         ];
     }
 
@@ -929,9 +1100,8 @@ class CreateOrder extends Page
     {
         return [
             'form.order_type.in' => 'This payment term is not available for the customer\'s type.',
-            'pairs.*.store_branch_id.required_if' => 'Select the store the consignor brings the goods to.',
+            'pairs.*.store_id.required_if' => 'Select the store the consignor brings the goods to.',
             'pairs.*.customer_do_number.required' => 'Enter the DO number for every consignor & consignee block.',
-            'pairs.*.expected_delivery_date.required' => 'Enter the expected delivery date for every consignor & consignee block.',
             'pairs.*.items.*.item_name.required' => 'Select a product for every item row.',
         ];
     }
@@ -939,7 +1109,8 @@ class CreateOrder extends Page
     /**
      * One consignor & consignee block as the order actions take it (Create and Edit order):
      * - a blank consignor or consignee is saved blank (the record's price column keeps the To location's name);
-     * - Pickup: the pickup location typed or picked; Store: the branch, its address as the pickup location;
+     * - Pickup: the pickup location typed or picked; Store: the store (and its branch), the pickup location shown
+     *   (the store's address unless edited);
      * - the drop-off location: the saved address picked or the new one typed.
      *
      * @param  array<string, mixed>  $pair
@@ -949,14 +1120,15 @@ class CreateOrder extends Page
     {
         $text = fn (mixed $value): ?string => ($value = trim((string) $value)) !== '' ? $value : null;
         $store = ($pair['service_type'] ?? '') === ServiceType::Store->value;
-        $branch = $store && filled($pair['store_branch_id'] ?? null) ? Branch::query()->find($pair['store_branch_id']) : null;
+        $storeRow = $store && filled($pair['store_id'] ?? null) ? Store::query()->find($pair['store_id']) : null;
         $toLocationId = filled($pair['to_location_id'] ?? null) ? (int) $pair['to_location_id'] : null;
-        $pickup = $store ? $text(OrderFormOptions::storeAddress($branch)) : $text($pair['pickup_location'] ?? null);
+        $pickup = $text($pair['pickup_location'] ?? null) ?? ($store ? $text(OrderFormOptions::storeAddress($storeRow)) : null);
 
         return [
             'consignor_name' => $text($pair['consignor_name'] ?? null),
             'service_type' => $store ? ServiceType::Store->value : ServiceType::Pickup->value,
-            'store_branch_id' => $branch?->id,
+            'store_id' => $storeRow?->id,
+            'store_branch_id' => $storeRow?->branch_id ?? ($store && filled($pair['legacy_store_branch_id'] ?? null) ? (int) $pair['legacy_store_branch_id'] : null),
             'from_location_id' => filled($pair['from_location_id'] ?? null) ? (int) $pair['from_location_id'] : null,
             'consignor_pic_name' => $text($pair['consignor_pic_name'] ?? null),
             'consignor_pic_phone' => $text($pair['consignor_pic_phone'] ?? null),
@@ -976,6 +1148,8 @@ class CreateOrder extends Page
                 'item_name' => (string) ($item['item_name'] ?? ''),
                 'uom' => ($item['uom'] ?? null) ?: null,
                 'quantity' => $item['quantity'] ?? 1,
+                // used only when the product has no special / price-list rate (and a salesperson owns the order)
+                'unit_price' => ($item['unit_price'] ?? null) === null && is_numeric($item['manual_price'] ?? null) ? round((float) $item['manual_price'], 2) : null,
             ], $pair['items'] ?? []),
         ];
     }
@@ -994,14 +1168,16 @@ class CreateOrder extends Page
         }
 
         try {
-            // each block with its own photos (stored now, kept with that block's record)
+            // each block with the photos of its products (stored now, kept with that block's record)
             $blocks = array_values($this->pairs);
-            $pairs = array_map(fn (array $pair, int $index) => $this->pairData($pair, $index) + ['attachments' => $this->storePairPhotos($pair)], $blocks, array_keys($blocks));
+            $pairs = array_map(fn (array $pair, int $index) => $this->pairDataWithPhotos($pair, $index), $blocks, array_keys($blocks));
 
             $result = app(CreateAdminOrder::class)->execute([
                 'customer_id' => $this->form['customer_id'],
                 // one billing address for the whole order (each record's customer_address)
                 'customer_address' => trim((string) ($this->form['customer_address'] ?? '')) ?: null,
+                'customer_pic_name' => trim((string) ($this->form['customer_pic_name'] ?? '')),
+                'customer_pic_phone' => trim((string) ($this->form['customer_pic_phone'] ?? '')),
                 'received_through' => ($this->form['received_through'] ?? '') ?: null,
                 'salesperson_id' => $this->form['salesperson_id'] ?: null,
                 'order_type' => $this->form['order_type'],

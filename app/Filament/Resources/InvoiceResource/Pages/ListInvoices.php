@@ -9,9 +9,12 @@ use Filament\Actions;
 use Filament\Forms;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ListRecords;
+use App\Filament\Concerns\HasExcelColumnFilters;
 
 class ListInvoices extends ListRecords
 {
+    use HasExcelColumnFilters;
+
     protected static string $resource = InvoiceResource::class;
 
     protected function getHeaderActions(): array

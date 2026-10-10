@@ -5,6 +5,7 @@ namespace App\Domains\Quotation\Actions;
 use App\Domains\MasterData\Models\Branch;
 use App\Domains\MasterData\Models\Customer;
 use App\Domains\MasterData\Models\Location;
+use App\Domains\MasterData\Models\Store;
 use App\Domains\Quotation\Models\PortalEnquiry;
 use App\Domains\Quotation\Models\Quotation;
 use App\Domains\Quotation\Models\QuotationStatusLog;
@@ -18,15 +19,12 @@ use App\Support\OrderFormOptions;
 use App\Support\QuotationMatrix;
 use App\Support\QuotationPricingLookup;
 use BackedEnum;
-use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
-use Throwable;
 
 /**
  * Applies the "Edit order" page (the Create order layout in edit mode) to an existing order.
@@ -50,7 +48,7 @@ class UpdateOrderRecords
      */
     private const PAIR_FIELDS = [
         'consignor_name' => 'consignor',
-        'store_branch_id' => 'store',
+        'store_id' => 'store',
         'from_location_id' => 'from',
         'consignor_pic_name' => 'consignor PIC',
         'consignor_pic_phone' => 'consignor contact no.',
@@ -65,7 +63,7 @@ class UpdateOrderRecords
     ];
 
     /** Fields whose old / new values are written into the change summary (the others only say "updated"). */
-    private const SHORT_FIELDS = ['consignor_name', 'store_branch_id', 'from_location_id', 'consignor_pic_name', 'consignor_pic_phone', 'consignee_name', 'to_location_id', 'consignee_pic_name', 'consignee_pic_phone', 'customer_do_number', 'expected_delivery_date', 'customer_id', 'order_type', 'service_type', 'drop_off_type'];
+    private const SHORT_FIELDS = ['consignor_name', 'store_id', 'from_location_id', 'consignor_pic_name', 'consignor_pic_phone', 'consignee_name', 'to_location_id', 'consignee_pic_name', 'consignee_pic_phone', 'customer_do_number', 'expected_delivery_date', 'customer_id', 'order_type', 'service_type', 'drop_off_type'];
 
     public function __construct(
         private CreateOrderFromEnquiry $createOrders,
@@ -349,7 +347,7 @@ class UpdateOrderRecords
             $lines = $lines->unique('item_name')->values();
         }
 
-        $items = $lines->map(function ($line): array {
+        $items = $lines->map(function ($line) use ($order): array {
             $catalogKey = $this->lookup->resolveCatalogKey($line->item_name);
             $lineType = $this->lookup->inferLineType($catalogKey, $line->item_name);
 
@@ -360,6 +358,7 @@ class UpdateOrderRecords
                 'uom' => $line->uom,
                 'quantity' => max(1, (int) round((float) $line->quantity)),
                 'unit_price' => $line->unit_price !== null ? (float) $line->unit_price : null,
+                'attachments' => array_values(array_filter($order->item_attachments[(string) $line->item_name] ?? [], 'is_array')),
             ];
         })->values();
 
@@ -461,6 +460,7 @@ class UpdateOrderRecords
             'uom' => filled($item['uom'] ?? null) ? strtoupper(trim((string) $item['uom'])) : $this->lookup->resolveUomCode($catalogKey, $name),
             'quantity' => max(1, (int) round((float) ($item['quantity'] ?? 1))),
             'unit_price' => null,
+            'attachments' => array_values(array_filter($item['attachments'] ?? [], 'is_array')),
         ];
     }
 
@@ -717,7 +717,8 @@ class UpdateOrderRecords
         $enquiry->update([
             'customer_do_number' => $this->clean($first['customer_do_number'] ?? null),
             'pickup_address' => $this->clean($first['pickup_location'] ?? null),
-            'preferred_delivery_date' => $this->clean($first['expected_delivery_date'] ?? null),
+            // the expected delivery date is a free-text remark: only a real date fills the enquiry's date
+            'preferred_delivery_date' => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($first['expected_delivery_date'] ?? '')) ? $first['expected_delivery_date'] : $enquiry->preferred_delivery_date?->toDateString(),
             'special_requirements' => $pairs->map(fn (array $pair) => trim((string) ($pair['instructions'] ?? '')))->filter()->implode("\n") ?: null,
         ]);
 
@@ -782,7 +783,7 @@ class UpdateOrderRecords
         $payload = $enquiry->payload ?? [];
         // portal destinations carry no DO number / delivery date / pickup-or-store of their own: they inherit the enquiry's
         $fallback = ['customer_do_number' => $enquiry->customer_do_number, 'expected_delivery_date' => $enquiry->preferred_delivery_date?->toDateString(), 'drop_off_type' => DropOffType::Other->value, 'service_type' => $enquiry->service_type?->value ?? ServiceType::Pickup->value];
-        $keys = ['consignee_name', 'address', 'city', 'drop_off_type', 'customer_do_number', 'expected_delivery_date', 'service_type', 'store_branch_id', 'consignor_pic_name', 'consignor_pic_phone', 'consignee_pic_name', 'consignee_pic_phone'];
+        $keys = ['consignee_name', 'address', 'city', 'drop_off_type', 'customer_do_number', 'expected_delivery_date', 'service_type', 'store_branch_id', 'store_id', 'consignor_pic_name', 'consignor_pic_phone', 'consignee_pic_name', 'consignee_pic_phone', 'attention', 'customer_pic_phone'];
 
         return [
             collect($payload['destinations'] ?? [])->filter(fn ($d) => is_array($d))
@@ -934,7 +935,8 @@ class UpdateOrderRecords
         // a consignee left blank stays blank (the price column / destination keeps its own name)
         $fields['consignee_name'] = $consignee !== '' ? $consignee : null;
         $fields['service_type'] = $serviceType;
-        // the store (an O&G branch) belongs to a Store record only
+        // the store (and its branch) belongs to a Store record only
+        $fields['store_id'] = $serviceType === ServiceType::Store->value && filled($pair['store_id'] ?? null) ? (int) $pair['store_id'] : null;
         $fields['store_branch_id'] = $serviceType === ServiceType::Store->value && filled($pair['store_branch_id'] ?? null) ? (int) $pair['store_branch_id'] : null;
         $fields['destination_types'] = [['column' => $column, 'drop_off_type' => $dropOffType, 'service_type' => $serviceType]];
         $fields['notes'] = static::notesWithInstructions($order->notes, $pair['instructions'] ?? null);
@@ -954,14 +956,15 @@ class UpdateOrderRecords
             if ($type && $current === null) {
                 $fields['order_type'] = $type->value;
             } elseif ($type && $current !== $type && ($customerChanged || $this->headerChanged($data, 'order_type'))) {
-                // same customer: the transition rules of "Change payment term" (ChangeOrderType): Cash remains Cash, COD only to Cash
-                if (! $customerChanged && ! $current->canChangeTo($type)) {
+                // same customer: the rules of "Change payment term" (ChangeOrderType): any until the customer
+                // confirms or a payment is recorded, fixed after that
+                if (! $customerChanged && ! $order->canChangeOrderTypeTo($type)) {
                     throw new InvalidArgumentException(sprintf(
                         '%s: payment term %s cannot be changed to %s (allowed: %s).',
                         $order->number,
                         $current->getLabel(),
                         $type->getLabel(),
-                        collect($current->allowedTransitions())->map->getLabel()->implode(', '),
+                        collect($order->allowedOrderTypes())->map->getLabel()->implode(', '),
                     ));
                 }
 
@@ -979,6 +982,15 @@ class UpdateOrderRecords
             if (array_key_exists('customer_address', $data) && $this->headerChanged($data, 'customer_address')) {
                 $fields['customer_address'] = $this->clean($data['customer_address']);
             }
+
+            // the customer's person in charge and contact number: the same, once the user changes them
+            if (array_key_exists('customer_pic_name', $data) && $this->headerChanged($data, 'customer_pic_name')) {
+                $fields['attention'] = $this->clean($data['customer_pic_name']);
+            }
+
+            if (array_key_exists('customer_pic_phone', $data) && $this->headerChanged($data, 'customer_pic_phone')) {
+                $fields['customer_pic_phone'] = $this->clean($data['customer_pic_phone']);
+            }
         }
 
         // photos uploaded for this block are added to the record's own files (none is removed)
@@ -987,6 +999,26 @@ class UpdateOrderRecords
         if ($newPhotos !== []) {
             $fields['attachments'] = array_values(array_merge(CreateOrderFromEnquiry::attachmentPaths($order->attachments ?? []), $newPhotos));
             $extraChanges[] = count($newPhotos).' '.Str::plural('photo', count($newPhotos)).' added';
+        }
+
+        // photos uploaded per product are added to the record's product photos (none is removed)
+        $itemPhotos = CreateOrderFromEnquiry::itemAttachments($pair['items'] ?? []);
+
+        if ($itemPhotos !== []) {
+            $saved = is_array($order->item_attachments) ? $order->item_attachments : [];
+            $added = 0;
+
+            foreach ($itemPhotos as $name => $files) {
+                $known = CreateOrderFromEnquiry::attachmentPaths($saved[$name] ?? []);
+                $new = array_values(array_filter($files, fn (array $file) => ! in_array($file['path'], $known, true)));
+                $added += count($new);
+                $saved[$name] = array_values(array_merge(array_values(array_filter($saved[$name] ?? [], 'is_array')), $new));
+            }
+
+            if ($added > 0) {
+                $fields['item_attachments'] = $saved;
+                $extraChanges[] = $added.' product '.Str::plural('photo', $added).' added';
+            }
         }
 
         $changes = array_merge($extraChanges, $this->fieldChanges($order, $fields, $dropOffType));
@@ -1018,6 +1050,11 @@ class UpdateOrderRecords
                 $price = $lineType === 'lorry' || ! $ownerId
                     ? null
                     : ($this->lookup->lookupForCustomer($customerId, $name, $column, (float) $quantity)['price'] ?? null);
+
+                // no special / price-list rate: the price keyed in on the page
+                if ($price === null && $ownerId && is_numeric($item['unit_price'] ?? null)) {
+                    $price = (float) $item['unit_price'];
+                }
             }
 
             // no price yet: still a line (without a unit price), priced later under Items & pricing
@@ -1125,6 +1162,8 @@ class UpdateOrderRecords
         $labels = self::PAIR_FIELDS + [
             'customer_id' => 'customer',
             'customer_address' => 'billing address',
+            'attention' => 'customer PIC',
+            'customer_pic_phone' => 'customer contact no.',
             'order_type' => 'payment term',
             'service_type' => 'pickup / store',
         ];
@@ -1199,19 +1238,8 @@ class UpdateOrderRecords
             return (string) $value->value;
         }
 
-        if ($key === 'expected_delivery_date') {
-            if ($value instanceof CarbonInterface) {
-                return $value->toDateString();
-            }
 
-            try {
-                return filled($value) ? Carbon::parse((string) $value)->toDateString() : '';
-            } catch (Throwable) {
-                return (string) $value;
-            }
-        }
-
-        if (in_array($key, ['from_location_id', 'to_location_id', 'customer_id', 'store_branch_id'], true)) {
+        if (in_array($key, ['from_location_id', 'to_location_id', 'customer_id', 'store_branch_id', 'store_id'], true)) {
             return filled($value) ? (string) (int) $value : '';
         }
 
@@ -1230,10 +1258,10 @@ class UpdateOrderRecords
             'from_location_id', 'to_location_id' => Location::query()->whereKey($value)->value('name') ?? (string) $value,
             'customer_id' => Customer::query()->whereKey($value)->value('company_name') ?? (string) $value,
             'store_branch_id' => Branch::query()->whereKey($value)->value('name') ?? (string) $value,
+            'store_id' => Store::query()->whereKey($value)->value('name') ?? (string) $value,
             'order_type' => OrderType::tryFrom((string) $value)?->getLabel() ?? (string) $value,
             'service_type' => ServiceType::tryFrom((string) $value)?->getLabel() ?? (string) $value,
             'drop_off_type' => DropOffType::tryFrom((string) $value)?->getLabel() ?? ucfirst((string) $value),
-            'expected_delivery_date' => $this->comparable($key, $value),
             default => (string) $value,
         };
 
@@ -1278,11 +1306,14 @@ class UpdateOrderRecords
             'from_location_id' => $this->clean($pair['from_location_id'] ?? null),
             // the order's billing address (blank: CreateOrderFromEnquiry falls back to the customer's saved address)
             'customer_address' => $this->billingAddress($pair, $data),
+            // the customer's person in charge and contact number of the page (else the customer's default)
+            ...$this->customerPic($data),
             'pickup_location' => $this->clean($pair['pickup_location'] ?? null),
             'drop_off_type' => $this->clean($pair['drop_off_type'] ?? null),
             // Pickup or Store (with the branch) per block; an older caller: the header value
             'service_type' => $this->clean($pair['service_type'] ?? null) ?? $this->clean($data['service_type'] ?? null),
             'store_branch_id' => $this->clean($pair['store_branch_id'] ?? null),
+            'store_id' => $this->clean($pair['store_id'] ?? null),
             'consignor_pic_name' => $this->clean($pair['consignor_pic_name'] ?? null),
             'consignor_pic_phone' => $this->clean($pair['consignor_pic_phone'] ?? null),
             'consignee_pic_name' => $this->clean($pair['consignee_pic_name'] ?? null),
@@ -1300,6 +1331,8 @@ class UpdateOrderRecords
                     'quantity' => max(1, (int) round((float) ($item['quantity'] ?? 1))),
                     'catalog_key' => $this->clean($item['catalog_key'] ?? null),
                     'line_type' => $this->clean($item['line_type'] ?? null),
+                    'unit_price' => is_numeric($item['unit_price'] ?? null) ? (float) $item['unit_price'] : null,
+                    'attachments' => array_values(array_filter($item['attachments'] ?? [], 'is_array')),
                 ])
                 ->values()
                 ->all(),
@@ -1364,6 +1397,14 @@ class UpdateOrderRecords
                             'catalog_key' => $this->clean($item['catalog_key'] ?? null),
                             'line_type' => $this->clean($item['line_type'] ?? null),
                         ]);
+
+                        // photos of the product: the ones it had plus the ones just uploaded
+                        $known = CreateOrderFromEnquiry::attachmentPaths($previous['attachments'] ?? []);
+                        $new = array_values(array_filter($item['attachments'] ?? [], fn ($file) => is_array($file) && filled($file['path'] ?? null) && ! in_array($file['path'], $known, true)));
+
+                        if ($new !== []) {
+                            $row['attachments'] = array_values(array_merge(array_values(array_filter($previous['attachments'] ?? [], 'is_array')), $new));
+                        }
 
                         if ($lineNames !== null && ! in_array($name, $lineNames, true)) {
                             $row['unpriced'] = true;
@@ -1444,10 +1485,12 @@ class UpdateOrderRecords
             // an older destination keeps its own through the merge with $base)
             'consignor_name' => $this->clean($pair['consignor_name'] ?? null),
             'store_branch_id' => $serviceType === ServiceType::Store->value ? $this->clean($pair['store_branch_id'] ?? null) : null,
+            'store_id' => $serviceType === ServiceType::Store->value ? $this->clean($pair['store_id'] ?? null) : null,
             'from_location_id' => $this->clean($pair['from_location_id'] ?? null),
             'consignor_pic_name' => $this->clean($pair['consignor_pic_name'] ?? null),
             'consignor_pic_phone' => $this->clean($pair['consignor_pic_phone'] ?? null),
             'customer_address' => $this->billingAddress($pair, $data),
+            ...$this->customerPic($data),
             'pickup_location' => $this->clean($pair['pickup_location'] ?? null),
             'to_location_id' => $toLocationId,
             'consignee_pic_name' => $this->clean($pair['consignee_pic_name'] ?? null),
@@ -1480,8 +1523,9 @@ class UpdateOrderRecords
             'drop_off_type' => $type instanceof BackedEnum ? $type->value : $type,
             'service_type' => $order->service_type?->value,
             'customer_do_number' => $order->customer_do_number,
-            'expected_delivery_date' => $order->expected_delivery_date?->toDateString(),
+            'expected_delivery_date' => $order->expected_delivery_date,
             'store_branch_id' => $order->store_branch_id,
+            'store_id' => $order->store_id,
             'consignor_pic_name' => $order->consignor_pic_name,
             'consignor_pic_phone' => $order->consignor_pic_phone,
             'consignee_pic_name' => $order->consignee_pic_name,
@@ -1510,6 +1554,27 @@ class UpdateOrderRecords
         }
 
         return count($files);
+    }
+
+    /**
+     * The customer's person in charge and contact number of the Edit order page, for a new record or order-form
+     * destination (nothing when the page did not send them: the customer's default applies).
+     *
+     * @return array<string, mixed>
+     */
+    private function customerPic(array $data): array
+    {
+        $pic = [];
+
+        if (array_key_exists('customer_pic_name', $data)) {
+            $pic['attention'] = $this->clean($data['customer_pic_name']);
+        }
+
+        if (array_key_exists('customer_pic_phone', $data)) {
+            $pic['customer_pic_phone'] = $this->clean($data['customer_pic_phone']);
+        }
+
+        return $pic;
     }
 
     /** The order's billing address: the order-level value of the Edit order page, else a block's own (older callers). */

@@ -1,6 +1,9 @@
-{{-- Previous records of one product for the customer (history icon of a product row on Create / Edit order). Information only. --}}
+{{-- Prices and previous records of one product for the customer (history icon of a product row on Create / Edit order): the customer's special price, the price-list (default) price and the earlier orders. Information only. --}}
 @php
     $rows = $rows ?? [];
+    $special = $special ?? [];
+    $default = $default ?? [];
+    $money = fn ($value) => $value !== null ? 'RM '.number_format((float) $value, 2) : '—';
     $sameCount = collect($rows)->where('same_destination', true)->count();
 @endphp
 <div class="ow-history">
@@ -20,6 +23,14 @@
         .ow-history a.oh-link { color: var(--oh-link); font-weight: 600; }
         .ow-history a.oh-link:hover { text-decoration: underline; }
         .ow-history .oh-empty { padding: 1.25rem .5rem; text-align: center; color: var(--oh-muted); }
+        .ow-history .oh-section { margin: 0 0 1rem; }
+        .ow-history .oh-title { margin: 0 0 .35rem; font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+        .ow-history .oh-title span { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--oh-muted); }
+        .ow-history .oh-none { padding: .55rem .5rem; color: var(--oh-muted); border-bottom: 1px solid var(--oh-line-2); }
+        .ow-history .oh-small { min-width: 26rem; }
+        .ow-history .oh-tiers { display: flex; flex-wrap: wrap; gap: .25rem .4rem; }
+        .ow-history .oh-tier { padding: 0 .4rem; border: 1px solid var(--oh-line); border-radius: .35rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .ow-history .oh-tier.oh-tier-on { background: var(--oh-hl-bg); color: var(--oh-hl-fg); border-color: var(--oh-hl-bd); font-weight: 600; }
     </style>
 
     <div class="oh-meta">
@@ -28,6 +39,63 @@
         @if (filled($location ?? null))<span><strong>This row's destination:</strong> {{ $location }}{{ $sameCount > 0 ? ' · shown first' : '' }}</span>@endif
     </div>
 
+    {{-- special price: Customer → Special pricing --}}
+    <div class="oh-section">
+        <div class="oh-title">Special price <span>· this customer's price for the product</span></div>
+        @if ($special === [])
+            <div class="oh-none">No special price for this customer</div>
+        @else
+            <div class="oh-wrap">
+                <table class="oh-small">
+                    <thead><tr><th>Destination</th><th>UOM</th><th class="oh-num">Unit price</th><th class="oh-num">Min. charge</th></tr></thead>
+                    <tbody>
+                        @foreach ($special as $row)
+                            <tr @class(['oh-same' => $row['same']])>
+                                <td>{{ $row['destination'] }}@if ($row['same'])<div><span class="oh-pill">This row's destination</span></div>@endif</td>
+                                <td>{{ $row['uom'] ?? '—' }}</td>
+                                <td class="oh-num">{{ $money($row['price']) }}</td>
+                                <td class="oh-num">{{ $money($row['min_charge']) }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </div>
+
+    {{-- default price: the price list (UOM quantity tiers, or the one rate of a transport item / lorry) --}}
+    <div class="oh-section">
+        <div class="oh-title">Default price <span>· price list per location</span></div>
+        @if ($default === [])
+            <div class="oh-none">No price list rate for this product</div>
+        @else
+            <div class="oh-wrap">
+                <table class="oh-small">
+                    <thead><tr><th>Location</th><th>Rate</th></tr></thead>
+                    <tbody>
+                        @foreach ($default as $row)
+                            <tr @class(['oh-same' => $row['same']])>
+                                <td class="oh-nowrap">{{ $row['location'] }}@if ($row['same'])<div><span class="oh-pill">This row's destination</span></div>@endif</td>
+                                <td>
+                                    @if ($row['tiers'] !== [])
+                                        <div class="oh-tiers">
+                                            @foreach ($row['tiers'] as $tier)
+                                                <span @class(['oh-tier', 'oh-tier-on' => $tier['active']]) @if ($tier['active']) title="This row's quantity" @endif>Qty {{ $tier['range'] }} · {{ $money($tier['price']) }}</span>
+                                            @endforeach
+                                        </div>
+                                    @else
+                                        {{ $money($row['price']) }}
+                                    @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </div>
+
+    <div class="oh-title">Previous records <span>· earlier orders of this customer, newest first</span></div>
     <div class="oh-wrap">
         <table>
             <thead>

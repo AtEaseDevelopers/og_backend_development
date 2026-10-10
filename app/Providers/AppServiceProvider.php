@@ -57,5 +57,18 @@ class AppServiceProvider extends ServiceProvider
         \Filament\Tables\Filters\SelectFilter::configureUsing(
             fn (\Filament\Tables\Filters\SelectFilter $filter) => $filter->searchable()->preload(),
         );
+
+        /*
+         * Excel-style column filters: tag each text / icon column header with its column name.
+         * public/js/og/excel-filter.js adds the funnel on pages using HasExcelColumnFilters.
+         */
+        foreach ([\Filament\Tables\Columns\TextColumn::class, \Filament\Tables\Columns\IconColumn::class] as $columnClass) {
+            $columnClass::configureUsing(
+                // every column can be shown / hidden with the column toggle (a resource may still pass toggleable(...) itself)
+                fn (\Filament\Tables\Columns\Column $column) => $column
+                    ->extraHeaderAttributes(fn (): array => ['data-og-col' => $column->getName()], merge: true)
+                    ->toggleable(),
+            );
+        }
     }
 }

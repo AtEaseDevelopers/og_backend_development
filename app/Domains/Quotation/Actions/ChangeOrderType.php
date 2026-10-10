@@ -11,8 +11,8 @@ use App\Models\User;
 use InvalidArgumentException;
 
 /**
- * Section C: Term orders may change to Term / Cash / COD; COD may change only to Cash;
- * Cash cannot change. Not allowed once billing has been issued.
+ * Payment term of an order record: any (Credit / Term for credit customers) until the customer confirms or a
+ * payment is recorded; after that it is fixed (Quotation::allowedOrderTypes / paymentTermLocked).
  */
 class ChangeOrderType
 {
@@ -29,12 +29,14 @@ class ChangeOrderType
             if ($to === OrderType::Term && ! $quotation->customer?->is_credit) {
                 throw new InvalidArgumentException('Only credit customers can have Credit / Term orders.');
             }
-        } elseif (! $current->canChangeTo($to)) {
+        } elseif ($current !== $to && $quotation->paymentTermLocked()) {
+            throw new InvalidArgumentException('The payment term of '.$quotation->number.' can no longer change: the customer has confirmed or a payment has been recorded.');
+        } elseif (! $quotation->canChangeOrderTypeTo($to)) {
             throw new InvalidArgumentException(sprintf(
-                'Order type %s cannot be changed to %s (allowed: %s).',
+                'Payment term %s cannot be changed to %s (allowed: %s).',
                 $current->getLabel(),
                 $to->getLabel(),
-                collect($current->allowedTransitions())->map->getLabel()->implode(', '),
+                collect($quotation->allowedOrderTypes())->map->getLabel()->implode(', '),
             ));
         }
 
@@ -61,6 +63,9 @@ class ChangeOrderType
             'user_id' => $actor->id,
             'remarks' => sprintf('Order type changed %s → %s%s', $current?->getLabel() ?? '—', $to->getLabel(), $reason ? ': '.$reason : ''),
         ]);
+
+        // waiting for credit approval and no longer Credit / Term: the approval is not needed any more
+        app(ReleaseCreditGate::class)->execute($quotation, $actor, 'payment term changed to '.$to->getLabel());
 
         return $quotation->fresh();
     }

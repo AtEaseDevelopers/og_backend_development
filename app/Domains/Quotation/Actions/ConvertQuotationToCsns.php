@@ -114,8 +114,8 @@ class ConvertQuotationToCsns
                     'to_location_id' => $single ? $quotation->to_location_id : null,
                     'subtotal' => $subtotal,
                     'total_amount' => $subtotal,
-                    // the CSN date is the order's expected delivery date (today when the order has none)
-                    'issued_at' => $quotation->expected_delivery_date?->toDateString() ?? now()->toDateString(),
+                    // the CSN date is the day the CSN is created (the expected delivery date is a free-text remark)
+                    'issued_at' => now()->toDateString(),
                     'qr_token' => (string) Str::uuid(),
                     'tracking_token' => Str::random(40),
                     'created_by' => $actor->id,

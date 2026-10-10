@@ -9,6 +9,7 @@ use App\Domains\Dispatch\Actions\AssignCsnToLorry;
 use App\Domains\Dispatch\Actions\AssignDeliveryOrderToLorry;
 use App\Domains\Dispatch\Actions\CreateSubsheet;
 use App\Domains\Dispatch\Models\DeliveryOrder;
+use App\Domains\Dispatch\Models\Subsheet;
 use App\Domains\MasterData\Models\Customer;
 use App\Domains\MasterData\Models\Driver;
 use App\Domains\MasterData\Models\Location;
@@ -186,6 +187,7 @@ class ConsignmentNoteResource extends Resource
                             ->join('lorries', 'lorries.id', '=', 'delivery_orders.lorry_id')
                             ->whereColumn('delivery_orders.consignment_note_id', 'consignment_notes.id')
                             ->whereNull('delivery_orders.parent_do_id')
+                            ->whereNull('delivery_orders.subsheet_id')
                             ->orderBy('delivery_orders.id')
                             ->limit(1)
                             ->select('lorries.registration_no'),
@@ -202,92 +204,49 @@ class ConsignmentNoteResource extends Resource
             ->striped()
             // No Filament filters: the CSN list page has its own Orders-style filter card
             // (ListConsignmentNotes::applyFilterBar), with a "Filters +" panel instead of a dropdown modal.
+            // Assign to lorry: the CSNs ticked in the table and / or the subsheet lines ticked under them
+            // (ListConsignmentNotes::$selectedSubsheets); only subsheets ticked → the table header button
+            ->headerActions([
+                Tables\Actions\Action::make('assignSubsheetsToLorry')
+                    ->label(fn ($livewire) => 'Assign '.count($livewire->selectedSubsheets ?? []).' subsheet(s) to lorry')
+                    ->icon('heroicon-o-truck')
+                    ->visible(fn ($livewire) => ($livewire->selectedSubsheets ?? []) !== [] && ($livewire->selectedTableRecords ?? []) === [])
+                    ->modalHeading('Assign the selected subsheets to a lorry')
+                    ->modalSubmitActionLabel('Assign')
+                    ->form(fn ($livewire) => static::assignLorryFormSchema($livewire->selectedSubsheetRecords()))
+                    ->action(fn (array $data, $livewire) => static::assignSelection(collect(), $livewire->selectedSubsheetRecords(), $data, $livewire)),
+            ])
             ->bulkActions([
                 Tables\Actions\BulkAction::make('bulkAssignLorry')
                     ->label('Assign to lorry')
                     ->icon('heroicon-o-truck')
                     ->modalHeading('Assign the selected CSNs to a lorry')
-                    ->modalDescription('CSNs that already have a lorry, are cancelled or cannot be dispatched yet are skipped.')
+                    ->modalDescription(fn ($livewire) => 'CSNs that already have a lorry, are cancelled or cannot be dispatched yet are skipped.'
+                        .(($livewire->selectedSubsheets ?? []) !== [] ? ' The '.count($livewire->selectedSubsheets).' subsheet(s) ticked under the CSNs go on the same lorry.' : ''))
                     ->modalSubmitActionLabel('Assign')
-                    ->form(fn () => static::assignLorryFormSchema())
-                    ->action(function (Collection $records, array $data): void {
-                        [$done, $skipped] = [0, []];
-
-                        foreach ($records as $record) {
-                            if ($record->deliveryOrder()->exists() || $record->status === CsnStatus::Cancelled || ! $record->canAssignToLorry()) {
-                                $skipped[] = $record->number;
-
-                                continue;
-                            }
-
-                            try {
-                                static::runAssignAndSubsheets($record, $data, notify: false);
-                                $done++;
-                            } catch (Throwable $e) {
-                                $skipped[] = $record->number.' ('.$e->getMessage().')';
-                            }
-                        }
-
-                        $notice = Notification::make()
-                            ->title($done.' CSN(s) assigned')
-                            ->body($skipped ? 'Skipped: '.implode(', ', $skipped) : null);
-                        ($skipped ? $notice->warning() : $notice->success())->send();
-                    })
+                    ->form(fn ($livewire) => static::assignLorryFormSchema($livewire->selectedSubsheetRecords()))
+                    ->action(fn (Collection $records, array $data, $livewire) => static::assignSelection($records, $livewire->selectedSubsheetRecords(), $data, $livewire))
                     ->deselectRecordsAfterCompletion(),
                 Tables\Actions\BulkAction::make('bulkSubsheets')
                     ->label('Create subsheets')
                     ->icon('heroicon-o-document-duplicate')
                     ->color('warning')
                     ->modalHeading('Create subsheets for the selected CSNs')
-                    ->modalDescription('Each selected CSN gets a subsheet for every lorry chosen. CSNs without a main lorry yet are skipped.')
+                    ->modalDescription('Each selected CSN gets a subsheet (one per lorry when lorries are chosen). Without a lorry the subsheet is assigned later: tick it under its CSN and use Assign to lorry.')
                     ->modalSubmitActionLabel('Create subsheets')
-                    // 1. subsheet or transfer · 2. transfer code · 3. lorries
-                    ->form(fn () => [
-                        Forms\Components\Radio::make('task_type')
-                            ->label('Type')
-                            ->options([
-                                'incoming_psi' => 'Subsheet (pickup, bring goods to hub)',
-                                'transfer' => 'Transfer (handover leg)',
-                            ])
-                            ->default('incoming_psi')
-                            ->inline()
-                            ->live()
-                            ->afterStateUpdated(fn (Forms\Set $set) => $set('transfer_code', null))
-                            ->required(),
-                        Forms\Components\Select::make('transfer_code')
-                            ->label('Transfer code')
-                            ->options(fn (Forms\Get $get) => TransferCode::query()
-                                ->where('is_active', true)
-                                ->when($get('task_type') === 'incoming_psi', fn ($q) => $q->where('type', 'incoming'))
-                                ->orderBy('code')
-                                ->get()
-                                ->mapWithKeys(fn (TransferCode $t) => [$t->code => filled($t->name) ? $t->code.' — '.$t->name : $t->code]))
-                            ->searchable()
-                            ->nullable(),
-                        Forms\Components\Select::make('sub_lorry_ids')
-                            ->label('Lorries')
-                            ->helperText('Each selected CSN gets one subsheet per lorry.')
-                            ->options(fn () => static::lorryOptions())
-                            ->multiple()
-                            ->required()
-                            ->searchable(),
-                        Forms\Components\TextInput::make('segment_route')->label('Route')->maxLength(120),
-                        Forms\Components\Textarea::make('notes')->rows(2),
-                    ])
+                    ->form(fn () => static::subsheetCreateForm())
                     ->action(function (Collection $records, array $data): void {
                         [$created, $skipped] = [0, []];
 
                         foreach ($records as $record) {
-                            if (! $record->deliveryOrder?->job_sheet_id || $record->status === CsnStatus::Cancelled) {
-                                $skipped[] = $record->number;
+                            if ($record->status === CsnStatus::Cancelled) {
+                                $skipped[] = $record->number.' (cancelled)';
 
                                 continue;
                             }
 
                             try {
-                                // never a subsheet for the CSN's own main lorry
-                                $lorries = collect($data['sub_lorry_ids'] ?? [])->reject(fn ($id) => (int) $id === (int) $record->deliveryOrder->lorry_id);
-                                $created += static::createSubsheetsForLorries($record, $lorries, static::additionalTaskPayload($data));
+                                $created += static::createSubsheetsForLorries($record, collect($data['sub_lorry_ids'] ?? []), $data);
                             } catch (Throwable $e) {
                                 $skipped[] = $record->number.' ('.$e->getMessage().')';
                             }
@@ -295,7 +254,7 @@ class ConsignmentNoteResource extends Resource
 
                         $notice = Notification::make()
                             ->title($created.' subsheet(s) created')
-                            ->body($skipped ? 'Skipped (no main lorry yet or cancelled): '.implode(', ', $skipped) : null);
+                            ->body($skipped ? 'Skipped: '.implode(', ', $skipped) : null);
                         ($skipped ? $notice->warning() : $notice->success())->send();
                     })
                     ->deselectRecordsAfterCompletion(),
@@ -444,27 +403,12 @@ class ConsignmentNoteResource extends Resource
                     ->label('Add Subsheets')
                     ->icon('heroicon-o-document-duplicate')
                     ->color('warning')
-                    ->visible(fn (ConsignmentNote $record) => $record->deliveryOrder?->job_sheet_id
-                        && $record->status !== CsnStatus::Cancelled)
-                    ->form(fn (ConsignmentNote $record) => [
-                        Forms\Components\Select::make('sub_lorry_ids')
-                            ->label('Lorries for subsheets')
-                            ->helperText('Select one or more assisting / transfer lorries.')
-                            ->options(fn () => static::lorryOptions(
-                                excludeIds: array_filter([(int) $record->deliveryOrder?->lorry_id])
-                            ))
-                            ->multiple()
-                            ->required()
-                            ->searchable(),
-                        ...static::subsheetOptionFields(),
-                    ])
+                    ->visible(fn (ConsignmentNote $record) => $record->status !== CsnStatus::Cancelled)
+                    ->modalHeading(fn (ConsignmentNote $record) => 'Create subsheets for '.$record->number)
+                    ->form(fn () => static::subsheetCreateForm())
                     ->action(function (ConsignmentNote $record, array $data) {
                         try {
-                            $created = static::createSubsheetsForLorries(
-                                $record,
-                                collect($data['sub_lorry_ids'] ?? []),
-                                static::additionalTaskPayload($data),
-                            );
+                            $created = static::createSubsheetsForLorries($record, collect($data['sub_lorry_ids'] ?? []), $data);
 
                             Notification::make()
                                 ->title($created ? "{$created} subsheet(s) created" : 'No subsheets created')
@@ -486,7 +430,7 @@ class ConsignmentNoteResource extends Resource
     public static function deliveryState(ConsignmentNote $record): array
     {
         $dos = $record->relationLoaded('deliveryOrders') ? $record->deliveryOrders : $record->deliveryOrders()->with('failedDelivery')->get();
-        $main = $dos->whereNull('parent_do_id')->sortByDesc('id')->first();
+        $main = $dos->whereNull('parent_do_id')->whereNull('subsheet_id')->sortByDesc('id')->first();
 
         if (! $main) {
             return ['label' => 'Not assigned', 'color' => 'gray', 'note' => null];
@@ -517,9 +461,12 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
     /** Under the CSN number: customer DO / SA prefix, the transfer code(s) and Subsheet / Break bulk tags. */
     public static function numberColumnNotes(ConsignmentNote $record): ?HtmlString
     {
+        $mainLorry = $record->relationLoaded('deliveryOrder') ? $record->deliveryOrder?->lorry?->registration_no : null;
         $parts = array_filter([
             $record->customer_do_number ? 'DO '.e($record->customer_do_number) : null,
             $record->sa_prefix ? e($record->sa_prefix) : null,
+            // the CSN's own lorry (its main delivery order)
+            $mainLorry ? static::lorryPlate($mainLorry) : null,
         ]);
 
         $codes = collect([$record->transferCode?->code])
@@ -534,21 +481,56 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
             $tags->push('<span class="ow-csn-tag ow-csn-tag-code" title="Transfer code">'.e($codes->implode(', ')).'</span>');
         }
 
-        $subsheets = $record->relationLoaded('subsheets') ? $record->subsheets->count() : 0;
-
-        if ($subsheets > 0) {
-            $tags->push('<span class="ow-csn-tag">Subsheet'.($subsheets > 1 ? ' ×'.$subsheets : '').'</span>');
-        }
 
         if (($record->break_bulks_count ?? 0) > 0) {
             $tags->push('<span class="ow-csn-tag ow-csn-tag-bb">Break bulk'.($record->break_bulks_count > 1 ? ' ×'.$record->break_bulks_count : '').'</span>');
         }
 
-        if ($parts === [] && $tags->isEmpty()) {
+        $lines = static::subsheetLines($record);
+
+        if ($parts === [] && $tags->isEmpty() && $lines === '') {
             return null;
         }
 
-        return new HtmlString(trim(implode(' · ', $parts).($tags->isNotEmpty() ? '<span class="ow-csn-tags">'.$tags->implode('').'</span>' : '')));
+        return new HtmlString(trim(implode(' · ', $parts).($tags->isNotEmpty() ? '<span class="ow-csn-tags">'.$tags->implode('').'</span>' : '')).$lines);
+    }
+
+    /** A lorry plate with a lorry icon (CSN number column: the CSN's lorry and each subsheet's). */
+    public static function lorryPlate(string $plate): string
+    {
+        return '<span class="ow-lorry-plate" title="Lorry">'.svg('heroicon-o-truck', 'ow-lorry-icon')->toHtml().e($plate).'</span>';
+    }
+
+    /**
+     * The CSN's subsheets as their own lines under its number: number, type, transfer code and lorry. A subsheet
+     * without a lorry yet can be ticked (ListConsignmentNotes::$selectedSubsheets) and assigned with Assign to
+     * lorry, alone or together with CSNs.
+     */
+    public static function subsheetLines(ConsignmentNote $record): string
+    {
+        $subsheets = $record->relationLoaded('subsheets') ? $record->subsheets : collect();
+
+        if ($subsheets->isEmpty()) {
+            return '';
+        }
+
+        $selectable = $record->status !== CsnStatus::Cancelled;
+
+        return '<span class="ow-sub-lines">'.$subsheets->sortBy('id')->map(function (Subsheet $subsheet) use ($selectable): string {
+            $lorry = $subsheet->subLorry?->registration_no;
+            $tick = $selectable && ! $subsheet->isAssigned()
+                ? '<input type="checkbox" class="ow-sub-tick" wire:model.live="selectedSubsheets" value="'.$subsheet->id.'" aria-label="Select subsheet '.e($subsheet->number).'">'
+                : '<span class="ow-sub-tick-gap" aria-hidden="true"></span>';
+
+            return '<label class="ow-sub-line" title="Subsheet '.e($subsheet->number).'">'
+                .$tick
+                .'<span class="ow-sub-arrow" aria-hidden="true">↳</span>'
+                .'<span class="ow-sub-no">'.e($subsheet->number).'</span>'
+                .'<span class="ow-csn-tag ow-sub-type-'.e((string) $subsheet->task_type).'">'.e($subsheet->typeLabel()).'</span>'
+                .($subsheet->transfer_code ? '<span class="ow-csn-tag ow-csn-tag-code">'.e($subsheet->transfer_code).'</span>' : '')
+                .'<span class="ow-sub-lorry">'.($lorry ? static::lorryPlate($lorry) : 'No lorry yet').'</span>'
+                .'</label>';
+        })->implode('').'</span>';
     }
 
     /**
@@ -604,69 +586,100 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
     }
 
     /**
+     * Assign to lorry: only the lorry (its default driver drives; the trip is today's). With subsheets in the
+     * selection also their type (default Transfer / handover) and transfer code, filled from the subsheets when
+     * they agree.
+     *
+     * @param  Collection<int, Subsheet>|null  $subsheets
      * @return array<int, Forms\Components\Component>
      */
-    public static function assignLorryFormSchema(): array
+    public static function assignLorryFormSchema(?Collection $subsheets = null): array
     {
-        return [
-            Forms\Components\Group::make([
-                Forms\Components\Select::make('lorry_id')
-                    ->label('Main lorry')
-                    ->placeholder('Select Main lorry')
-                    ->options(fn () => static::lorryOptions())
-                    ->required()
-                    ->searchable()
-                    ->live()
-                    ->afterStateUpdated(function ($state, Forms\Set $set) {
-                        $lorry = Lorry::query()->find($state);
-                        $set('driver_id', $lorry?->default_driver_id);
-                    }),
-                Forms\Components\Select::make('driver_id')
-                    ->label('Driver')
-                    ->placeholder('Select Driver')
-                    ->options(fn () => static::driverOptions())
-                    ->searchable()
-                    ->required(),
-                Forms\Components\Select::make('sub_lorry_ids')
-                    ->label('Additional lorries (subsheets)')
-                    ->placeholder('Select Additional lorries')
-                    ->helperText('Optional. Each selected lorry creates a subsheet under this CSN.')
-                    ->options(fn (Forms\Get $get) => static::lorryOptions(
-                        excludeIds: array_filter([(int) $get('lorry_id')])
-                    ))
-                    ->multiple()
-                    ->searchable()
-                    ->columnSpanFull(),
-                Forms\Components\DatePicker::make('operating_date')
-                    ->label('Operating date')
-                    ->default(now()),
-                Forms\Components\Select::make('transfer_code')
-                    ->label('Transfer code')
-                    ->placeholder('Select Transfer code')
-                    ->options(fn () => TransferCode::query()
-                        ->where('is_active', true)
-                        ->pluck('name', 'code'))
-                    ->searchable()
-                    ->nullable(),
-                Forms\Components\Select::make('task_type')
-                    ->label('Task type')
-                    ->options([
-                        'incoming_psi' => 'Incoming pickup (bring goods to hub)',
-                        'transfer' => 'Transfer / handover leg',
-                    ])
-                    ->default('incoming_psi')
-                    ->required(),
-                Forms\Components\TextInput::make('segment_route')
-                    ->label('Pickup route')
-                    ->placeholder('Enter Pickup route')
-                    ->maxLength(120),
-                Forms\Components\Textarea::make('notes')
-                    ->label('Notes')
-                    ->placeholder('Enter any additional notes...')
-                    ->rows(3)
-                    ->columnSpanFull(),
-            ])->columns(2),
+        $subsheets ??= collect();
+        $types = $subsheets->pluck('task_type')->filter()->unique();
+        $codes = $subsheets->pluck('transfer_code')->filter()->unique();
+
+        $fields = [
+            Forms\Components\Select::make('lorry_id')
+                ->label('Lorry')
+                ->placeholder('Select lorry')
+                ->helperText('The lorry\'s default driver drives it.')
+                ->options(fn () => static::lorryOptions())
+                ->required()
+                ->searchable()
+                ->columnSpanFull(),
         ];
+
+        if ($subsheets->isNotEmpty()) {
+            $fields[] = Forms\Components\Select::make('task_type')
+                ->label('Task type (subsheets)')
+                ->options(collect(Subsheet::ADMIN_TYPES)->mapWithKeys(fn (string $type) => [$type => static::subsheetTypeOption($type)])->all())
+                ->default($types->count() === 1 && in_array($types->first(), Subsheet::ADMIN_TYPES, true) ? $types->first() : 'transfer')
+                ->live()
+                ->required();
+            $fields[] = Forms\Components\Select::make('transfer_code')
+                ->label('Transfer code (subsheets)')
+                ->options(fn (Forms\Get $get) => static::transferCodeOptions($get('task_type')))
+                ->default($codes->count() === 1 ? $codes->first() : null)
+                ->searchable()
+                ->required();
+        }
+
+        return [Forms\Components\Group::make($fields)->columns(2)];
+    }
+
+    /**
+     * Assign to lorry for the CSNs and subsheets selected on the list (either may be empty): each CSN gets its
+     * delivery order on the lorry, each subsheet its own leg (with the type / transfer code of the form).
+     *
+     * @param  Collection<int, ConsignmentNote>  $records
+     * @param  Collection<int, Subsheet>  $subsheets
+     */
+    public static function assignSelection(Collection $records, Collection $subsheets, array $data, $livewire = null): void
+    {
+        [$done, $doneSubsheets, $skipped] = [0, 0, []];
+        $lorry = Lorry::query()->findOrFail($data['lorry_id']);
+
+        foreach ($records as $record) {
+            if ($record->deliveryOrder()->exists() || $record->status === CsnStatus::Cancelled || ! $record->canAssignToLorry()) {
+                $skipped[] = $record->number;
+
+                continue;
+            }
+
+            try {
+                static::runAssignAndSubsheets($record, $data, notify: false);
+                $done++;
+            } catch (Throwable $e) {
+                $skipped[] = $record->number.' ('.$e->getMessage().')';
+            }
+        }
+
+        foreach ($subsheets as $subsheet) {
+            try {
+                app(CreateSubsheet::class)->assignToLorry($subsheet, $lorry, array_filter([
+                    'task_type' => $data['task_type'] ?? null,
+                    'transfer_code' => $data['transfer_code'] ?? null,
+                ], fn ($value) => filled($value)));
+                $doneSubsheets++;
+            } catch (Throwable $e) {
+                $skipped[] = $subsheet->number.' ('.$e->getMessage().')';
+            }
+        }
+
+        if ($livewire && property_exists($livewire, 'selectedSubsheets')) {
+            $livewire->selectedSubsheets = [];
+        }
+
+        $title = collect([
+            $done ? $done.' CSN(s)' : null,
+            $doneSubsheets ? $doneSubsheets.' subsheet(s)' : null,
+        ])->filter()->implode(' and ');
+
+        $notice = Notification::make()
+            ->title(($title ?: 'Nothing').' assigned to '.$lorry->registration_no)
+            ->body($skipped ? 'Skipped: '.implode(', ', $skipped) : null);
+        ($skipped ? $notice->warning() : $notice->success())->send();
     }
 
     /**
@@ -816,64 +829,86 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
         return $location ? strtoupper($location->name) : null;
     }
 
+    /** Puts one CSN on the lorry of the form (driver: the lorry's default driver; today's trip). */
     public static function runAssignAndSubsheets(ConsignmentNote $record, array $data, bool $notify = true): void
     {
         $do = app(AssignCsnToLorry::class)->execute(
             $record,
             Lorry::findOrFail($data['lorry_id']),
             $data['operating_date'] ?? null,
-            isset($data['driver_id']) ? (int) $data['driver_id'] : null,
-        );
-
-        $created = static::createSubsheetsForLorries(
-            $record->fresh(['deliveryOrder']),
-            collect($data['sub_lorry_ids'] ?? []),
-            static::additionalTaskPayload($data)
+            filled($data['driver_id'] ?? null) ? (int) $data['driver_id'] : null,
         );
 
         if ($notify) {
             Notification::make()
                 ->title('Assigned — DO '.$do->number)
-                ->body($created ? "{$created} subsheet(s) created for additional lorries." : null)
                 ->success()
                 ->send();
         }
     }
 
     /**
+     * Create subsheets: Type (Subsheet / Transfer, Transfer by default; Break bulk is shown but set from the driver
+     * app only), transfer code (required) and lorries (optional: without one the subsheet is assigned later).
+     *
+     * @return array<int, Forms\Components\Component>
+     */
+    public static function subsheetCreateForm(): array
+    {
+        return [
+            Forms\Components\Radio::make('task_type')
+                ->label('Type')
+                ->options(collect(Subsheet::TYPES)->mapWithKeys(fn (string $label, string $type) => [$type => static::subsheetTypeOption($type)])->all())
+                ->disableOptionWhen(fn (string $value): bool => ! in_array($value, Subsheet::ADMIN_TYPES, true))
+                ->default('transfer')
+                ->inline()
+                ->live()
+                ->afterStateUpdated(fn (Forms\Set $set) => $set('transfer_code', null))
+                ->required(),
+            Forms\Components\Select::make('transfer_code')
+                ->label('Transfer code')
+                ->options(fn (Forms\Get $get) => static::transferCodeOptions($get('task_type')))
+                ->searchable()
+                ->required(),
+            Forms\Components\Select::make('sub_lorry_ids')
+                ->label('Lorries')
+                ->helperText('Optional. One subsheet per lorry; without a lorry the subsheet is created now and assigned to a lorry later.')
+                ->options(fn () => static::lorryOptions())
+                ->multiple()
+                ->searchable(),
+        ];
+    }
+
+    public static function subsheetTypeOption(string $type): string
+    {
+        return match ($type) {
+            'incoming_psi' => 'Subsheet (pickup, bring goods to hub)',
+            'transfer' => 'Transfer (to another lorry to send)',
+            'break_bulk' => 'Break bulk (from the driver app)',
+            default => Subsheet::TYPES[$type] ?? $type,
+        };
+    }
+
+    /** Active transfer codes; a Subsheet (pickup) takes the incoming ones. @return array<string, string> */
+    public static function transferCodeOptions(?string $type = null): array
+    {
+        return TransferCode::query()
+            ->where('is_active', true)
+            ->when($type === 'incoming_psi', fn ($q) => $q->where('type', 'incoming'))
+            ->orderBy('code')
+            ->get()
+            ->mapWithKeys(fn (TransferCode $t) => [$t->code => filled($t->name) ? $t->code.' — '.$t->name : $t->code])
+            ->all();
+    }
+
+    /**
+     * Subsheet fields of older pages (CSN view / edit): the same as Create subsheets.
+     *
      * @return array<int, Forms\Components\Component>
      */
     public static function subsheetOptionFields(bool $includeAmounts = false): array
     {
-        $fields = [
-            Forms\Components\Select::make('transfer_code')
-                ->label('Transfer code')
-                ->options(fn () => TransferCode::query()
-                    ->where('is_active', true)
-                    ->pluck('name', 'code'))
-                ->searchable()
-                ->nullable(),
-            Forms\Components\Select::make('task_type')
-                ->label('Task type')
-                ->options([
-                    'incoming_psi' => 'Incoming pickup (bring goods to hub)',
-                    'transfer' => 'Transfer / handover leg',
-                ])
-                ->default('incoming_psi')
-                ->required(),
-            Forms\Components\TextInput::make('segment_route')
-                ->label('Pickup route')
-                ->maxLength(120),
-        ];
-
-        if ($includeAmounts) {
-            $fields[] = Forms\Components\TextInput::make('psi_amount')->numeric()->default(0)->prefix('RM');
-            $fields[] = Forms\Components\TextInput::make('pso_amount')->numeric()->default(0)->prefix('RM');
-        }
-
-        $fields[] = Forms\Components\Textarea::make('notes')->rows(2);
-
-        return $fields;
+        return array_values(array_filter(static::subsheetCreateForm(), fn ($field) => $field->getName() !== 'sub_lorry_ids'));
     }
 
     /**
@@ -938,7 +973,7 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
     {
         return static::deliveryOrdersForModal($record)
             ->mapWithKeys(function (DeliveryOrder $do) {
-                $type = $do->parent_do_id ? 'Subsheet' : 'Main';
+                $type = $do->isSubDo() ? 'Subsheet' : 'Main';
                 $lorry = $do->lorry?->registration_no ?? 'No lorry assigned';
                 $driver = $do->driver?->name ?? 'No driver';
                 $status = $do->status instanceof DeliveryOrderStatus
@@ -957,7 +992,7 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
     {
         return $record->deliveryOrders()
             ->with(['lorry', 'driver'])
-            ->orderByRaw('parent_do_id is null desc')
+            ->orderByRaw('(parent_do_id is null and subsheet_id is null) desc')
             ->orderBy('id')
             ->get();
     }
@@ -1026,41 +1061,40 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
         }
     }
 
+    /**
+     * Subsheets of a CSN: one per lorry given (put on that lorry now), or one without a lorry when none is given
+     * (assigned later). The CSN needs no lorry of its own first; a lorry already carrying the CSN or one of its
+     * subsheets is skipped.
+     */
     public static function createSubsheetsForLorries(ConsignmentNote $record, Collection $lorryIds, array $data): int
     {
-        $do = $record->deliveryOrder;
-        if (! $do?->job_sheet_id) {
-            throw new \InvalidArgumentException('Assign a main lorry first before creating subsheets.');
+        $record->loadMissing('deliveryOrder');
+        $action = app(CreateSubsheet::class);
+        $payload = [
+            'task_type' => $data['task_type'] ?? $data['additional_task_type'] ?? null,
+            'transfer_code' => $data['transfer_code'] ?? null,
+            'psi_amount' => $data['psi_amount'] ?? 0,
+            'pso_amount' => $data['pso_amount'] ?? null,
+            'segment_route' => $data['segment_route'] ?? null,
+            'notes' => $data['additional_task_notes'] ?? $data['notes'] ?? null,
+        ];
+        $payload = array_filter($payload, fn ($value) => $value !== null);
+        $lorryIds = $lorryIds->filter()->map(fn ($id) => (int) $id)->unique()->values();
+
+        if ($lorryIds->isEmpty()) {
+            $action->forCsn($record, $payload);
+
+            return 1;
         }
 
-        $lorries = Lorry::query()
-            ->with('defaultDriver')
-            ->whereIn('id', $lorryIds->filter()->unique()->all())
-            ->get();
-
         $created = 0;
-        $action = app(CreateSubsheet::class);
 
-        foreach ($lorries as $lorry) {
-            if ((int) $lorry->id === (int) $do->lorry_id) {
+        foreach (Lorry::query()->whereIn('id', $lorryIds->all())->get() as $lorry) {
+            if ((int) $lorry->id === (int) $record->deliveryOrder?->lorry_id || $record->subsheets()->where('sub_lorry_id', $lorry->id)->exists()) {
                 continue;
             }
 
-            $already = $record->subsheets()
-                ->where('sub_lorry_id', $lorry->id)
-                ->exists();
-
-            if ($already) {
-                continue;
-            }
-
-            $action->execute($do, array_merge(
-                [
-                    'sub_lorry_id' => $lorry->id,
-                    'sub_driver_id' => $lorry->default_driver_id,
-                ],
-                static::additionalTaskPayload($data),
-            ));
+            DB::transaction(fn () => $action->assignToLorry($action->forCsn($record, $payload), $lorry, $payload));
             $created++;
         }
 
