@@ -79,12 +79,13 @@ class CreateSubsheet
     /**
      * Puts a subsheet on a lorry (driver: the lorry's default driver unless given): the lorry's open trip of the
      * day, the subsheet's own delivery order (under the CSN's main delivery order when it has one) and job sheet
-     * task, and the profit sharing of the leg. $data may change the type / transfer code on the way.
+     * task, and the profit sharing of the leg. A subsheet already on a lorry moves to this one (reassign) unless
+     * its leg is delivered or cancelled. $data may change the type / transfer code on the way.
      */
     public function assignToLorry(Subsheet $subsheet, Lorry $lorry, array $data = []): Subsheet
     {
         if ($subsheet->delivery_order_id) {
-            throw new InvalidArgumentException('Subsheet '.$subsheet->number.' already has a lorry.');
+            return $this->moveToLorry($subsheet, $lorry, $data);
         }
 
         if (! $lorry->is_active) {
@@ -173,6 +174,47 @@ class CreateSubsheet
                 'pso_amount' => $pso,
                 'profit_sharing_transaction_id' => $profit?->id,
             ])->save();
+
+            return $subsheet->fresh();
+        });
+    }
+
+    /**
+     * Reassign: a subsheet already on a lorry moves to another one (its delivery order and job sheet task go to that
+     * lorry's trip, the subsheet and its profit sharing take the new lorry / driver).
+     */
+    private function moveToLorry(Subsheet $subsheet, Lorry $lorry, array $data): Subsheet
+    {
+        $do = DeliveryOrder::query()->with('consignmentNote.deliveryOrder')->find($subsheet->delivery_order_id);
+
+        if (! $do) {
+            throw new InvalidArgumentException('Subsheet '.$subsheet->number.' has lost its delivery order.');
+        }
+
+        if ((int) $do->lorry_id === (int) $lorry->id) {
+            throw new InvalidArgumentException('already on '.$lorry->registration_no);
+        }
+
+        $main = $do->consignmentNote?->deliveryOrder;
+
+        if ($main && (int) $main->lorry_id === (int) $lorry->id) {
+            throw new InvalidArgumentException('Lorry '.$lorry->registration_no.' already carries CSN '.$do->consignmentNote->number.' (main lorry).');
+        }
+
+        return DB::transaction(function () use ($subsheet, $lorry, $data, $do) {
+            if (array_key_exists('transfer_code', $data) || array_key_exists('task_type', $data)) {
+                $transferCode = array_key_exists('transfer_code', $data) ? (filled($data['transfer_code']) ? (string) $data['transfer_code'] : null) : $subsheet->transfer_code;
+                $subsheet->fill(['transfer_code' => $transferCode, 'task_type' => $this->taskType($data + ['task_type' => $subsheet->task_type], $transferCode)])->save();
+            }
+
+            // the delivery order, its job sheet task and the subsheet's lorry / driver (AssignDeliveryOrderToLorry
+            // refuses a delivered or cancelled leg)
+            $moved = app(AssignDeliveryOrderToLorry::class)->execute($do, $lorry, $data['operating_date'] ?? null, filled($data['sub_driver_id'] ?? null) ? (int) $data['sub_driver_id'] : null);
+
+            ProfitSharingTransaction::query()
+                ->where('delivery_order_id', $do->id)
+                ->where('status', 'pending')
+                ->update(['assisting_driver_id' => $moved->driver_id]);
 
             return $subsheet->fresh();
         });

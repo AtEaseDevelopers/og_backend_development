@@ -7,6 +7,7 @@ use App\Domains\Notification\Actions\SendNotification;
 use App\Domains\Quotation\Models\Quotation;
 use App\Domains\Quotation\Models\QuotationStatusLog;
 use App\Enums\BillingStatus;
+use App\Enums\OrderType;
 use App\Enums\QuotationStatus;
 use App\Models\User;
 use InvalidArgumentException;
@@ -30,6 +31,11 @@ class ReleaseOrder
 
         if ($quotation->status !== QuotationStatus::Confirmed) {
             throw new InvalidArgumentException('Only confirmed orders can be released.');
+        }
+
+        // Admin release is for Credit / Term orders only (user, 13 Oct 2026): a Cash order waits for full payment
+        if ($quotation->orderType() !== OrderType::Term) {
+            throw new InvalidArgumentException('Admin release is for Credit / Term orders only. A Cash order goes ahead once it is fully paid.');
         }
 
         if ($quotation->isReleased()) {

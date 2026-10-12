@@ -43,6 +43,7 @@
                         <thead>
                             <tr>
                                 <th>CSN / DO Ref</th>
+                                <th>Task type</th>
                                 <th>Customer</th>
                                 <th>Destination</th>
                                 <th>Transfer Allocation</th>
@@ -56,6 +57,13 @@
                                     <td>
                                         <div class="jsv-table-primary">{{ $display($row['csn_number'] ?? null) }}</div>
                                         <div class="jsv-table-secondary">{{ $display($row['do_number'] ?? null) }}</div>
+                                    </td>
+                                    <td>
+                                        @if ($row['task_type'] ?? null)
+                                            <span class="jsv-task-type jsv-task-type-{{ $row['task_type']['key'] }}">{{ $row['task_type']['label'] }}</span>
+                                        @else
+                                            —
+                                        @endif
                                     </td>
                                     <td>{{ $display($row['customer'] ?? null) }}</td>
                                     <td>{{ $display($row['destination'] ?? null) }}</td>

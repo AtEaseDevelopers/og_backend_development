@@ -16,12 +16,12 @@ class Subsheet extends Model
     use LogsActivity;
 
     /**
-     * Type of a subsheet (task_type): Subsheet = pick up and bring the goods to the hub; Transfer = hand the goods
+     * Type of a subsheet (task_type): Pickup = pick up and bring the goods to the hub; Transfer = hand the goods
      * over to another lorry to deliver (the default of a subsheet made by Admin); Break bulk = set from the driver
      * app (Admin cannot choose it).
      */
     public const TYPES = [
-        'incoming_psi' => 'Subsheet',
+        'incoming_psi' => 'Pickup',
         'transfer' => 'Transfer',
         'break_bulk' => 'Break bulk',
     ];

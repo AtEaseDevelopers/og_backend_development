@@ -45,12 +45,7 @@ class CsnViewData
             'consignor' => $this->consignor($csn),
             'consignee' => $this->consignee($csn),
             'charges' => $this->charges($csn, $matrixState, $chargeColumn),
-            'rates' => app(CsnTransportMatrix::class)->preview(
-                $matrixState['matrix_columns'],
-                $matrixState['matrix_rows'],
-            ),
-            'charge_column' => $chargeColumn,
-            'document' => $this->documentPreview($csn, $matrixState, $chargeColumn),
+            // (the Rates and Document preview cards were removed from the page, 13 Oct 2026)
             'subsheets' => $this->subsheets($csn),
             'task' => $this->consignmentTask($csn),
         ];
@@ -132,14 +127,6 @@ class CsnViewData
         ];
     }
 
-    /**
-     * @param  array<string, mixed>  $matrixState
-     * @return array<string, mixed>
-     */
-    private function documentPreview(ConsignmentNote $csn, array $matrixState, ?string $chargeColumn): array
-    {
-        return app(CsnDocumentData::class)->fromConsignmentNote($csn);
-    }
 
     /** @return list<array<string, mixed>> */
     private function subsheets(ConsignmentNote $csn): array
@@ -147,7 +134,14 @@ class CsnViewData
         return $csn->subsheets
             ->map(fn ($subsheet) => [
                 'number' => $subsheet->number,
+                'url' => $this->traceabilityUrl(SubsheetResource::class, $subsheet, $csn),
+                'type' => $subsheet->typeLabel(),
+                'type_key' => (string) $subsheet->task_type,
+                'transfer_code' => $subsheet->transfer_code,
                 'do_number' => $subsheet->deliveryOrder?->number,
+                'do_status' => $subsheet->deliveryOrder?->status instanceof \BackedEnum
+                    ? ucfirst(str_replace('_', ' ', $subsheet->deliveryOrder->status->value))
+                    : null,
                 'sub_lorry' => $subsheet->subLorry?->registration_no,
                 'sub_driver' => $subsheet->subDriver?->name,
                 'segment_route' => $subsheet->segment_route,

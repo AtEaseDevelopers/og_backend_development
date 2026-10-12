@@ -22,7 +22,7 @@ class SubsheetsRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('deliveryOrder.number')->label('DO'),
                 Tables\Columns\TextColumn::make('subLorry.registration_no')->label('Sub lorry'),
                 Tables\Columns\TextColumn::make('subDriver.name')->label('Sub driver'),
-                Tables\Columns\TextColumn::make('task_type')->badge(),
+                Tables\Columns\TextColumn::make('task_type')->label('Type')->badge()->formatStateUsing(fn ($state) => \App\Domains\Dispatch\Models\Subsheet::TYPES[(string) $state] ?? $state),
                 Tables\Columns\TextColumn::make('transfer_code'),
                 Tables\Columns\TextColumn::make('handover_status')->badge(),
                 Tables\Columns\TextColumn::make('psi_amount')->money('MYR'),

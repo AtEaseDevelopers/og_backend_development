@@ -26,6 +26,7 @@ class JobSheetViewData
             'tasks.deliveryOrder.consignmentNote.customer',
             'tasks.deliveryOrder.lorry',
             'tasks.deliveryOrder.driver',
+            'tasks.deliveryOrder.subsheet',
             'deliveryOrders.consignmentNote.customer',
             'deliveryOrders.lorry',
             'deliveryOrders.driver',
@@ -33,6 +34,7 @@ class JobSheetViewData
             'subsheets.deliveryOrder.consignmentNote.customer',
             'subsheets.deliveryOrder.lorry',
             'subsheets.deliveryOrder.driver',
+            'subsheets.deliveryOrder.subsheet',
         ]);
 
         $summary = $this->summaryCounts($jobSheet);
@@ -142,17 +144,32 @@ class JobSheetViewData
     /** @return array<int, array<string, mixed>> */
     private function groupedTasks(JobSheet $jobSheet): array
     {
-        if ($jobSheet->subsheets->isNotEmpty()) {
-            return $jobSheet->subsheets
-                ->map(fn (Subsheet $subsheet): array => $this->subsheetGroup($subsheet))
-                ->values()
-                ->all();
-        }
+        // a trip can carry subsheet legs (one group each) and its own CSN deliveries (grouped by route)
+        $subsheetGroups = $jobSheet->subsheets
+            ->map(fn (Subsheet $subsheet): array => $this->subsheetGroup($subsheet))
+            ->values()
+            ->all();
+        $subsheetDoIds = $jobSheet->subsheets->pluck('delivery_order_id')->filter()->map(fn ($id) => (int) $id)->all();
+        $isOwn = fn (?DeliveryOrder $deliveryOrder): bool => $deliveryOrder !== null
+            && ! in_array((int) $deliveryOrder->id, $subsheetDoIds, true)
+            && $deliveryOrder->subsheet_id === null;
 
-        $tasks = $jobSheet->tasks->sortBy('sequence');
+        return array_merge($subsheetGroups, $this->ownDeliveryGroups($jobSheet, $isOwn));
+    }
+
+    /**
+     * The trip's own CSN deliveries (not subsheet legs), grouped by route.
+     *
+     * @param  callable(?DeliveryOrder): bool  $isOwn
+     * @return list<array<string, mixed>>
+     */
+    private function ownDeliveryGroups(JobSheet $jobSheet, callable $isOwn): array
+    {
+        $tasks = $jobSheet->tasks->sortBy('sequence')->filter(fn ($task) => $isOwn($task->deliveryOrder));
 
         if ($tasks->isEmpty()) {
             return $jobSheet->deliveryOrders
+                ->filter(fn (DeliveryOrder $deliveryOrder) => $isOwn($deliveryOrder))
                 ->map(fn (DeliveryOrder $deliveryOrder): array => $this->deliveryOrderGroup(
                     $deliveryOrder->consignmentNote?->delivery_state ?? 'MAIN',
                     collect([$deliveryOrder]),
@@ -197,9 +214,8 @@ class JobSheetViewData
         $consignmentNote = $subsheet->consignmentNote ?? $deliveryOrder?->consignmentNote;
         $deliveryOrders = collect([$deliveryOrder])->filter();
 
-        $type = str_contains(strtolower((string) $subsheet->task_type), 'transfer')
-            ? 'TRANSFER'
-            : 'DELIVERY';
+        // PICKUP / TRANSFER / BREAK BULK (the subsheet's type)
+        $type = strtoupper($subsheet->typeLabel());
 
         return $this->deliveryOrderGroup(
             $consignmentNote?->delivery_state ?? '—',
@@ -239,6 +255,27 @@ class JobSheetViewData
         ];
     }
 
+    /**
+     * What the lorry does for this delivery order: its own CSN delivery, a subsheet leg (Subsheet = pick up and
+     * bring to the hub, Transfer = hand over to another lorry, Break bulk = from the driver app), or a re-delivery
+     * of a failed one.
+     *
+     * @return array{key: string, label: string}
+     */
+    private function taskType(DeliveryOrder $deliveryOrder): array
+    {
+        $subsheet = $deliveryOrder->subsheet
+            ?? ($deliveryOrder->parent_do_id ? Subsheet::query()->where('delivery_order_id', $deliveryOrder->id)->first() : null);
+
+        if ($subsheet) {
+            return ['key' => (string) $subsheet->task_type, 'label' => $subsheet->typeLabel()];
+        }
+
+        return $deliveryOrder->parent_do_id
+            ? ['key' => 'redelivery', 'label' => 'Re-delivery']
+            : ['key' => 'delivery', 'label' => 'Delivery'];
+    }
+
     /** @return array<string, mixed> */
     private function taskRow(DeliveryOrder $deliveryOrder, ?string $transferHint = null): array
     {
@@ -253,6 +290,7 @@ class JobSheetViewData
             'destination' => $consignmentNote?->delivery_city
                 ?: $consignmentNote?->delivery_address,
             'transfer_allocation' => $transferHint ?: '—',
+            'task_type' => $this->taskType($deliveryOrder),
             'driver_lorry' => trim(sprintf(
                 '%s / %s',
                 $deliveryOrder->driver?->name ?? '—',

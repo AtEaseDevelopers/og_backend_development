@@ -100,8 +100,9 @@ class OrderStage
             $status === QuotationStatus::Confirmed && $pending > 0 => ['payment', 5, 'Payment review', 'action', 'Payment proof submitted · Verify and approve', 'Review payment', false],
             $status === QuotationStatus::Confirmed && $type === OrderType::Term => ['payment', 5, 'Admin release required', 'action', 'Credit order · Release to issue invoice and CSN', 'Review admin release', false],
             $status === QuotationStatus::Confirmed && $type === OrderType::Cod => ['payment', 5, 'Ready to bill', 'released', 'COD order · CSN created, invoice once fully paid', 'Review billing', false],
-            $status === QuotationStatus::Confirmed && $paid > 0 && $paid + 0.005 < $total => ['payment', 5, 'Payment review', 'action', 'Partial payment · Admin release required', 'Review admin release', false],
-            $status === QuotationStatus::Confirmed => ['payment', 5, 'Awaiting payment', 'customer', 'Proforma issued · Waiting for customer payment', 'Review payment', false],
+            // a Cash order still owed: pending payment (Admin release is for Credit / Term orders only)
+            $status === QuotationStatus::Confirmed && $paid > 0 && $paid + 0.005 < $total => ['payment', 5, 'Pending payment', 'customer', 'Partial payment · Outstanding RM '.number_format($total - $paid, 2), 'Review payment', false],
+            $status === QuotationStatus::Confirmed => ['payment', 5, 'Pending payment', 'customer', 'Proforma issued · Waiting for customer payment', 'Review payment', false],
             $status === QuotationStatus::PendingApproval => ['confirmation', 3, 'Credit approval', 'action', 'Customer confirmed · Awaiting branch manager credit approval', 'Review credit approval', false],
             $status === QuotationStatus::Accepted => [$hasProforma ? 'payment' : 'confirmation', $hasProforma ? 4 : 3, 'Customer confirmed', 'progress', $hasProforma ? 'Proforma issued' : 'Confirmation recorded', 'View order', false],
             $status === QuotationStatus::PendingReview => ['awaiting_customer', 3, 'Awaiting customer', 'customer', 'Pending customer review · No response yet', 'View quotation', false],

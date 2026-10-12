@@ -12,6 +12,7 @@ use App\Domains\MasterData\Models\TransferCode;
 use App\Domains\Quotation\Models\Quotation;
 use App\Enums\CsnBillingType;
 use App\Enums\CsnStatus;
+use App\Enums\DeliveryOrderStatus;
 use App\Enums\OrderType;
 use App\Enums\PaymentStatus;
 use App\Enums\ServiceType;
@@ -188,7 +189,7 @@ class ListConsignmentNotes extends ListRecords
     protected function getTableQuery(): Builder
     {
         return $this->applyFilterBar(parent::getTableQuery())
-            ->with(['deliveryOrder.lorry', 'deliveryOrders.failedDelivery', 'quotation', 'transferCode', 'subsheets.subLorry', 'returnedCsn.receivedBy'])
+            ->with(['deliveryOrder.lorry', 'deliveryOrders.failedDelivery', 'quotation', 'transferCode', 'subsheets.subLorry', 'subsheets.deliveryOrder', 'returnedCsn.receivedBy'])
             ->withCount('breakBulks');
     }
 
@@ -451,7 +452,7 @@ class ListConsignmentNotes extends ListRecords
         }
     }
 
-    /** The ticked subsheet lines that can still go on a lorry (no lorry yet, CSN not cancelled, this company). */
+    /** The ticked subsheet lines that can go on (or move to) a lorry: leg not delivered / cancelled, CSN not cancelled, this company. */
     public function selectedSubsheetRecords(): Collection
     {
         $ids = array_values(array_filter(array_map('intval', $this->selectedSubsheets)));
@@ -462,7 +463,8 @@ class ListConsignmentNotes extends ListRecords
 
         return Subsheet::query()
             ->whereIn('id', $ids)
-            ->whereNull('delivery_order_id')
+            ->where(fn ($q) => $q->whereNull('delivery_order_id')
+                ->orWhereHas('deliveryOrder', fn ($do) => $do->whereNotIn('status', [DeliveryOrderStatus::Delivered->value, DeliveryOrderStatus::Cancelled->value])))
             ->whereIn('consignment_note_id', ConsignmentNoteResource::getEloquentQuery()->where('status', '!=', CsnStatus::Cancelled->value)->select('consignment_notes.id'))
             ->with('consignmentNote')
             ->orderBy('id')

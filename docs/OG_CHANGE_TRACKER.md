@@ -4,7 +4,7 @@
 > what is done, what is left, and the rules the user has set. Update it whenever an item changes status,
 > and refresh "Last updated" with the output of plain `date` (local Malaysia time).
 
-**Last updated:** Sat Oct 10 18:58:34 MPST 2026 · round 2 committed and pushed as `8ff252f` on `main`; server steps below still to run
+**Last updated:** Tue Oct 13 01:32:55 MPST 2026 · items 9–14 committed and pushed (see git log)
 
 **Previous round:** finished and pushed as commit `a29b179` on `main` (8 Oct 2026: orders, order details,
 billing / COD / Term, CSN bulk actions, QR codes, returned-CSN scanning, cash bill calculator). Its details are
@@ -116,9 +116,29 @@ Legend: [x] done · [~] done in code, not yet browser-checked · [ ] not started
 - [x] **Menu**: Credit Customer Approval and OCR Quotation Processing removed from the menu (the empty Approvals group disappears); the pages still open by link. **Orders** page has an "OCR quotation processing" button beside "+ Create order for customer".
 - [x] "Create Cash Bill Payment" button removed from Payment Listing (Create Invoice Payment stays). The counter cash bill page is now a menu item: **Billing → Cash Bill Payment (Counter Use)** (right after Payments & Receipts; page title the same; URL still /cash-bill-calculator). Checked in the browser.
 
-## Open questions for the user
+### 9. CSN page: tick boxes and reassign (user, 13 Oct) — done
+- [x] **Tick boxes in one column**: the CSN's tick box sits at the top of its row (level with the CSN number); each subsheet's tick box sits in the same tick-box column, level with its subsheet line (a small script measures the CSN tick box so they line up at any width). The CSN number column now stays fixed after the tick-box column when scrolling sideways (as the old CSS meant to), so the subsheet tick boxes stay in line.
+- [x] **Assigned subsheets can be ticked again** (not once their leg is delivered / cancelled). **Assign to lorry moves** an already-assigned subsheet or CSN to the lorry picked (`CreateSubsheet::moveToLorry` / `AssignDeliveryOrderToLorry`: delivery order, job sheet task, subsheet lorry / driver, profit sharing driver); the same lorry is skipped ("already on …"); the notice says how many moved. Checked: browser (alignment, tick → "Assign N subsheet(s) to lorry") and a rolled-back test (subsheet WKL8821 → WXY1234, CSN WKL8821 → WXY1234, same lorry skipped).
 
-_None._
+### 10. Job Sheet Management (user, 13 Oct) — done
+- [x] The right-hand "Selected job sheet" preview is removed (it repeated the listing); the listing takes the full width. **Clicking a row opens the job sheet** (same as View). Checked in the browser.
+
+### 11. Task type (user, 13 Oct) — done
+- [x] **Job sheet → Grouped Tasks**: new **Task type** column (Delivery · Pickup · Transfer · Break bulk · Re-delivery for a failed delivery sent again), as a coloured tag. Also fixed: a job sheet with a subsheet leg showed only the subsheet groups and hid the lorry's own CSN deliveries; now both show.
+- [x] **"Subsheet" type renamed "Pickup"**, labels without brackets everywhere a task type shows: Create subsheets (Pickup / Transfer / Break bulk), Assign to lorry task type, CSN create/edit "requires pickup" task type, CSN list subsheet lines, Subsheets list / view / form, the CSN's Subsheets tab, job sheet group header (PICKUP / TRANSFER / BREAK BULK). One source: `Subsheet::TYPES`.
+
+### 12. Invoices: Month-end Term Billing (user, 13 Oct) — done
+- [x] New optional **Customers** field (several can be picked; blank = every customer; lists credit customers and any customer with Term-billed CSNs) beside Billing month and Branch: only those credit customers' delivered Term CSNs of the month are invoiced (`ConsolidateTermInvoices::execute(month, branch, customerIds)`). Checked: rolled-back run for one customer (1 invoice) vs all (4 invoices); field shown in the modal.
+
+### 13. CSN details page (user, 13 Oct) — done
+- [x] **Rates** and **Document Preview** cards removed (and no longer computed in `CsnViewData`). The **Subsheets** card moved into **Consignment Overview** as a tab: Overview | Subsheets (N); each subsheet shows its number (link), type (Pickup / Transfer / Break bulk), transfer code, lorry, driver and DO with status, in the orange subsheet style. Checked in the browser.
+
+### 14. Admin release for Credit / Term only (user, 13 Oct) — done
+- [x] A **Cash** order has no Admin release any more: it waits for full payment. Payment summary shows **Pending payment** (no yellow "requires Admin approval" note, no release card); the order stage reads "Pending payment". `ReleaseOrder` refuses any order that is not Credit / Term ("Admin release is for Credit / Term orders only…"). Credit / Term orders keep Admin release as before.
+
+## Open questions for the user
+- For price-list (UOM) products the order form never checks a special price (special → price list → keyed in is the agreed order). Change it?
+- Credit / Term orders need branch manager approval only when a credit check fails. Should every Credit / Term order need approval?
 
 ## Next steps
 

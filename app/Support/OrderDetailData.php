@@ -155,10 +155,10 @@ class OrderDetailData
                     ? $this->b('danger', 'COD order blocked', $stage['hint'], 'Unblock COD →', 'action', 'unblockCod')
                     : $this->b('danger', 'Billing generation failed', $order?->billing_error ?: $stage['hint'], 'Retry billing →', 'action', 'generateBilling'),
                 'action' => $order?->paymentSubmissions->contains(fn ($s) => $s->status->isOpen())
-                    ? $this->b('warning', 'Review payment', 'Payment proof submitted · verify it under Payment summary or obtain Admin release to continue.', 'Review payment →', 'tab', 'payment')
+                    ? $this->b('warning', 'Review payment', 'Payment proof submitted · verify it under Payment summary.', 'Review payment →', 'tab', 'payment')
                     : $this->b('warning', 'Review admin release', 'Resolve payment review or obtain Admin release to continue.', 'Review admin release →', 'action', 'release'),
                 'released' => $this->b('success', 'Ready to bill', 'Admin released · issue the Invoice / Cash Bill to create the CSN.', 'Generate billing →', 'action', 'generateBilling'),
-                default => $this->b('info', 'Awaiting customer payment', 'Proforma issued · waiting for payment proof. Submissions appear under Payment summary.', 'Review payment →', 'tab', 'payment'),
+                default => $this->b('info', 'Pending payment', 'Proforma issued · waiting for the customer to pay in full. Payments appear under Payment summary.', 'Review payment →', 'tab', 'payment'),
             },
             'billed' => $this->b('success', 'Billing issued', 'Invoice / Cash Bill issued · create the CSN to continue to dispatch.', 'Create CSN →', 'action', 'generateBilling'),
             'csn' => $this->b('success', 'CSN created', 'Invoice issued · continue in CSN management.', 'View CSN →', 'url', $order ? ConsignmentNoteResource::getUrl('index', ['tableFilters' => ['quotation_id' => ['value' => $order->id]]]) : null),
@@ -763,15 +763,14 @@ class OrderDetailData
             $open->isNotEmpty() => 'Verification pending',
             $type === OrderType::Term => 'Admin release required',
             $type === OrderType::Cod => $order->cod_blocked ? 'COD blocked' : 'Collect on delivery',
-            $paid > 0 && $paid + 0.005 < $total => 'Admin release required',
             $paid + 0.005 >= $total && $total > 0 => 'Paid in full',
-            $order->status === QuotationStatus::Confirmed => 'Awaiting payment proof',
+            // a Cash order still owed: just pending payment (no Admin release for Cash)
+            $order->status === QuotationStatus::Confirmed => 'Pending payment',
             default => 'Not requested',
         };
 
         $note = match (true) {
             $order->billingStatus() === BillingStatus::Failed => 'Billing generation failed: '.($order->billing_error ?: 'see activity'),
-            $order->status === QuotationStatus::Confirmed && $paid + 0.005 < $total && $type === OrderType::Cash && ! $order->isReleased() => 'Outstanding balance requires Admin approval before billing and CSN creation.',
             $type === OrderType::Term && ! $order->isReleased() && $order->status === QuotationStatus::Confirmed => 'Credit order · Admin release issues the invoice and creates the CSN.',
             default => null,
         };
@@ -892,12 +891,11 @@ class OrderDetailData
                 'by' => $order->releaser?->name ?? 'Admin',
                 'at' => $order->released_at?->format('d M Y · H:i'),
                 'reason' => $order->release_reason,
-                // a cash order still short of payment needs an Admin release before billing and the CSN
-                'required' => ! $order->isReleased() && ! $billed && $order->status === QuotationStatus::Confirmed
-                    && $type === OrderType::Cash && $paid + 0.005 < $total,
-                // ...as does a credit term order that was not released on confirmation (term orders are normally released automatically)
+                // Admin release is for Credit / Term orders only (a Cash order waits for full payment): a term order
+                // that was not released on confirmation (term orders are normally released automatically)
+                'required' => false,
                 'applies' => ! $order->isReleased() && ! $billed && $order->status === QuotationStatus::Confirmed
-                    && ($type === OrderType::Term || (in_array($type, [OrderType::Cash, null], true) && $paid + 0.005 < $total)),
+                    && $type === OrderType::Term,
             ],
             'entries' => $entries->concat($direct)->sortByDesc('sort')->values()->all(),
             // payments can be added once the customer has confirmed, also after billing and CSN (SubmitPaymentEvidence);
@@ -1178,7 +1176,8 @@ class OrderDetailData
             'change_type' => $order && $status !== QuotationStatus::Converted && ! $status->isTerminal() && ! $order->paymentTermLocked(),
             // DO number / expected delivery date on the order page (Customer & order → Edit) until the record has a CSN
             'edit_details' => $order && $latest && ! $status->isTerminal() && $order->consignmentNotes->isEmpty(),
-            'release' => $order && $status === QuotationStatus::Confirmed && ! $order->isReleased() && $order->billingStatus() !== BillingStatus::Generated && $isManager,
+            // Admin release: Credit / Term orders only (a Cash order waits for full payment)
+            'release' => $order && $status === QuotationStatus::Confirmed && $order->orderType() === OrderType::Term && ! $order->isReleased() && $order->billingStatus() !== BillingStatus::Generated && $isManager,
             // Block COD is no longer offered (user, 10 Oct 2026); an order blocked before keeps Unblock COD
             'block_cod' => false,
             'unblock_cod' => $order && $order->orderType() === OrderType::Cod && $order->cod_blocked,

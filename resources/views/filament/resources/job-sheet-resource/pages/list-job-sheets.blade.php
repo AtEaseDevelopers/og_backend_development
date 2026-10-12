@@ -1,5 +1,4 @@
 @php
-    $selected = $this->getSelectedJobSheetPanel();
     $operatingDateLabel = $this->getOperatingDateLabel();
 @endphp
 
@@ -106,80 +105,5 @@
             {{ $this->table }}
         </div>
 
-        @script
-            <script>
-                const highlightJobSheetRow = (selectedId) => {
-                    document.querySelectorAll('.js-list-panel .fi-ta-record').forEach((row) => {
-                        const clickTarget = row.querySelector('[wire\\:click*="selectJobSheetFromTable"]');
-                        const click = clickTarget?.getAttribute('wire:click') ?? '';
-                        const id = click.match(/selectJobSheetFromTable\('(\d+)'\)/)?.[1];
-
-                        row.classList.toggle('js-row-selected', id && Number(id) === Number(selectedId));
-                    });
-                };
-
-                highlightJobSheetRow($wire.selectedJobSheetId);
-
-                $wire.$watch('selectedJobSheetId', (selectedId) => {
-                    highlightJobSheetRow(selectedId);
-                });
-
-                Livewire.hook('morph.updated', () => {
-                    highlightJobSheetRow($wire.selectedJobSheetId);
-                });
-            </script>
-        @endscript
-
-        <div class="js-detail-panel" wire:key="js-detail-{{ $selectedJobSheetId ?? 'none' }}">
-            @if ($selected)
-                <div class="js-detail-header">
-                    <div class="js-detail-kicker">Selected Job Sheet</div>
-                    <span @class([
-                        'js-status-badge',
-                        'js-status-badge-' . ($selected['status_color'] ?? 'gray'),
-                    ])>{{ $selected['status_label'] }}</span>
-                </div>
-                <div class="js-detail-number">{{ $selected['number'] }}</div>
-                <div class="js-detail-fields">
-                    <div class="js-detail-row">
-                        <span class="js-detail-label">Operating Date</span>
-                        <span class="js-detail-value">{{ $selected['operating_date'] ?? '—' }}</span>
-                    </div>
-                    <div class="js-detail-row">
-                        <span class="js-detail-label">Assigned Lorry</span>
-                        <span class="js-detail-value">{{ $selected['lorry'] ?? '—' }}</span>
-                    </div>
-                    <div class="js-detail-row">
-                        <span class="js-detail-label">Operating Branch</span>
-                        <span class="js-detail-value">{{ $selected['operating_branch'] ?? '—' }}</span>
-                    </div>
-                    <div class="js-detail-row">
-                        <span class="js-detail-label">Default Driver</span>
-                        <span class="js-detail-value">{{ $selected['default_driver'] ?? '—' }}</span>
-                    </div>
-                    <div class="js-detail-row">
-                        <span class="js-detail-label">Current Driver</span>
-                        <span class="js-detail-value">{{ $selected['current_driver'] ?? '—' }}</span>
-                    </div>
-                    <div class="js-detail-row">
-                        <span class="js-detail-label">Task Count</span>
-                        <span class="js-detail-value">{{ $selected['task_count'] ?? 0 }}</span>
-                    </div>
-                </div>
-                <div class="js-detail-tags">
-                    <span class="js-detail-tag">Lorry-Based Job Sheet</span>
-                    <span class="js-detail-tag">Operating Branch Follows Assigned Lorry</span>
-                    <span class="js-detail-tag">Auto-Generated Running Number</span>
-                </div>
-                <a href="{{ $selected['view_url'] }}" wire:navigate class="js-btn js-btn-primary js-detail-action">
-                    View Job Sheet
-                </a>
-            @else
-                <div class="js-detail-empty">
-                    <div class="js-detail-kicker">Selected Job Sheet</div>
-                    <p>Select a job sheet from the listing to preview it here.</p>
-                </div>
-            @endif
-        </div>
     </div>
 </x-filament-panels::page>

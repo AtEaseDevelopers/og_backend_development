@@ -212,6 +212,7 @@ class ConsignmentNoteResource extends Resource
                     ->icon('heroicon-o-truck')
                     ->visible(fn ($livewire) => ($livewire->selectedSubsheets ?? []) !== [] && ($livewire->selectedTableRecords ?? []) === [])
                     ->modalHeading('Assign the selected subsheets to a lorry')
+                    ->modalDescription('A subsheet already on a lorry moves to the lorry picked (not once delivered).')
                     ->modalSubmitActionLabel('Assign')
                     ->form(fn ($livewire) => static::assignLorryFormSchema($livewire->selectedSubsheetRecords()))
                     ->action(fn (array $data, $livewire) => static::assignSelection(collect(), $livewire->selectedSubsheetRecords(), $data, $livewire)),
@@ -221,7 +222,7 @@ class ConsignmentNoteResource extends Resource
                     ->label('Assign to lorry')
                     ->icon('heroicon-o-truck')
                     ->modalHeading('Assign the selected CSNs to a lorry')
-                    ->modalDescription(fn ($livewire) => 'CSNs that already have a lorry, are cancelled or cannot be dispatched yet are skipped.'
+                    ->modalDescription(fn ($livewire) => 'A CSN already on a lorry moves to the lorry picked (not once delivered). Cancelled CSNs and CSNs not ready for dispatch are skipped.'
                         .(($livewire->selectedSubsheets ?? []) !== [] ? ' The '.count($livewire->selectedSubsheets).' subsheet(s) ticked under the CSNs go on the same lorry.' : ''))
                     ->modalSubmitActionLabel('Assign')
                     ->form(fn ($livewire) => static::assignLorryFormSchema($livewire->selectedSubsheetRecords()))
@@ -518,9 +519,12 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
 
         return '<span class="ow-sub-lines">'.$subsheets->sortBy('id')->map(function (Subsheet $subsheet) use ($selectable): string {
             $lorry = $subsheet->subLorry?->registration_no;
-            $tick = $selectable && ! $subsheet->isAssigned()
-                ? '<input type="checkbox" class="ow-sub-tick" wire:model.live="selectedSubsheets" value="'.$subsheet->id.'" aria-label="Select subsheet '.e($subsheet->number).'">'
-                : '<span class="ow-sub-tick-gap" aria-hidden="true"></span>';
+            // tickable with or without a lorry (a subsheet on a lorry can be moved to another one), unless its leg
+            // is delivered or cancelled; the tick sits in the table's tick-box column, level with its line
+            $legDone = in_array($subsheet->deliveryOrder?->status, [DeliveryOrderStatus::Delivered, DeliveryOrderStatus::Cancelled], true);
+            $tick = $selectable && ! $legDone
+                ? '<input type="checkbox" class="ow-sub-tick fi-checkbox-input rounded border-none bg-white shadow-sm ring-1 transition duration-75 checked:ring-0 focus:ring-2 focus:ring-offset-0 dark:bg-white/5 text-primary-600 ring-gray-950/10 focus:ring-primary-600 checked:focus:ring-primary-500/50 dark:text-primary-500 dark:ring-white/20 dark:checked:bg-primary-500 dark:focus:ring-primary-500 dark:checked:focus:ring-primary-400/50" wire:model.live="selectedSubsheets" value="'.$subsheet->id.'" aria-label="Select subsheet '.e($subsheet->number).'">'
+                : '';
 
             return '<label class="ow-sub-line" title="Subsheet '.e($subsheet->number).'">'
                 .$tick
@@ -637,18 +641,37 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
      */
     public static function assignSelection(Collection $records, Collection $subsheets, array $data, $livewire = null): void
     {
-        [$done, $doneSubsheets, $skipped] = [0, 0, []];
+        [$done, $doneSubsheets, $moved, $skipped] = [0, 0, 0, []];
         $lorry = Lorry::query()->findOrFail($data['lorry_id']);
 
         foreach ($records as $record) {
-            if ($record->deliveryOrder()->exists() || $record->status === CsnStatus::Cancelled || ! $record->canAssignToLorry()) {
-                $skipped[] = $record->number;
+            if ($record->status === CsnStatus::Cancelled) {
+                $skipped[] = $record->number.' (cancelled)';
 
                 continue;
             }
 
             try {
-                static::runAssignAndSubsheets($record, $data, notify: false);
+                $main = $record->deliveryOrder()->first();
+
+                if ($main) {
+                    // already on a lorry: move it to the lorry picked (a delivered / cancelled delivery is refused)
+                    if ((int) $main->lorry_id === (int) $lorry->id) {
+                        $skipped[] = $record->number.' (already on '.$lorry->registration_no.')';
+
+                        continue;
+                    }
+
+                    app(AssignDeliveryOrderToLorry::class)->execute($main, $lorry);
+                    $moved++;
+                } elseif (! $record->canAssignToLorry()) {
+                    $skipped[] = $record->number.' (not ready for dispatch)';
+
+                    continue;
+                } else {
+                    static::runAssignAndSubsheets($record, $data, notify: false);
+                }
+
                 $done++;
             } catch (Throwable $e) {
                 $skipped[] = $record->number.' ('.$e->getMessage().')';
@@ -657,11 +680,13 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
 
         foreach ($subsheets as $subsheet) {
             try {
+                $wasAssigned = $subsheet->isAssigned();
                 app(CreateSubsheet::class)->assignToLorry($subsheet, $lorry, array_filter([
                     'task_type' => $data['task_type'] ?? null,
                     'transfer_code' => $data['transfer_code'] ?? null,
                 ], fn ($value) => filled($value)));
                 $doneSubsheets++;
+                $moved += $wasAssigned ? 1 : 0;
             } catch (Throwable $e) {
                 $skipped[] = $subsheet->number.' ('.$e->getMessage().')';
             }
@@ -678,7 +703,10 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
 
         $notice = Notification::make()
             ->title(($title ?: 'Nothing').' assigned to '.$lorry->registration_no)
-            ->body($skipped ? 'Skipped: '.implode(', ', $skipped) : null);
+            ->body(collect([
+                $moved ? $moved.' moved from another lorry.' : null,
+                $skipped ? 'Skipped: '.implode(', ', $skipped) : null,
+            ])->filter()->implode(' ') ?: null);
         ($skipped ? $notice->warning() : $notice->success())->send();
     }
 
@@ -738,8 +766,8 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
                 Forms\Components\Select::make('additional_task_type')
                     ->label('Task type')
                     ->options([
-                        'incoming_psi' => 'Incoming pickup (bring goods to hub)',
-                        'transfer' => 'Transfer / handover leg',
+                        'incoming_psi' => Subsheet::TYPES['incoming_psi'],
+                        'transfer' => Subsheet::TYPES['transfer'],
                     ])
                     ->default('incoming_psi')
                     ->required()
@@ -879,17 +907,13 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
         ];
     }
 
+    /** Type label of a subsheet: Pickup, Transfer or Break bulk (the same wherever a task type shows). */
     public static function subsheetTypeOption(string $type): string
     {
-        return match ($type) {
-            'incoming_psi' => 'Subsheet (pickup, bring goods to hub)',
-            'transfer' => 'Transfer (to another lorry to send)',
-            'break_bulk' => 'Break bulk (from the driver app)',
-            default => Subsheet::TYPES[$type] ?? $type,
-        };
+        return Subsheet::TYPES[$type] ?? $type;
     }
 
-    /** Active transfer codes; a Subsheet (pickup) takes the incoming ones. @return array<string, string> */
+    /** Active transfer codes; a Pickup takes the incoming ones. @return array<string, string> */
     public static function transferCodeOptions(?string $type = null): array
     {
         return TransferCode::query()

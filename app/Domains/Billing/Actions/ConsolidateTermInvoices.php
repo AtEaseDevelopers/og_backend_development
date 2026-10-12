@@ -20,11 +20,12 @@ class ConsolidateTermInvoices
 
     /**
      * Consolidate delivered term CSNs for a billing month.
-     * One invoice per customer per source branch.
+     * One invoice per customer per source branch; optionally only some branch / customers.
      *
+     * @param  list<int|string>|null  $customerIds  only these customers (empty / null = every customer)
      * @return Collection<int, Invoice>
      */
-    public function execute(string $billingMonth, ?int $branchId = null): Collection
+    public function execute(string $billingMonth, ?int $branchId = null, ?array $customerIds = null): Collection
     {
         [$year, $month] = explode('-', $billingMonth);
 
@@ -50,6 +51,12 @@ class ConsolidateTermInvoices
 
         if ($branchId) {
             $query->where('source_branch_id', $branchId);
+        }
+
+        $customerIds = array_values(array_filter(array_map('intval', $customerIds ?? [])));
+
+        if ($customerIds !== []) {
+            $query->whereIn('customer_id', $customerIds);
         }
 
         $groups = $query->get()->groupBy(fn (ConsignmentNote $csn) => $csn->source_branch_id.'-'.$csn->customer_id);

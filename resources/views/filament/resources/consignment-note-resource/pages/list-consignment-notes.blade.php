@@ -52,8 +52,19 @@
         .dark .ow-sub-line .ow-sub-arrow, .dark .ow-sub-line .ow-sub-lorry { color: rgb(253 186 116); }
         .ow-sub-line:has(.ow-sub-tick:checked) { border-style: solid; border-color: rgb(59 130 246); background: rgb(239 246 255); }
         .dark .ow-sub-line:has(.ow-sub-tick:checked) { background: rgb(30 58 138 / .35); }
-        .ow-sub-tick { width: .9rem; height: .9rem; margin: 0; border-radius: .2rem; cursor: pointer; }
-        .ow-sub-tick-gap { display: inline-block; width: .9rem; }
+        /* tick boxes in one column: the CSN's at the top, level with its number; each subsheet's level with its line
+           (moved into the tick-box column; --og-sub-tick-left is measured by the script at the end of the page) */
+        .fi-resource-consignment-notes td.fi-ta-selection-cell { vertical-align: top; }
+        .ow-sub-line { position: relative; }
+        .ow-sub-tick { position: absolute; z-index: 3; top: 50%; left: var(--og-sub-tick-left, -41px); width: 1rem; height: 1rem; margin: -.5rem 0 0; cursor: pointer; }
+        /* the CSN number column stays fixed right after the tick-box column while scrolling sideways (so the subsheet
+           tick boxes stay under the CSN's); the tick-box column is already fixed (datatable-theme) */
+        .fi-resource-consignment-notes .fi-ta-table tbody td.fi-table-cell-number,
+        .fi-resource-consignment-notes .fi-ta-table thead th.fi-table-header-cell-number { position: sticky; left: var(--og-select-col-w, 44px); z-index: 2; }
+        .fi-resource-consignment-notes .fi-ta-table thead th.fi-table-header-cell-number { z-index: 3; }
+        .fi-resource-consignment-notes .fi-ta-table tbody td.fi-table-cell-number { background-color: inherit; box-shadow: 1px 0 0 rgb(229 231 235); }
+        .dark .fi-resource-consignment-notes .fi-ta-table tbody td.fi-table-cell-number { box-shadow: 1px 0 0 rgb(55 65 81); }
+        .fi-resource-consignment-notes .fi-ta-table tbody td.fi-ta-selection-cell { box-shadow: none; }
         .ow-sub-arrow { color: rgb(148 163 184); }
         .ow-sub-no { font-weight: 600; font-variant-numeric: tabular-nums; }
         .ow-sub-lorry { color: rgb(100 116 139); }
@@ -301,4 +312,34 @@
 
         {{ \Filament\Support\Facades\FilamentView::renderHook(\Filament\View\PanelsRenderHook::RESOURCE_PAGES_LIST_RECORDS_TABLE_AFTER, scopes: $this->getRenderHookScopes()) }}
     </div>
+    <script>
+        // subsheet tick boxes sit in the table's tick-box column, exactly under the CSN's tick box
+        (() => {
+            if (window.ogSubTickReady) return;
+            window.ogSubTickReady = true;
+
+            const place = () => document.querySelectorAll('.fi-resource-consignment-notes .fi-ta-table').forEach((table) => {
+                // the fixed number column starts where the fixed tick-box column ends
+                const select = table.querySelector('tbody td.fi-ta-selection-cell');
+                if (select?.offsetWidth) table.style.setProperty('--og-select-col-w', select.offsetWidth + 'px');
+
+                const line = table.querySelector('.ow-sub-line');
+                const box = line?.closest('tr')?.querySelector('td.fi-ta-selection-cell input[type=checkbox]');
+                if (! line || ! box) return;
+                const l = line.getBoundingClientRect();
+                const b = box.getBoundingClientRect();
+                if (! l.width || ! b.width) return;
+                table.style.setProperty('--og-sub-tick-left', Math.round(b.left - l.left - (parseFloat(getComputedStyle(line).borderLeftWidth) || 0)) + 'px');
+            });
+            const later = () => setTimeout(place, 0);
+
+            document.addEventListener('livewire:initialized', () => {
+                Livewire.hook('commit', ({ succeed }) => succeed(later));
+                later();
+            });
+            window.addEventListener('resize', later);
+            window.addEventListener('load', later);
+            later();
+        })();
+    </script>
 </x-filament-panels::page>

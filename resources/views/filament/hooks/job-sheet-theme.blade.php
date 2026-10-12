@@ -194,8 +194,9 @@
         align-items: start;
     }
 
+    /* the listing takes the full width (the "Selected job sheet" preview was removed: a row opens the job sheet) */
     .fi-resource-job-sheets.fi-resource-list-records-page .js-list-panel {
-        grid-column: 1 / 5;
+        grid-column: 1 / -1;
         min-width: 0;
     }
 
@@ -798,6 +799,15 @@
         border-bottom: 1px solid rgb(243 244 246);
         white-space: nowrap;
     }
+
+    /* Task type of a row: own delivery, subsheet leg (Subsheet / Transfer / Break bulk) or re-delivery */
+    .fi-resource-job-sheets.fi-resource-view-record-page .jsv-task-type { display: inline-block; padding: .1rem .5rem; border: 1px solid rgb(203 213 225); border-radius: 999px; background: rgb(248 250 252); color: rgb(51 65 85); font-size: .72rem; font-weight: 600; white-space: nowrap; }
+    .fi-resource-job-sheets.fi-resource-view-record-page .jsv-task-type-delivery { border-color: rgb(187 247 208); background: rgb(240 253 244); color: rgb(21 128 61); }
+    .fi-resource-job-sheets.fi-resource-view-record-page .jsv-task-type-transfer { border-color: rgb(191 219 254); background: rgb(239 246 255); color: rgb(29 78 216); }
+    .fi-resource-job-sheets.fi-resource-view-record-page .jsv-task-type-incoming_psi { border-color: rgb(253 230 138); background: rgb(255 251 235); color: rgb(180 83 9); }
+    .fi-resource-job-sheets.fi-resource-view-record-page .jsv-task-type-break_bulk { border-color: rgb(254 202 202); background: rgb(254 242 242); color: rgb(185 28 28); }
+    .fi-resource-job-sheets.fi-resource-view-record-page .jsv-task-type-redelivery { border-color: rgb(221 214 254); background: rgb(245 243 255); color: rgb(109 40 217); }
+    .dark .fi-resource-job-sheets.fi-resource-view-record-page .jsv-task-type { background: transparent; }
 
     .fi-resource-job-sheets.fi-resource-view-record-page .jsv-table td {
         padding: 0.875rem 1rem;

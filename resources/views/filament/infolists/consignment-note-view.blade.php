@@ -93,46 +93,6 @@
         </div>
     </div>
 
-    {{-- Rates | Document Preview | Subsheets --}}
-    <div class="csn-grid-3 csn-grid-equal">
-        <div class="csn-card csn-card-compact">
-            <div class="csn-card-title">Rates</div>
-            <div class="csn-card-body">
-                @include('filament.forms.consignment-transport-preview', [
-                    'rateMatrix' => $rates,
-                    'chargeColumn' => $charge_column ?? null,
-                ])
-            </div>
-        </div>
-        <div class="csn-card csn-card-compact">
-            <div class="csn-card-title">Document Preview</div>
-            <div class="csn-card-body">
-                @include('filament.forms.consignment-note-preview', ['document' => $document])
-            </div>
-        </div>
-        <div class="csn-card csn-card-compact">
-            <div class="csn-card-title">Subsheets</div>
-            <div class="csn-card-body">
-                @if ($subsheets === [])
-                    <div class="csn-empty-state csn-fill">No subsheets</div>
-                @else
-                    <div class="csn-fill space-y-2">
-                        @foreach ($subsheets as $subsheet)
-                            <div class="csn-mini-card">
-                                <div class="font-medium">{{ $subsheet['number'] }}</div>
-                                <div class="text-xs text-gray-500">DO: {{ $display($subsheet['do_number'] ?? null) }}</div>
-                                <div class="text-xs">{{ $display($subsheet['sub_driver'] ?? null) }} · {{ $display($subsheet['sub_lorry'] ?? null) }}</div>
-                                @if ($subsheet['segment_route'] ?? null)
-                                    <div class="text-xs text-gray-600">{{ $subsheet['segment_route'] }}</div>
-                                @endif
-                            </div>
-                        @endforeach
-                    </div>
-                @endif
-            </div>
-        </div>
-    </div>
-
     {{-- Consignment Task --}}
     <div class="csn-task-header">
         <span class="csn-task-badge">{{ $task['number'] ?? '—' }}</span>
@@ -141,9 +101,40 @@
 
     {{-- Overview | Traceability — equal 50/50 --}}
     <div class="csn-grid-2 csn-grid-pair">
-        <div class="csn-card csn-card-compact">
-            <div class="csn-card-title">Consignment Overview</div>
-            <div class="csn-field-stack">
+        <div class="csn-card csn-card-compact" x-data="{ tab: 'overview' }">
+            <div class="csn-card-title csn-tabs-head">
+                <span>Consignment Overview</span>
+                {{-- Overview | Subsheets (the subsheets moved here from their own card) --}}
+                <span class="csn-tabs" role="tablist">
+                    <button type="button" role="tab" class="csn-tab" x-bind:class="{ 'is-active': tab === 'overview' }" x-bind:aria-selected="tab === 'overview'" x-on:click="tab = 'overview'">Overview</button>
+                    <button type="button" role="tab" class="csn-tab" x-bind:class="{ 'is-active': tab === 'subsheets' }" x-bind:aria-selected="tab === 'subsheets'" x-on:click="tab = 'subsheets'">Subsheets <span class="csn-tab-count">{{ count($subsheets) }}</span></button>
+                </span>
+            </div>
+            <div class="csn-sub-list" x-show="tab === 'subsheets'" x-cloak>
+                @forelse ($subsheets as $subsheet)
+                    <div class="csn-sub-item">
+                        <div class="csn-sub-item-top">
+                            @if ($subsheet['url'] ?? null)
+                                <a href="{{ $subsheet['url'] }}" class="csn-trace-link csn-sub-number" wire:navigate>{{ $subsheet['number'] }}</a>
+                            @else
+                                <span class="csn-sub-number">{{ $subsheet['number'] }}</span>
+                            @endif
+                            <span class="csn-sub-type csn-sub-type-{{ $subsheet['type_key'] }}">{{ $subsheet['type'] }}</span>
+                            @if ($subsheet['transfer_code'] ?? null)
+                                <span class="csn-sub-code">{{ $subsheet['transfer_code'] }}</span>
+                            @endif
+                        </div>
+                        <div class="csn-sub-meta">
+                            <span>Lorry: {{ $display($subsheet['sub_lorry'] ?? null) }}</span>
+                            <span>Driver: {{ $display($subsheet['sub_driver'] ?? null) }}</span>
+                            <span>DO: {{ $display($subsheet['do_number'] ?? null) }}@if ($subsheet['do_status'] ?? null) · {{ $subsheet['do_status'] }}@endif</span>
+                        </div>
+                    </div>
+                @empty
+                    <div class="csn-empty-state">No subsheets for this CSN</div>
+                @endforelse
+            </div>
+            <div class="csn-field-stack" x-show="tab === 'overview'">
                 <div class="csn-field"><div class="csn-label">Consignment number</div><div class="csn-value">{{ $display($task['number'] ?? null) }}</div></div>
                 <div class="csn-field"><div class="csn-label">Created date</div><div class="csn-value">{{ $display($task['created_date'] ?? null) }}</div></div>
                 <div class="csn-field"><div class="csn-label">Transfer code</div><div class="csn-value">{{ $display($task['transfer_code'] ?? null) }}</div></div>

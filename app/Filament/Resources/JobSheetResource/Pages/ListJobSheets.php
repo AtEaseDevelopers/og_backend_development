@@ -8,7 +8,6 @@ use App\Domains\MasterData\Models\Lorry;
 use App\Enums\JobSheetStatus;
 use App\Filament\Resources\JobSheetResource;
 use App\Support\CurrentCompany;
-use App\Support\JobSheetListData;
 use Filament\Resources\Pages\ListRecords;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -43,19 +42,11 @@ class ListJobSheets extends ListRecords
 
     public ?string $filterStatus = null;
 
-    public ?int $selectedJobSheetId = null;
-
     public function mount(): void
     {
         parent::mount();
 
         $this->filterOperatingFrom = $this->filterOperatingTo = now()->format('Y-m-d');
-        $this->selectFirstJobSheet();
-    }
-
-    public function selectJobSheetFromTable(string $recordKey): void
-    {
-        $this->selectJobSheet((int) $recordKey);
     }
 
     public function getHeading(): string
@@ -71,7 +62,6 @@ class ListJobSheets extends ListRecords
     public function applyFilters(): void
     {
         $this->resetTable();
-        $this->selectFirstJobSheet();
     }
 
     public function resetFilters(): void
@@ -85,21 +75,6 @@ class ListJobSheets extends ListRecords
         $this->filterTaskCount = null;
         $this->filterStatus = null;
         $this->resetTable();
-        $this->selectFirstJobSheet();
-    }
-
-    public function selectJobSheet(int $jobSheetId): void
-    {
-        $this->selectedJobSheetId = $jobSheetId;
-    }
-
-    protected function selectFirstJobSheet(): void
-    {
-        $firstId = $this->getJobSheetListingQuery()
-            ->orderByDesc('id')
-            ->value('id');
-
-        $this->selectedJobSheetId = $firstId ? (int) $firstId : null;
     }
 
     protected function getJobSheetListingQuery(): Builder
@@ -190,12 +165,6 @@ class ListJobSheets extends ListRecords
         };
     }
 
-    /** @return array<string, mixed>|null */
-    public function getSelectedJobSheetPanel(): ?array
-    {
-        return app(JobSheetListData::class)->selectedPanel($this->selectedJobSheetId);
-    }
-
     public function getFilteredJobSheetCount(): int
     {
         return (int) $this->getJobSheetListingQuery()->count();
@@ -266,7 +235,7 @@ class ListJobSheets extends ListRecords
             ->filters([])
             ->defaultSort('id', 'desc')
             ->defaultKeySort()
-            ->recordUrl(null)
-            ->recordAction('selectJobSheetFromTable');
+            // a row opens the job sheet (the side preview was removed)
+            ->recordUrl(fn ($record) => JobSheetResource::getUrl('view', ['record' => $record]));
     }
 }

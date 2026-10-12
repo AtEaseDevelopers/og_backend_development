@@ -62,10 +62,8 @@ class SubsheetResource extends Resource
                 ->searchable()
                 ->nullable(),
             Forms\Components\Select::make('task_type')
-                ->options([
-                    'transfer' => 'Transfer / multi-driver',
-                    'incoming_psi' => 'Incoming PSI',
-                ])
+                ->label('Type')
+                ->options(collect(Subsheet::ADMIN_TYPES)->mapWithKeys(fn (string $type) => [$type => Subsheet::TYPES[$type]])->all())
                 ->default('transfer')
                 ->required(),
             Forms\Components\Select::make('sub_driver_id')
@@ -98,7 +96,7 @@ class SubsheetResource extends Resource
                 Infolists\Components\TextEntry::make('deliveryOrder.number')->label('DO'),
                 Infolists\Components\TextEntry::make('consignmentNote.number')->label('CSN'),
                 Infolists\Components\TextEntry::make('transfer_code'),
-                Infolists\Components\TextEntry::make('task_type')->badge(),
+                Infolists\Components\TextEntry::make('task_type')->label('Type')->badge()->formatStateUsing(fn ($state) => Subsheet::TYPES[(string) $state] ?? $state),
                 Infolists\Components\TextEntry::make('mainDriver.name')->label('Main driver'),
                 Infolists\Components\TextEntry::make('subDriver.name')->label('Sub driver'),
                 Infolists\Components\TextEntry::make('mainLorry.registration_no')->label('Main lorry'),
@@ -120,7 +118,7 @@ class SubsheetResource extends Resource
                 Tables\Columns\TextColumn::make('deliveryOrder.number')->label('DO'),
                 Tables\Columns\TextColumn::make('jobSheet.number')->label('Job Sheet'),
                 Tables\Columns\TextColumn::make('transfer_code'),
-                Tables\Columns\TextColumn::make('task_type')->badge(),
+                Tables\Columns\TextColumn::make('task_type')->label('Type')->badge()->formatStateUsing(fn ($state) => Subsheet::TYPES[(string) $state] ?? $state),
                 Tables\Columns\TextColumn::make('subDriver.name')->label('Sub driver'),
                 Tables\Columns\TextColumn::make('psi_amount')->money('MYR'),
                 Tables\Columns\TextColumn::make('pso_amount')->money('MYR'),

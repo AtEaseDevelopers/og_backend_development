@@ -637,6 +637,30 @@
         }
     }
 
+    /* Consignment Overview card: Overview | Subsheets tabs */
+    .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-tabs-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
+    .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-tabs { display: inline-flex; gap: .25rem; padding: .2rem; border-radius: .6rem; background: rgb(241 245 249); }
+    .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-tab { display: inline-flex; align-items: center; gap: .35rem; padding: .25rem .7rem; border: 0; border-radius: .45rem; background: transparent; color: rgb(71 85 105); font-size: .78rem; font-weight: 600; cursor: pointer; }
+    .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-tab.is-active { background: #fff; color: rgb(15 23 42); box-shadow: 0 1px 2px rgb(15 23 42 / .08); }
+    .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-tab-count { padding: 0 .4rem; border-radius: 999px; background: rgb(226 232 240); font-size: .68rem; }
+    .dark .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-tabs { background: rgb(255 255 255 / .06); }
+    .dark .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-tab { color: rgb(203 213 225); }
+    .dark .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-tab.is-active { background: rgb(255 255 255 / .12); color: #fff; }
+    .dark .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-tab-count { background: rgb(255 255 255 / .12); }
+    .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-sub-list { display: grid; gap: .5rem; }
+    .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-sub-item { padding: .6rem .75rem; border: 1px dashed rgb(249 115 22); border-radius: .5rem; background: rgb(255 247 237); }
+    .dark .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-sub-item { border-color: rgb(251 146 60 / .7); background: rgb(124 45 18 / .2); }
+    .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-sub-item-top { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+    .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-sub-number { font-weight: 600; }
+    .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-sub-type,
+    .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-sub-code { padding: 0 .45rem; border: 1px solid rgb(203 213 225); border-radius: .35rem; font-size: .7rem; font-weight: 600; line-height: 1.6; }
+    .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-sub-type-transfer { border-color: rgb(191 219 254); background: rgb(239 246 255); color: rgb(29 78 216); }
+    .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-sub-type-incoming_psi { border-color: rgb(253 230 138); background: rgb(255 251 235); color: rgb(180 83 9); }
+    .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-sub-type-break_bulk { border-color: rgb(254 202 202); background: rgb(254 242 242); color: rgb(185 28 28); }
+    .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-sub-code { font-family: ui-monospace, SFMono-Regular, monospace; color: rgb(29 78 216); }
+    .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-sub-meta { display: flex; flex-wrap: wrap; gap: .25rem 1rem; margin-top: .35rem; font-size: .78rem; color: rgb(71 85 105); }
+    .dark .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-sub-meta { color: rgb(203 213 225); }
+
     .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-mini-card {
         border: 1px solid rgb(229 231 235);
         border-radius: 0.375rem;
