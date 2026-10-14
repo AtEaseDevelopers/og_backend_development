@@ -33,8 +33,7 @@ class CommissionRuleResource extends Resource
                 ->nullable()
                 ->helperText('Leave empty for all branches'),
             Forms\Components\TextInput::make('name')->required(),
-            Forms\Components\TextInput::make('lorry_type')->nullable(),
-            Forms\Components\TextInput::make('route')->nullable(),
+            // lorry type and route removed from the rule (user, 15 Oct 2026); rules match by branch only
             Forms\Components\Select::make('split_type')
                 ->options([
                     'single' => 'Single driver',
@@ -64,7 +63,6 @@ class CommissionRuleResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('name')->searchable(),
                 Tables\Columns\TextColumn::make('sourceBranch.code')->label('Branch')->placeholder('All'),
-                Tables\Columns\TextColumn::make('lorry_type')->placeholder('Any'),
                 Tables\Columns\TextColumn::make('split_type')->badge(),
                 Tables\Columns\TextColumn::make('rate_percent')->suffix('%'),
                 Tables\Columns\IconColumn::make('is_active')->boolean(),

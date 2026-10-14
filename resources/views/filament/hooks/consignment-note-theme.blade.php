@@ -637,6 +637,11 @@
         }
     }
 
+    .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-commission-rule { font-size: .7rem; color: rgb(100 116 139); }
+
+    /* Delivery Segment row: route (main) or type + transfer code (sub segment) */
+    .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-segment-tags { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .35rem; }
+
     /* Consignment Overview card: Overview | Subsheets tabs */
     .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-tabs-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
     .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-tabs { display: inline-flex; gap: .25rem; padding: .2rem; border-radius: .6rem; background: rgb(241 245 249); }

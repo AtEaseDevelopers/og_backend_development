@@ -2,7 +2,9 @@
 
 namespace App\Support;
 
+use App\Domains\Commission\Actions\ResolveCommissionShares;
 use App\Domains\Consignment\Models\ConsignmentNote;
+use App\Domains\Dispatch\Models\DeliveryOrder;
 use App\Enums\CsnStatus;
 use App\Filament\Resources\ConsignmentNoteResource;
 use App\Filament\Resources\DeliveryOrderResource;
@@ -175,6 +177,8 @@ class CsnViewData
                 'driver' => $mainDo->driver?->name,
                 'lorry' => $mainDo->lorry?->registration_no,
                 'route' => $mainRoute ?: '—',
+                'type' => null,
+                'transfer_code' => null,
                 'url' => $this->traceabilityUrl(DeliveryOrderResource::class, $mainDo, $csn),
             ];
         }
@@ -186,8 +190,11 @@ class CsnViewData
                 'type' => 'sub',
                 'label' => 'Sub Segment '.($index + 1),
                 'driver' => $subsheet->subDriver?->name,
-                'lorry' => $subsheet->subLorry?->registration_no,
-                'route' => $subsheet->segment_route ?: '—',
+                'lorry' => $subsheet->subLorry?->registration_no ?? 'No lorry yet',
+                'route' => $subsheet->segment_route ?: null,
+                'type' => $subsheet->typeLabel(),
+                'type_key' => (string) $subsheet->task_type,
+                'transfer_code' => $subsheet->transfer_code,
                 'url' => $this->traceabilityUrl(SubsheetResource::class, $subsheet, $csn),
             ];
         }
@@ -203,8 +210,8 @@ class CsnViewData
             [
                 'label' => 'Add Subsheet',
                 'action' => 'addSubsheets',
-                'visible' => (bool) $csn->deliveryOrder?->job_sheet_id
-                    && $csn->status !== CsnStatus::Cancelled,
+                // no lorry needed on the CSN first (a subsheet can be created and assigned later)
+                'visible' => $csn->status !== CsnStatus::Cancelled,
             ],
             [
                 'label' => 'Assign Driver',
@@ -215,29 +222,29 @@ class CsnViewData
             ],
         ];
 
+        // what each assigned segment's driver earns under the commission rules (the same calculation as the
+        // month-end commission slips: rate % of the CSN total, split per the rule / profit sharing)
         $commissions = [];
 
         if ($mainDo) {
-            $subTotal = $csn->subsheets->sum(fn ($s) => (float) $s->psi_amount);
-            $mainAmount = max(0, (float) $csn->transport_charges - $subTotal);
             $commissions[] = $this->commissionRow(
                 'Main Delivery Segment',
                 $mainDo->driver?->name,
                 $mainDo->lorry?->registration_no,
                 $mainRoute ?: '—',
-                $mainAmount,
-                (float) $csn->transport_charges,
+                $mainDo,
+                null,
             );
         }
 
         foreach ($csn->subsheets as $index => $subsheet) {
             $commissions[] = $this->commissionRow(
-                'Sub Segment '.($index + 1),
+                'Sub Segment '.($index + 1).' · '.$subsheet->typeLabel(),
                 $subsheet->subDriver?->name,
                 $subsheet->subLorry?->registration_no,
                 $subsheet->segment_route ?: '—',
-                (float) $subsheet->psi_amount,
-                (float) $csn->transport_charges,
+                $subsheet->deliveryOrder,
+                $subsheet->transfer_code,
             );
         }
 
@@ -308,17 +315,26 @@ class CsnViewData
         ?string $driver,
         ?string $lorry,
         string $route,
-        float $amount,
-        float $transportTotal,
+        ?DeliveryOrder $do,
+        ?string $transferCode = null,
     ): array {
+        // a segment without a driver yet earns nothing yet
+        $assigned = $do !== null && $do->driver_id !== null;
+        $shares = app(ResolveCommissionShares::class);
+        $rate = $assigned ? $shares->rateFor($do) : null;
+        $amount = $assigned
+            ? round((float) $shares->execute($do)->where('driver_id', $do->driver_id)->sum('amount'), 2)
+            : null;
+
         return [
             'segment' => $segment,
             'driver' => $driver ?? '—',
             'lorry' => $lorry ?? '—',
+            // a transfer code belongs to a subsheet / break bulk leg only
+            'transfer_code' => $transferCode ?: '—',
             'route' => $route,
-            'commission_pct' => $transportTotal > 0 && $amount > 0
-                ? round(($amount / $transportTotal) * 100)
-                : null,
+            'commission_pct' => $rate !== null ? rtrim(rtrim(number_format($rate['rate'], 2, '.', ''), '0'), '.') : null,
+            'rule' => $rate !== null ? ($rate['rule'] ?? 'Default rate') : null,
             'amount' => $amount,
         ];
     }

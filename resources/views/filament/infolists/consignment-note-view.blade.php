@@ -231,7 +231,18 @@
                                 </a>
                             @endif
                         </div>
-                        <div class="csn-segment-route">{{ $segment['route'] }}</div>
+                        {{-- main segment: its route; a sub segment: its type and transfer code (and a route if one was entered) --}}
+                        <div class="csn-segment-tags">
+                            @if ($segment['type'] ?? null)
+                                <span class="csn-sub-type csn-sub-type-{{ $segment['type_key'] ?? '' }}">{{ $segment['type'] }}</span>
+                            @endif
+                            @if ($segment['transfer_code'] ?? null)
+                                <span class="csn-sub-code" title="Transfer code">{{ $segment['transfer_code'] }}</span>
+                            @endif
+                            @if (filled($segment['route'] ?? null))
+                                <span class="csn-segment-route">{{ $segment['route'] }}</span>
+                            @endif
+                        </div>
                         <button type="button" class="csn-segment-delete" disabled aria-label="Remove segment" title="Remove segment">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                                 <path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM6.75 9.25a.75.75 0 0 0 0 1.5h6.5a.75.75 0 0 0 0-1.5h-6.5Z" clip-rule="evenodd" />
@@ -256,6 +267,7 @@
                             <th>Delivery Segment</th>
                             <th>Driver</th>
                             <th>Lorry</th>
+                            <th>Transfer Code</th>
                             <th>Segment Route</th>
                             <th class="text-right">Commission %</th>
                             <th class="text-right">Configured Amount</th>
@@ -267,9 +279,18 @@
                                 <td>{{ $row['segment'] }}</td>
                                 <td>{{ $row['driver'] }}</td>
                                 <td>{{ $row['lorry'] }}</td>
+                                <td>{{ $row['transfer_code'] }}</td>
                                 <td>{{ $row['route'] }}</td>
-                                <td class="text-right">{{ filled($row['commission_pct'] ?? null) ? $row['commission_pct'].'%' : '—' }}</td>
-                                <td class="text-right whitespace-nowrap">MYR {{ number_format((float) ($row['amount'] ?? 0), 2) }}</td>
+                                <td class="text-right">
+                                    @if (filled($row['commission_pct'] ?? null))
+                                        {{ $row['commission_pct'] }}%
+                                        <div class="csn-commission-rule">{{ $row['rule'] }}</div>
+                                    @else
+                                        —
+                                    @endif
+                                </td>
+                                {{-- earned by the segment's driver under the commission rules; none until a driver is assigned --}}
+                                <td class="text-right whitespace-nowrap">{{ ($row['amount'] ?? null) !== null ? 'MYR '.number_format((float) $row['amount'], 2) : 'Not assigned' }}</td>
                             </tr>
                         @endforeach
                     </tbody>

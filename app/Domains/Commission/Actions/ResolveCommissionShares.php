@@ -138,23 +138,33 @@ class ResolveCommissionShares
         return $rows->values();
     }
 
+    /**
+     * The commission rate of a delivery order: its active rule (the branch's own first, else one for all branches),
+     * else the default rate.
+     *
+     * @return array{rate: float, rule: ?string}
+     */
+    public function rateFor(DeliveryOrder $do): array
+    {
+        $rule = $this->matchRule($do);
+
+        return [
+            'rate' => (float) ($rule?->rate_percent ?? config('og.default_commission_rate', 10)),
+            'rule' => $rule?->name,
+        ];
+    }
+
+    /** Active rule of the delivery order's branch, else one for all branches (lorry type / route are no longer used). */
     private function matchRule(DeliveryOrder $do): ?CommissionRule
     {
-        $lorryType = $do->lorry?->type;
-
         return CommissionRule::query()
             ->where('is_active', true)
             ->where(function ($q) use ($do) {
                 $q->whereNull('source_branch_id')
                     ->orWhere('source_branch_id', $do->source_branch_id);
             })
-            ->when($lorryType, function ($q) use ($lorryType) {
-                $q->where(function ($inner) use ($lorryType) {
-                    $inner->whereNull('lorry_type')->orWhere('lorry_type', $lorryType);
-                });
-            })
             ->orderByRaw('source_branch_id is null')
-            ->orderByRaw('lorry_type is null')
+            ->orderBy('id')
             ->first();
     }
 
