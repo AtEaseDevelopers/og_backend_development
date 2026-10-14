@@ -4,7 +4,7 @@
 > what is done, what is left, and the rules the user has set. Update it whenever an item changes status,
 > and refresh "Last updated" with the output of plain `date` (local Malaysia time).
 
-**Last updated:** Thu Oct 15 02:00:46 MPST 2026 · CSN segment transfer code + commission amounts; commission rule form (not committed)
+**Last updated:** Thu Oct 15 02:07:36 MPST 2026 · branch switch keeps the page (not committed)
 
 **Previous round:** finished and pushed as commit `a29b179` on `main` (8 Oct 2026: orders, order details,
 billing / COD / Term, CSN bulk actions, QR codes, returned-CSN scanning, cash bill calculator). Its details are
@@ -140,6 +140,9 @@ Legend: [x] done · [~] done in code, not yet browser-checked · [ ] not started
 - [x] **Delivery Segment**: each sub segment shows its type and **transfer code** (it showed the subsheet's pickup route, which is no longer entered, so "—"); "No lorry yet" for an unassigned one. A transfer code belongs to a subsheet / break bulk leg only; the main segment keeps its route. "Add Subsheet" shows without a main lorry.
 - [x] **Segment Commission Allocation**: new **Transfer Code** column; **Commission %** = the matching rule's rate (rule name under it) and **Configured Amount** = what the segment's driver earns under the commission rules (`ResolveCommissionShares`, the same calculation as the commission slips); "Not assigned" until a driver is assigned. E.g. KLS-CSN-202610-0001: KL Driver 3 · 10% · MYR 10.80.
 - [x] **Commission rules**: Lorry type and Route removed from the form and list; rules now match by branch only (the branch's own rule first, else one for all branches).
+
+### 16. Branch switch keeps the page (user, 15 Oct) — done, not committed
+- [x] Switching branch (top bar) stays on the page being viewed, now in the new branch, with its filters (e.g. /admin/KL/consignment-notes?csn=all → /admin/JB/consignment-notes?csn=all). A page of one record (a CSN, an order, a job sheet) belongs to the old branch, so the switch opens that list instead (CSN 45 → CSN list); a page the branch does not have falls back to the dashboard. `SwitchBranch::enterKeepingPage`. Checked in the browser.
 
 ## Open questions for the user
 - Commission rules: with lorry type no longer used, a rule that was only for a lorry type (local "10-ton split 2") is never picked — the first rule for the branch / all branches applies. Deactivate or merge such rules?

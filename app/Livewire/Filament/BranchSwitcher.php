@@ -21,7 +21,8 @@ class BranchSwitcher extends Component
 
         abort_unless($branch instanceof Branch, 403);
 
-        $this->redirect(SwitchBranch::enter($user, $branch));
+        // stay on the page being viewed (the Livewire request's referer is that page), in the new branch
+        $this->redirect(SwitchBranch::enterKeepingPage($user, $branch, request()->header('Referer')));
     }
 
     /**
