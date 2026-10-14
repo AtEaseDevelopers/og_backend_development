@@ -4,7 +4,7 @@
 > what is done, what is left, and the rules the user has set. Update it whenever an item changes status,
 > and refresh "Last updated" with the output of plain `date` (local Malaysia time).
 
-**Last updated:** Thu Oct 15 02:07:36 MPST 2026 · branch switch keeps the page (not committed)
+**Last updated:** Thu Oct 15 02:17:11 MPST 2026 · commission split by rule between the CSN's drivers
 
 **Previous round:** finished and pushed as commit `a29b179` on `main` (8 Oct 2026: orders, order details,
 billing / COD / Term, CSN bulk actions, QR codes, returned-CSN scanning, cash bill calculator). Its details are
@@ -136,16 +136,19 @@ Legend: [x] done · [~] done in code, not yet browser-checked · [ ] not started
 ### 14. Admin release for Credit / Term only (user, 13 Oct) — done
 - [x] A **Cash** order has no Admin release any more: it waits for full payment. Payment summary shows **Pending payment** (no yellow "requires Admin approval" note, no release card); the order stage reads "Pending payment". `ReleaseOrder` refuses any order that is not Credit / Term ("Admin release is for Credit / Term orders only…"). Credit / Term orders keep Admin release as before.
 
-### 15. CSN details: transfer code and commission (user, 15 Oct) — done, not committed
-- [x] **Delivery Segment**: each sub segment shows its type and **transfer code** (it showed the subsheet's pickup route, which is no longer entered, so "—"); "No lorry yet" for an unassigned one. A transfer code belongs to a subsheet / break bulk leg only; the main segment keeps its route. "Add Subsheet" shows without a main lorry.
+### 15. CSN details: transfer code and commission (user, 15 Oct) — done
+- [x] **Delivery Segment**: each sub segment shows its type and **transfer code** (it showed the subsheet's pickup route, which is no longer entered, so "—"); "No lorry yet" for an unassigned one. A transfer code belongs to a subsheet / break bulk leg only; the main segment keeps its route. "Add Subsheet" shows without a main lorry. The main segment's route (From → To) shows in full again (it was cut to "As…" after the tags change, 15 Oct).
 - [x] **Segment Commission Allocation**: new **Transfer Code** column; **Commission %** = the matching rule's rate (rule name under it) and **Configured Amount** = what the segment's driver earns under the commission rules (`ResolveCommissionShares`, the same calculation as the commission slips); "Not assigned" until a driver is assigned. E.g. KLS-CSN-202610-0001: KL Driver 3 · 10% · MYR 10.80.
 - [x] **Commission rules**: Lorry type and Route removed from the form and list; rules now match by branch only (the branch's own rule first, else one for all branches).
 
-### 16. Branch switch keeps the page (user, 15 Oct) — done, not committed
+### 16. Branch switch keeps the page (user, 15 Oct) — done
 - [x] Switching branch (top bar) stays on the page being viewed, now in the new branch, with its filters (e.g. /admin/KL/consignment-notes?csn=all → /admin/JB/consignment-notes?csn=all). A page of one record (a CSN, an order, a job sheet) belongs to the old branch, so the switch opens that list instead (CSN 45 → CSN list); a page the branch does not have falls back to the dashboard. `SwitchBranch::enterKeepingPage`. Checked in the browser.
 
+### 17. Commission split by rule between the CSN's drivers (user, 15 Oct) — done
+- [x] The main driver got the full commission (e.g. 80% × RM 20 = 16) while a Pickup leg's driver got 0, and a Transfer leg's driver got the full amount again. Now each CSN earns **one** commission: the rule's rate % of the CSN total, **shared** between the main driver and every subsheet leg that has a driver, using the rule for that number of drivers (1 = Single, 2 = Split 2, 3 = Split 3, 4+ = Split 4) and its share % (main first, then the legs in the order created). With no rule for that number, the branch's first rule applies, shared equally. Nobody is paid twice; the old profit-sharing (PSI) path no longer drives commission. `ResolveCommissionShares::splitFor`; the same numbers feed the commission slips and the CSN page, which shows "Share 40% of 2 drivers" under the rule. Checked locally: CSN 45 Transfer leg = 10% × RM 30 × 40% = MYR 1.20 (was 0).
+
 ## Open questions for the user
-- Commission rules: with lorry type no longer used, a rule that was only for a lorry type (local "10-ton split 2") is never picked — the first rule for the branch / all branches applies. Deactivate or merge such rules?
+- Commission rules are now picked by the number of drivers. The server's "Default single driver 10%" is set to 80%; check each Split 2 / 3 / 4 rule has the rate and shares you want (without one, the single rule's rate is shared equally).
 - For price-list (UOM) products the order form never checks a special price (special → price list → keyed in is the agreed order). Change it?
 - Credit / Term orders need branch manager approval only when a credit check fails. Should every Credit / Term order need approval?
 

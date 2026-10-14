@@ -223,7 +223,7 @@ class CsnViewData
         ];
 
         // what each assigned segment's driver earns under the commission rules (the same calculation as the
-        // month-end commission slips: rate % of the CSN total, split per the rule / profit sharing)
+        // month-end commission slips: rate % of the CSN total, shared between the CSN's drivers by the rule)
         $commissions = [];
 
         if ($mainDo) {
@@ -333,9 +333,18 @@ class CsnViewData
             // a transfer code belongs to a subsheet / break bulk leg only
             'transfer_code' => $transferCode ?: '—',
             'route' => $route,
-            'commission_pct' => $rate !== null ? rtrim(rtrim(number_format($rate['rate'], 2, '.', ''), '0'), '.') : null,
+            'commission_pct' => $rate !== null ? $this->percent($rate['rate']) : null,
             'rule' => $rate !== null ? ($rate['rule'] ?? 'Default rate') : null,
+            // this driver's share of the CSN's commission (1 driver = all of it)
+            'share' => $rate !== null && $rate['drivers'] > 1
+                ? 'Share '.$this->percent($rate['share']).'% of '.$rate['drivers'].' drivers'
+                : null,
             'amount' => $amount,
         ];
+    }
+
+    private function percent(float $value): string
+    {
+        return rtrim(rtrim(number_format($value, 2, '.', ''), '0'), '.');
     }
 }

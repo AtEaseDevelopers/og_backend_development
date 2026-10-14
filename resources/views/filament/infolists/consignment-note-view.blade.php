@@ -240,7 +240,7 @@
                                 <span class="csn-sub-code" title="Transfer code">{{ $segment['transfer_code'] }}</span>
                             @endif
                             @if (filled($segment['route'] ?? null))
-                                <span class="csn-segment-route">{{ $segment['route'] }}</span>
+                                <span class="csn-segment-route" title="Route (From → To)">{{ $segment['route'] }}</span>
                             @endif
                         </div>
                         <button type="button" class="csn-segment-delete" disabled aria-label="Remove segment" title="Remove segment">
@@ -285,6 +285,9 @@
                                     @if (filled($row['commission_pct'] ?? null))
                                         {{ $row['commission_pct'] }}%
                                         <div class="csn-commission-rule">{{ $row['rule'] }}</div>
+                                        @if ($row['share'] ?? null)
+                                            <div class="csn-commission-rule">{{ $row['share'] }}</div>
+                                        @endif
                                     @else
                                         —
                                     @endif

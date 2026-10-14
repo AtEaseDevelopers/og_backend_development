@@ -640,7 +640,9 @@
     .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-commission-rule { font-size: .7rem; color: rgb(100 116 139); }
 
     /* Delivery Segment row: route (main) or type + transfer code (sub segment) */
-    .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-segment-tags { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .35rem; }
+    .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-segment-tags { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .35rem; flex: 0 1 auto; max-width: 55%; }
+    /* the route (From → To) shows in full inside the tags box (its own 40% cap made it "As…") */
+    .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-segment-tags .csn-segment-route { max-width: 100%; }
 
     /* Consignment Overview card: Overview | Subsheets tabs */
     .fi-resource-consignment-notes.fi-resource-view-record-page .csn-view .csn-tabs-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
