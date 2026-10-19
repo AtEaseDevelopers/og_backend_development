@@ -11,32 +11,57 @@ use App\Domains\Quotation\Models\Quotation;
 
 class QuotationPricingLookup
 {
-    public function lookupForCustomer(?int $customerId, string $itemName, string $locationName, float $quantity = 1): array
-    {
-        if (Uom::query()->where('name', $itemName)->exists()) {
-            $masterPrice = $this->lookup($itemName, $locationName, $quantity);
+    private PriceListRates $rates;
 
-            return [
-                'price' => $masterPrice,
-                'source' => $masterPrice !== null ? 'master' : null,
-            ];
+    /** (created with "new" by older code too: the price list rates come from the container then) */
+    public function __construct(?PriceListRates $rates = null)
+    {
+        $this->rates = $rates ?? app(PriceListRates::class);
+    }
+
+    /**
+     * The price of a product for the customer (user, 8 and 19 Oct 2026): the customer's special price when it has
+     * one for the product and destination, otherwise the default price; neither = null (keyed in by hand).
+     * A price for the drop-off type comes before the Default type's.
+     *
+     * @return array{price: ?float, source: ?string}  source special | master
+     */
+    public function lookupForCustomer(?int $customerId, string $itemName, string $locationName, float $quantity = 1, ?string $dropOffType = null): array
+    {
+        $locationId = $this->locationId($locationName);
+        $uom = Uom::query()->where('name', $itemName)->first();
+
+        if ($uom) {
+            if (! $locationId) {
+                return ['price' => null, 'source' => null];
+            }
+
+            $set = $this->rates->uomTiers($uom, $locationId, $customerId, $dropOffType);
+            $tier = $this->rates->tierFor($set['tiers'], $quantity);
+
+            return $tier
+                ? ['price' => (float) $tier->price, 'source' => $set['special'] ? 'special' : 'master']
+                : ['price' => null, 'source' => null];
         }
 
-        $history = app(CustomerQuotationPriceHistory::class);
+        $chartered = CharteredLorry::query()->where('name', $itemName)->first();
 
-        $specialPrice = $history->resolveSpecialPrice($customerId, $itemName, $locationName);
+        if ($chartered) {
+            $picked = $locationId ? $this->rates->lorryRate($chartered, $locationId, $customerId, $dropOffType) : ['rate' => null, 'special' => false];
+
+            return $picked['rate']
+                ? ['price' => (float) $picked['rate']->price, 'source' => $picked['special'] ? 'special' : 'master']
+                : ['price' => null, 'source' => null];
+        }
+
+        // a transport item: its customer special price, else its default rate
+        $specialPrice = app(CustomerQuotationPriceHistory::class)->resolveSpecialPrice($customerId, $itemName, $locationName);
 
         if ($specialPrice !== null) {
             return ['price' => $specialPrice, 'source' => 'special'];
         }
 
-        $previousPrice = $history->resolvePreviousPrice($customerId, $itemName, $locationName);
-
-        if ($previousPrice !== null) {
-            return ['price' => $previousPrice, 'source' => 'previous'];
-        }
-
-        $masterPrice = $this->lookup($itemName, $locationName, $quantity);
+        $masterPrice = $this->lookup($itemName, $locationName, $quantity, $dropOffType);
 
         return [
             'price' => $masterPrice,
@@ -44,9 +69,10 @@ class QuotationPricingLookup
         ];
     }
 
-    public function lookup(string $itemName, string $locationName, float $quantity = 1): ?float
+    /** The default price (no customer). */
+    public function lookup(string $itemName, string $locationName, float $quantity = 1, ?string $dropOffType = null): ?float
     {
-        $locationId = Location::query()->where('name', $locationName)->value('id');
+        $locationId = $this->locationId($locationName);
 
         if (! $locationId) {
             return null;
@@ -63,28 +89,39 @@ class QuotationPricingLookup
         $chartered = CharteredLorry::query()->where('name', $itemName)->first();
 
         if ($chartered) {
-            $price = $chartered->rates()->where('location_id', $locationId)->value('price');
+            $rate = $this->rates->lorryRate($chartered, $locationId, null, $dropOffType)['rate'];
 
-            return $price !== null ? (float) $price : null;
+            return $rate ? (float) $rate->price : null;
         }
 
         $uom = Uom::query()->where('name', $itemName)->first();
 
         if ($uom) {
-            $tier = UomRateTier::query()
-                ->where('uom_id', $uom->id)
-                ->where('location_id', $locationId)
-                ->where('min_qty', '<=', $quantity)
-                ->where(function ($query) use ($quantity) {
-                    $query->whereNull('max_qty')->orWhere('max_qty', '>=', $quantity);
-                })
-                ->orderByDesc('min_qty')
-                ->first();
+            $tier = $this->rates->uomTier($uom, $locationId, $quantity, null, $dropOffType);
 
             return $tier ? (float) $tier->price : null;
         }
 
         return null;
+    }
+
+    /**
+     * The rate tier behind a UOM product's price (the customer's special set, else the default set), with its
+     * minimum charges.
+     */
+    public function rateTierFor(?int $customerId, string $itemName, string $locationName, float $quantity, ?string $dropOffType = null): ?UomRateTier
+    {
+        $locationId = $this->locationId($locationName);
+        $uom = $locationId ? Uom::query()->where('name', $itemName)->first() : null;
+
+        return $uom ? $this->rates->uomTier($uom, $locationId, $quantity, $customerId, $dropOffType) : null;
+    }
+
+    private function locationId(string $locationName): ?int
+    {
+        $id = Location::query()->where('name', $locationName)->value('id');
+
+        return $id ? (int) $id : null;
     }
 
     /** @return array<string, string> */
@@ -107,12 +144,21 @@ class QuotationPricingLookup
         return $options;
     }
 
-    /** @return array<string, string> */
-    public function catalogOptionsForType(string $type): array
+    /**
+     * Products to pick on the order form. A product priced only for other customers (their special price list) is
+     * left out; one with a default price, a special price of this customer or no price at all is offered.
+     *
+     * @return array<string, string>
+     */
+    public function catalogOptionsForType(string $type, ?int $customerId = null): array
     {
+        $code = $this->rates->customerCode($customerId);
+        $offered = fn ($query) => $query->where(fn ($q) => $q->whereNull('customer_code')->when($code, fn ($q) => $q->orWhere('customer_code', $code)));
+
         return match ($type) {
             'lorry' => CharteredLorry::query()
                 ->where('is_active', true)
+                ->where(fn ($q) => $q->whereDoesntHave('rates')->orWhereHas('rates', $offered))
                 ->orderBy('name')
                 ->get()
                 ->mapWithKeys(fn (CharteredLorry $lorry) => [
@@ -121,6 +167,7 @@ class QuotationPricingLookup
                 ->all(),
             'uom' => Uom::query()
                 ->where('is_active', true)
+                ->where(fn ($q) => $q->whereDoesntHave('rateTiers')->orWhereHas('rateTiers', $offered))
                 ->orderBy('name')
                 ->get()
                 ->mapWithKeys(fn (Uom $uom) => [
@@ -215,24 +262,9 @@ class QuotationPricingLookup
         return null;
     }
 
-    public function matchedUomTier(string $itemName, string $locationName, float $quantity): ?UomRateTier
+    public function matchedUomTier(string $itemName, string $locationName, float $quantity, ?int $customerId = null, ?string $dropOffType = null): ?UomRateTier
     {
-        $locationId = Location::query()->where('name', $locationName)->value('id');
-        $uom = Uom::query()->where('name', $itemName)->first();
-
-        if (! $locationId || ! $uom) {
-            return null;
-        }
-
-        return UomRateTier::query()
-            ->where('uom_id', $uom->id)
-            ->where('location_id', $locationId)
-            ->where('min_qty', '<=', $quantity)
-            ->where(function ($query) use ($quantity) {
-                $query->whereNull('max_qty')->orWhere('max_qty', '>=', $quantity);
-            })
-            ->orderByDesc('min_qty')
-            ->first();
+        return $this->rateTierFor($customerId, $itemName, $locationName, $quantity, $dropOffType);
     }
 
     public function formatUomTier(UomRateTier $tier, float $quantity): string
@@ -245,20 +277,16 @@ class QuotationPricingLookup
     }
 
     /** @return list<array{range: string, price: float}> */
-    public function uomTierBreakdown(string $itemName, string $locationName): array
+    public function uomTierBreakdown(string $itemName, string $locationName, ?int $customerId = null, ?string $dropOffType = null): array
     {
-        $locationId = Location::query()->where('name', $locationName)->value('id');
+        $locationId = $this->locationId($locationName);
         $uom = Uom::query()->where('name', $itemName)->first();
 
         if (! $locationId || ! $uom) {
             return [];
         }
 
-        return UomRateTier::query()
-            ->where('uom_id', $uom->id)
-            ->where('location_id', $locationId)
-            ->orderBy('min_qty')
-            ->get()
+        return $this->rates->uomTiers($uom, $locationId, $customerId, $dropOffType)['tiers']
             ->map(fn (UomRateTier $tier) => [
                 'range' => $tier->max_qty
                     ? number_format((float) $tier->min_qty, 0).'–'.number_format((float) $tier->max_qty, 0)
@@ -272,7 +300,7 @@ class QuotationPricingLookup
      * @param  list<string>  $destinations
      * @return array{quantity: float, destinations: list<array{name: string, unit_price: ?float, active_range: ?string, line_total: ?float, tiers: list<array{range: string, price: float, active: bool}>}>}
      */
-    public function uomTierSummary(string $itemName, array $destinations, float $quantity): array
+    public function uomTierSummary(string $itemName, array $destinations, float $quantity, ?int $customerId = null, ?string $dropOffType = null): array
     {
         $quantity = max(0.01, $quantity);
 
@@ -281,19 +309,15 @@ class QuotationPricingLookup
             'destinations' => collect($destinations)
                 ->filter()
                 ->values()
-                ->map(function (string $destination) use ($itemName, $quantity) {
-                    $matched = $this->matchedUomTier($itemName, $destination, $quantity);
-                    $locationId = Location::query()->where('name', $destination)->value('id');
+                ->map(function (string $destination) use ($itemName, $quantity, $customerId, $dropOffType) {
+                    $matched = $this->matchedUomTier($itemName, $destination, $quantity, $customerId, $dropOffType);
+                    $locationId = $this->locationId($destination);
                     $uom = Uom::query()->where('name', $itemName)->first();
 
                     $tiers = [];
 
                     if ($locationId && $uom) {
-                        $tiers = UomRateTier::query()
-                            ->where('uom_id', $uom->id)
-                            ->where('location_id', $locationId)
-                            ->orderBy('min_qty')
-                            ->get()
+                        $tiers = $this->rates->uomTiers($uom, $locationId, $customerId, $dropOffType)['tiers']
                             ->map(fn (UomRateTier $tier) => [
                                 'range' => $tier->max_qty
                                     ? number_format((float) $tier->min_qty, 0).'–'.number_format((float) $tier->max_qty, 0)

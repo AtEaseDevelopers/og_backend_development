@@ -9,6 +9,16 @@ class SimpleXlsxReader
     /** @return array<string, list<array<string, string|null>>> */
     public function readSheets(string $path): array
     {
+        return array_map('array_values', $this->readSheetsByRow($path));
+    }
+
+    /**
+     * Like readSheets(), with each sheet's rows keyed by their row number (for reports that name the row).
+     *
+     * @return array<string, array<int, array<string, string|null>>>
+     */
+    public function readSheetsByRow(string $path): array
+    {
         $zip = new ZipArchive;
 
         if ($zip->open($path) !== true) {
@@ -98,7 +108,7 @@ class SimpleXlsxReader
 
     /**
      * @param  list<string>  $sharedStrings
-     * @return list<array<string, string|null>>
+     * @return array<int, array<string, string|null>>
      */
     private function readSheetRows(ZipArchive $zip, string $sheetPath, array $sharedStrings): array
     {
@@ -125,7 +135,7 @@ class SimpleXlsxReader
 
         ksort($rows);
 
-        return array_values($rows);
+        return $rows;
     }
 
     /** @return array{0: string, 1: int} */

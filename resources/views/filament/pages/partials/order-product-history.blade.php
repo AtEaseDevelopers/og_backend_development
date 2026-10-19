@@ -47,7 +47,7 @@
         @else
             <div class="oh-wrap">
                 <table class="oh-small">
-                    <thead><tr><th>Destination</th><th>UOM</th><th class="oh-num">Unit price</th><th class="oh-num">Min. charge</th></tr></thead>
+                    <thead><tr><th>Destination</th><th>Quantity / UOM</th><th class="oh-num">Unit price</th><th class="oh-num">Min. charge</th></tr></thead>
                     <tbody>
                         @foreach ($special as $row)
                             <tr @class(['oh-same' => $row['same']])>

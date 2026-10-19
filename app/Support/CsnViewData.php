@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Domains\Quotation\Actions\UpdateOrderRecords;
 use App\Domains\Commission\Actions\ResolveCommissionShares;
 use App\Domains\Consignment\Models\ConsignmentNote;
 use App\Domains\Dispatch\Models\DeliveryOrder;
@@ -53,9 +54,16 @@ class CsnViewData
         ];
     }
 
-    /** @return array<string, mixed> */
+    /**
+     * The CSN overview: what was entered when the order was created (the CSN's own copy, else its order record's —
+     * a CSN created before a field was carried shows the order's value).
+     *
+     * @return array<string, mixed>
+     */
     private function overview(ConsignmentNote $csn): array
     {
+        $order = $csn->quotation;
+
         return [
             'quotation' => $csn->quotation?->number,
             'destination' => $csn->quotationDestination?->city
@@ -64,20 +72,25 @@ class CsnViewData
             'number' => $csn->number,
             'issued_at' => $csn->issued_at?->format('d/m/Y'),
             'do_number' => $csn->do_number ?: $csn->deliveryOrder?->number,
+            // the customer's own DO number (the order's "DO number"); the system DO number is under Traceability
+            'customer_do_number' => $csn->customer_do_number ?: $order?->customer_do_number,
             'job_no' => $csn->job_no,
             'customer_reference' => $csn->customer_reference,
             'job_date' => $csn->job_date?->format('d/m/Y'),
-            'from_area' => $csn->fromLocation?->name,
-            'to_area' => $csn->toLocation?->name,
+            'from_area' => $csn->fromLocation?->name ?? $order?->fromLocation?->name,
+            'to_area' => $csn->toLocation?->name ?? $order?->toLocation?->name,
             'customer' => $csn->customer
                 ? trim(($csn->customer->code ? $csn->customer->code.' — ' : '').$csn->customer->company_name)
                 : null,
-            'customer_phone' => $csn->customer_phone ?: $csn->customer?->phone,
+            // the order's contact number (section 1), else the CSN's / the customer's
+            'customer_phone' => $order?->customer_pic_phone ?: ($csn->customer_phone ?: $csn->customer?->phone),
             'tax_code' => $csn->tax_code,
             'customer_name' => $csn->customer_name ?: $csn->customer?->company_name,
             'tax_description' => $csn->tax_code_name,
-            'customer_address' => $csn->customer?->address,
-            'remarks' => $csn->remarks,
+            // the order's billing address, else the customer's
+            'customer_address' => $order?->customer_address ?: $csn->customer?->address,
+            // the consignor & consignee's instructions on the order
+            'remarks' => $csn->remarks ?: (UpdateOrderRecords::instructionsFromNotes($order?->notes) ?: null),
         ];
     }
 
@@ -335,10 +348,13 @@ class CsnViewData
             'route' => $route,
             'commission_pct' => $rate !== null ? $this->percent($rate['rate']) : null,
             'rule' => $rate !== null ? ($rate['rule'] ?? 'Default rate') : null,
-            // this driver's share of the CSN's commission (1 driver = all of it)
-            'share' => $rate !== null && $rate['drivers'] > 1
-                ? 'Share '.$this->percent($rate['share']).'% of '.$rate['drivers'].' drivers'
-                : null,
+            // a Pickup driver's fixed amount, else this driver's equal part of what is left
+            'share' => match (true) {
+                $rate === null => null,
+                $rate['pickup'] ?? false => 'Pickup · fixed amount',
+                $rate['drivers'] > 1 => 'Shared by '.$rate['drivers'].' drivers',
+                default => null,
+            },
             'amount' => $amount,
         ];
     }

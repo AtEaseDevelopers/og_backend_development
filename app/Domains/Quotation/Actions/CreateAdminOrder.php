@@ -8,6 +8,7 @@ use App\Domains\MasterData\Models\Customer;
 use App\Domains\MasterData\Models\Location;
 use App\Domains\Quotation\Models\PortalEnquiry;
 use App\Enums\DocumentType;
+use App\Enums\OrderType;
 use App\Enums\PortalEnquiryStatus;
 use App\Models\User;
 use App\Services\DocumentNumberingService;
@@ -48,6 +49,13 @@ class CreateAdminOrder
 
         if ($pairs->isEmpty()) {
             throw new InvalidArgumentException('Add at least one consignor & consignee.');
+        }
+
+        // each block's payment term: Credit / Term only for a credit customer
+        foreach ($pairs as $index => $pair) {
+            if (($pair['order_type'] ?? null) === OrderType::Term->value && ! $customer->is_credit) {
+                throw new InvalidArgumentException('Consignor & consignee '.($index + 1).': Credit / Term needs a credit customer. Choose Cash or COD.');
+            }
         }
 
         $salesperson = filled($data['salesperson_id'] ?? null) ? User::query()->find($data['salesperson_id']) : null;
@@ -148,6 +156,8 @@ class CreateAdminOrder
                     'customer_address' => $billingAddress ?? ($pair['customer_address'] ?? null),
                     'pickup_location' => $pair['pickup_location'] ?? null,
                     'drop_off_type' => $pair['drop_off_type'] ?? null,
+                    // the block's own payment term
+                    'order_type' => $pair['order_type'] ?? ($data['order_type'] ?? null),
                     // Pickup or Store (with the branch) per block
                     'service_type' => $pair['service_type'] ?? ($data['service_type'] ?? null),
                     'store_branch_id' => $pair['store_branch_id'] ?? null,

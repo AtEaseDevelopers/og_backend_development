@@ -136,7 +136,7 @@ class OrderDetail extends Page
 
         // Section A: hold the enquiry while it is being prepared (released when sent / confirmed)
         $enquiry = $detail['enquiry'];
-        if ($enquiry && auth()->user() && in_array($detail['stage']['key'], ['enquiry', 'pending_salesperson', 'quotation'], true) && ! $enquiry->acquireLock(auth()->user())) {
+        if ($enquiry && auth()->user() && in_array($detail['stage']['key'], ['enquiry', 'quotation'], true) && ! $enquiry->acquireLock(auth()->user())) {
             Notification::make()->title('Currently being attended')->body(($enquiry->locker?->name ?? 'Another user').' is attending this order. It is read-only until they finish.')->warning()->send();
         }
     }
@@ -573,7 +573,10 @@ class OrderDetail extends Page
     /** @return array<string, string> */
     public function catalogOptions(string $type): array
     {
-        return app(QuotationPricingLookup::class)->catalogOptionsForType($type ?: 'uom');
+        $order = $this->detail()['order'] ?? null;
+
+        // the order customer's own special products are offered too
+        return app(QuotationPricingLookup::class)->catalogOptionsForType($type ?: 'uom', $order?->customer_id ? (int) $order->customer_id : null);
     }
 
     public function updatedPricing($value, string $key): void
@@ -635,7 +638,8 @@ class OrderDetail extends Page
             return;
         }
 
-        $list = app(OrderDetailData::class)->listPrices($order?->customer_id ? (int) $order->customer_id : null, $row['item_name'], $columns, (float) ($row['quantity'] ?: 1));
+        $dropOffTypes = $order ? $order->destinations->mapWithKeys(fn ($d) => [(string) $d->consignee_name => $d->drop_off_type])->all() : [];
+        $list = app(OrderDetailData::class)->listPrices($order?->customer_id ? (int) $order->customer_id : null, $row['item_name'], $columns, (float) ($row['quantity'] ?: 1), $dropOffTypes);
         $row['list'] = array_map(fn (string $c) => $list[$c] ?? ['price' => null, 'source' => null, 'tier' => null], $columns);
 
         if (($this->pricing['reference'] ?? 'price_list') !== 'manual') {

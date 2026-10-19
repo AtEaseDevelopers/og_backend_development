@@ -9,11 +9,11 @@ use App\Enums\DeliveryOrderStatus;
 use Illuminate\Support\Collection;
 
 /**
- * Driver commission of a delivery order. One commission per CSN: the rule's rate % of the CSN total, shared
- * between the drivers of the CSN — its own delivery (main) and every subsheet leg (Pickup / Transfer / Break bulk)
- * that has a driver — by the rule for that number of drivers (1 = Single, 2 = Split 2, 3 = Split 3, 4+ = Split 4;
- * its share % per driver, else an equal split). Each delivery order pays its own driver's share (main first, then
- * the legs in the order they were created), so no driver is paid twice for one CSN (user, 15 Oct 2026).
+ * Driver commission of a delivery order (user, 15 and 20 Oct 2026). One commission per CSN: the rule's rate of the
+ * CSN total (80%; the other 20% is O&G's). A Pickup leg's driver is paid the fixed amount entered when the subsheet
+ * was put on a lorry (deducted first, never more than what is left); the rest is shared equally by the main driver
+ * and every other leg with a driver (80% / 2 each for two drivers, / 3 for three …). Each delivery order pays its
+ * own driver, so no driver is paid twice for one CSN.
  */
 class ResolveCommissionShares
 {
@@ -91,16 +91,19 @@ class ResolveCommissionShares
             'split_percent' => $split['share'],
             'line_type' => $do->is_duplicate ? 'duplicate' : 'delivery',
             'is_eligible' => $eligible,
-            'notes' => $do->is_duplicate
-                ? 'Duplicate reassignment — dual commission eligible'
-                : sprintf(
-                    '%s · %s%% of RM %s · share %s%% of %d driver(s)',
+            'notes' => match (true) {
+                $split['pickup'] => sprintf('Pickup · fixed RM %s of the RM %s commission', number_format($split['amount'], 2), number_format($split['base'], 2)),
+                (bool) $do->is_duplicate => 'Duplicate reassignment — dual commission eligible',
+                default => sprintf(
+                    '%s · %s%% of RM %s = RM %s%s · shared by %d driver(s)',
                     $split['rule'] ?? 'Default rate',
                     $this->number($split['rate']),
                     number_format($split['freight'], 2),
-                    $this->number($split['share']),
+                    number_format($split['base'], 2),
+                    $split['pickup_total'] > 0 ? ' less pickup RM '.number_format($split['pickup_total'], 2) : '',
                     $split['drivers'],
                 ),
+            },
         ]);
 
         return $rows->values();
@@ -116,13 +119,13 @@ class ResolveCommissionShares
     {
         $split = $this->splitFor($do);
 
-        return ['rate' => $split['rate'], 'rule' => $split['rule'], 'share' => $split['share'], 'drivers' => $split['drivers']];
+        return ['rate' => $split['rate'], 'rule' => $split['rule'], 'share' => $split['share'], 'drivers' => $split['drivers'], 'pickup' => $split['pickup']];
     }
 
     /**
-     * The CSN's commission and this delivery order's share of it.
+     * The CSN's commission and this delivery order's part of it.
      *
-     * @return array{rate: float, rule: ?string, freight: float, base: float, drivers: int, share: float, amount: float}
+     * @return array{rate: float, rule: ?string, freight: float, base: float, drivers: int, share: float, amount: float, pickup: bool, pickup_total: float, remaining: float}
      */
     public function splitFor(DeliveryOrder $do): array
     {
@@ -136,30 +139,33 @@ class ResolveCommissionShares
                 ->whereNotNull('delivery_order_id')
                 ->whereHas('deliveryOrder', fn ($q) => $q->whereNotNull('driver_id')->where('status', '!=', DeliveryOrderStatus::Cancelled->value))
                 ->orderBy('id')
-                ->pluck('delivery_order_id')
-                ->map(fn ($id) => (int) $id)
-                ->values()
-                ->all()
-            : [];
+                ->get(['id', 'delivery_order_id', 'task_type', 'psi_amount'])
+            : collect();
 
-        // the CSN's own delivery (main, or its re-delivery) is the first driver; each leg one more
-        $drivers = 1 + count($legs);
-        $legIndex = array_search((int) $do->id, $legs, true);
-        $position = $legIndex !== false
-            ? $legIndex + 1
-            : ($do->subsheet_id !== null ? $drivers - 1 : 0);
+        // Pickup legs are paid their fixed amount; the main delivery and the other legs share the rest equally
+        $pickups = $legs->where('task_type', 'incoming_psi');
+        $sharing = $legs->reject(fn (Subsheet $leg) => $leg->task_type === 'incoming_psi');
+        $drivers = 1 + $sharing->count();
 
         $rule = $this->matchRule($do, $drivers);
-        $rate = (float) ($rule?->rate_percent ?? config('og.default_commission_rate', 10));
+        $rate = (float) ($rule?->rate_percent ?? config('og.default_commission_rate', 80));
         $freight = (float) ($csn?->total_amount ?? 0);
         $base = round($freight * ($rate / 100), 2);
 
-        $shares = $rule?->shares() ?? [];
-        if (count($shares) !== $drivers) {
-            $shares = array_fill(0, $drivers, 100 / $drivers);
+        $left = $base;
+        $pickupAmounts = [];
+
+        foreach ($pickups as $leg) {
+            $amount = round(min(max(0, (float) $leg->psi_amount), $left), 2);
+            $pickupAmounts[(int) $leg->delivery_order_id] = $amount;
+            $left = round($left - $amount, 2);
         }
 
-        $share = (float) ($shares[$position] ?? (100 / $drivers));
+        $pickupTotal = round(array_sum($pickupAmounts), 2);
+        $remaining = max(0, $left);
+        $isPickup = array_key_exists((int) $do->id, $pickupAmounts)
+            || ($do->subsheet_id !== null && Subsheet::query()->whereKey($do->subsheet_id)->value('task_type') === 'incoming_psi');
+        $amount = $isPickup ? (float) ($pickupAmounts[(int) $do->id] ?? 0) : round($remaining / $drivers, 2);
 
         return [
             'rate' => $rate,
@@ -167,8 +173,11 @@ class ResolveCommissionShares
             'freight' => $freight,
             'base' => $base,
             'drivers' => $drivers,
-            'share' => round($share, 2),
-            'amount' => round($base * ($share / 100), 2),
+            'share' => $base > 0 ? round($amount / $base * 100, 2) : 0.0,
+            'amount' => $amount,
+            'pickup' => $isPickup,
+            'pickup_total' => $pickupTotal,
+            'remaining' => $remaining,
         ];
     }
 

@@ -7,7 +7,7 @@
     $pr = $d['pricing'];
     $banner = $d['banner'];
     $hasOwner = (bool) ($order?->salesperson_id ?? $enquiry?->salesperson_id);
-    $needsHeartbeat = $enquiry && ! $d['lock']['locked_by_other'] && in_array($d['stage']['key'], ['enquiry', 'pending_salesperson', 'quotation'], true);
+    $needsHeartbeat = $enquiry && ! $d['lock']['locked_by_other'] && in_array($d['stage']['key'], ['enquiry', 'quotation'], true);
     // payment summary / linked records (documents) / customer confirmation are cards of the overview: keep Overview highlighted
     $activeTab = $this->tab === 'overview' ? ($this->focus === 'pricing' ? 'pricing' : 'overview') : $this->tab;
     $hasDocuments = $order || ($ov['mode'] === 'enquiry' && $ov['form']['attachments'] !== []);
@@ -131,7 +131,7 @@
                                 <div><div class="ow-dt">Submitted by</div><div class="ow-dd">{{ $f['submitted_by'] }}</div></div>
                                 <div><div class="ow-dt">Submitted at</div><div class="ow-dd">{{ $f['submitted_at'] }}</div></div>
                                 <div><div class="ow-dt">Customer</div><div class="ow-dd">{{ $f['customer'] }}</div></div>
-                                <div><div class="ow-dt">Salesperson</div><div class="ow-dd">{!! $f['salesperson'] ? e($f['salesperson']) : '<span class="ow-pill ow-pill-action">Pending salesperson</span>' !!}</div></div>
+                                <div><div class="ow-dt">Salesperson</div><div class="ow-dd">{!! $f['salesperson'] ? e($f['salesperson']) : '<span class="ow-pill ow-pill-action">Not assigned</span>' !!}</div></div>
                                 <div><div class="ow-dt">Enquiry</div><div class="ow-dd">{{ $f['enquiry_ref'] }}</div></div>
                                 <div><div class="ow-dt">Received through</div><div class="ow-dd">{{ $f['received_through'] }}</div></div>
                                 <div><div class="ow-dt">DO number</div><div class="ow-dd">{{ $f['do_number'] }}</div></div>

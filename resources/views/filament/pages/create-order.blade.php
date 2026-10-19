@@ -1,14 +1,17 @@
 @php
-    $showPrices = $this->showPrices();
-    $totals = $this->pairTotals();
-    $uomOptions = $this->catalogOptions('uom');
-    $locations = $this->locationOptions();
-    $addresses = $this->addressOptions();
-    $customerName = $this->customerName();
+    // several orders on one page, every one open (each in its colour); the page logic works on one order at a
+    // time ($this->useOrder): the values of each order are read inside its own block below
+    $pageOrders = $this->pageOrders();
+    $multiOrder = count($pageOrders) > 1;
+    $workingOrder = $this->activeOrder;
     $editing = $this->isEditing();
+    // Create quotation reuses this page: customer or lead, no payment / photos
+    $isQuote = $this->isQuote();
     $copy = $this->pageCopy();
     $headerEditable = $this->headerEditable();
+    $pairs = $this->orders[$workingOrder]['pairs'] ?? [];
     $lockedCount = count(array_filter(array_keys($pairs), fn ($i) => $this->isPairLocked($i)));
+    $locations = $this->locationOptions();
     $stores = $this->storeOptions();
     $serviceOptions = $this->serviceTypeOptions();
     $newAddress = \App\Support\OrderFormOptions::NEW_ADDRESS;
@@ -86,6 +89,12 @@
             <h1 class="ow-title">{{ $copy['title'] }}</h1>
             <p class="ow-sub">{{ $copy['sub'] }}</p>
         </div>
+        {{-- another customer's order on this page: each order keeps its own colour; one Save creates them all --}}
+        @if ($this->canAddOrder())
+            <div class="ow-actions">
+                <button type="button" wire:click="addOrder" class="ow-btn" title="Another customer's order on this page; each order keeps its own colour and is created with the same Save">+ Add another order</button>
+            </div>
+        @endif
     </div>
 
     <datalist id="ow-consignor-list">
@@ -108,15 +117,36 @@
                     @endif
                 @endif
             </div>
-        @else
-            <div class="ow-callout ow-callout-info">
-                <strong>Entered by {{ auth()->user()?->name }} · On behalf of customer</strong><br>
-                Submitting this form does not mean the customer has accepted a price. Every consignor &amp; consignee below becomes its own record (own quotation, invoice and CSN numbers) under one order number.
+        @endif
+
+        {{-- every order of the page, open and editable, in its colour: section 1 + its consignors & consignees --}}
+        @foreach ($pageOrders as $pageOrder)
+        @php
+            $oi = $pageOrder['index'];
+            $this->useOrder($oi);
+            $form = $this->orders[$oi]['form'];
+            $pairs = $this->orders[$oi]['pairs'];
+            // the errors under the fields belong to the order that was checked
+            $ep = $this->errorOrder === null || $this->errorOrder === $oi ? '' : 'other-order.';
+            $showPrices = $this->showPrices();
+            $totals = $this->pairTotals();
+            $uomOptions = $this->catalogOptions('uom');
+            // chartered lorries are picked from the same list (one trip each)
+            $lorryOptions = $this->catalogOptions('lorry');
+            $productOptions = $uomOptions + $lorryOptions;
+            $addresses = $this->addressOptions();
+            $customerName = $this->customerName();
+        @endphp
+        <div @class(['ow-order', 'ow-order-multi' => $multiOrder]) style="--ow-order-color: {{ $pageOrder['color'] }}; --ow-order-tint: {{ $pageOrder['tint'] }}" wire:key="ow-order-{{ $oi }}" id="ow-order-{{ $oi }}">
+        @if ($multiOrder)
+            <div class="ow-order-head">
+                <span><span class="ow-order-dot" aria-hidden="true"></span> Order {{ $pageOrder['number'] }} of {{ count($pageOrders) }}@if ($customerName) <span class="ow-note">· {{ $customerName }}</span>@endif</span>
+                <button type="button" wire:click="removeOrder({{ $oi }})" wire:confirm="Remove order {{ $pageOrder['number'] }} from this page?" class="ow-btn ow-btn-sm ow-btn-danger">Remove order</button>
             </div>
         @endif
 
         {{-- 1. Customer & ownership --}}
-        <div class="ow-card ow-card-pad">
+        <div class="ow-card ow-card-pad" id="ow-order-section1-{{ $oi }}">
             <div class="ow-card-title">1. Customer &amp; ownership</div>
             {{-- one grid, visual order = DOM (tab) order: Customer · Billing address (2 columns) · Received through, then PIC · Contact number and the rest; on 2-column widths Customer takes its own row so Billing address does not leave a gap beside it --}}
             @php $customerTags = $this->customerTypeTags(); @endphp
@@ -126,25 +156,43 @@
                 @media (max-width: 900px) { .ow-page .ow-fgrid-cust .ow-field-lead { grid-column: 1 / -1; } }
             </style>
             <div class="ow-fgrid ow-fgrid-cust">
-                <div class="ow-field ow-field-lead">
-                    <label>Customer <span class="ow-req">*</span></label>
-                    <select wire:model.live="form.customer_id" class="ow-select" @disabled(! $headerEditable)>
-                        <option value="">— Select customer —</option>
-                        @foreach ($this->customerOptions() as $id => $label)
-                            <option value="{{ $id }}" @if (isset($customerTags[$id])) data-og-tag="{{ $customerTags[$id]['label'] }}" data-og-tag-tone="{{ $customerTags[$id]['tone'] }}" @endif>{{ $label }}</option>
-                        @endforeach
-                    </select>
-                    @error('form.customer_id')<div class="ow-field-error">{{ $message }}</div>@enderror
-                </div>
+                @if ($isQuote)
+                    {{-- a customer, or a lead (a new customer without a record: "+ New lead" adds one to Master Data → Leads) --}}
+                    <div class="ow-field ow-field-lead">
+                        <label class="ow-label-row">
+                            <span>Customer / lead <span class="ow-req">*</span></span>
+                            <button type="button" wire:click="mountAction('createLead')" class="ow-btn-link">+ New lead</button>
+                        </label>
+                        <select wire:model.live="orders.{{ $oi }}.form.party" class="ow-select">
+                            <option value="">— Select customer or lead —</option>
+                            @foreach ($this->partyOptions() as $key => $party)
+                                @php $customerKey = str_starts_with($key, 'customer:') ? substr($key, 9) : null; @endphp
+                                <option value="{{ $key }}" @if ($party['lead']) data-og-tag="Lead" data-og-tag-tone="lead" @elseif ($customerKey && isset($customerTags[$customerKey])) data-og-tag="{{ $customerTags[$customerKey]['label'] }}" data-og-tag-tone="{{ $customerTags[$customerKey]['tone'] }}" @endif>{{ $party['label'] }}</option>
+                            @endforeach
+                        </select>
+                        @error($ep.'form.party')<div class="ow-field-error">{{ $message }}</div>@enderror
+                    </div>
+                @else
+                    <div class="ow-field ow-field-lead">
+                        <label>Customer <span class="ow-req">*</span></label>
+                        <select wire:model.live="orders.{{ $oi }}.form.customer_id" class="ow-select" @disabled(! $headerEditable)>
+                            <option value="">— Select customer —</option>
+                            @foreach ($this->customerOptions() as $id => $label)
+                                <option value="{{ $id }}" @if (isset($customerTags[$id])) data-og-tag="{{ $customerTags[$id]['label'] }}" data-og-tag-tone="{{ $customerTags[$id]['tone'] }}" @endif>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                        @error($ep.'form.customer_id')<div class="ow-field-error">{{ $message }}</div>@enderror
+                    </div>
+                @endif
                 <div class="ow-field ow-field-wide" wire:key="ow-billing-address">
-                    <label for="ow-billing-address">Billing address</label>
-                    <textarea id="ow-billing-address" wire:model="form.customer_address" rows="2" class="ow-textarea" placeholder="{{ filled($form['customer_id'] ?? null) ? 'Customer\'s billing address' : 'Select a customer to fill in the billing address' }}" @disabled(! $headerEditable)></textarea>
-                    @error('form.customer_address')<div class="ow-field-error">{{ $message }}</div>@enderror
+                    <label for="ow-billing-address-{{ $oi }}">Billing address</label>
+                    <textarea id="ow-billing-address-{{ $oi }}" wire:model="orders.{{ $oi }}.form.customer_address" rows="2" class="ow-textarea" placeholder="{{ filled($form['customer_id'] ?? null) ? 'Customer\'s billing address' : 'Select a customer to fill in the billing address' }}" @disabled(! $headerEditable)></textarea>
+                    @error($ep.'form.customer_address')<div class="ow-field-error">{{ $message }}</div>@enderror
                 </div>
                 @if ($this->showReceivedThrough())
                     <div class="ow-field">
                         <label>Received through (optional)</label>
-                        <select wire:model="form.received_through" class="ow-select" @disabled(! $headerEditable)>
+                        <select wire:model="orders.{{ $oi }}.form.received_through" class="ow-select" @disabled(! $headerEditable)>
                             @if ($this->receivedThroughClearable())
                                 <option value="">— Not specified —</option>
                             @endif
@@ -152,22 +200,29 @@
                                 <option value="{{ $value }}">{{ $label }}</option>
                             @endforeach
                         </select>
-                        @error('form.received_through')<div class="ow-field-error">{{ $message }}</div>@enderror
+                        @error($ep.'form.received_through')<div class="ow-field-error">{{ $message }}</div>@enderror
                     </div>
                 @endif
                 <div class="ow-field">
-                    <label for="ow-customer-pic">PIC name</label>
-                    <input id="ow-customer-pic" type="text" wire:model="form.customer_pic_name" class="ow-input" autocomplete="off" placeholder="Customer's person in charge" @disabled(! $headerEditable)>
-                    @error('form.customer_pic_name')<div class="ow-field-error">{{ $message }}</div>@enderror
+                    <label for="ow-customer-pic-{{ $oi }}">PIC name</label>
+                    <input id="ow-customer-pic-{{ $oi }}" type="text" wire:model.live.debounce.400ms="orders.{{ $oi }}.form.customer_pic_name" class="ow-input" autocomplete="off" placeholder="Customer's person in charge" @disabled(! $headerEditable)>
+                    @error($ep.'form.customer_pic_name')<div class="ow-field-error">{{ $message }}</div>@enderror
                 </div>
                 <div class="ow-field">
-                    <label for="ow-customer-phone">Contact number</label>
-                    <input id="ow-customer-phone" type="tel" inputmode="tel" wire:model="form.customer_pic_phone" class="ow-input" autocomplete="off" @disabled(! $headerEditable)>
-                    @error('form.customer_pic_phone')<div class="ow-field-error">{{ $message }}</div>@enderror
+                    <label for="ow-customer-phone-{{ $oi }}">Contact number</label>
+                    <input id="ow-customer-phone-{{ $oi }}" type="tel" inputmode="tel" wire:model.live.debounce.400ms="orders.{{ $oi }}.form.customer_pic_phone" class="ow-input" autocomplete="off" @disabled(! $headerEditable)>
+                    @error($ep.'form.customer_pic_phone')<div class="ow-field-error">{{ $message }}</div>@enderror
                 </div>
+                @if ($isQuote)
+                    <div class="ow-field">
+                        <label for="ow-quote-date-{{ $oi }}">Quotation date <span class="ow-req">*</span></label>
+                        <input id="ow-quote-date-{{ $oi }}" type="date" wire:model="orders.{{ $oi }}.form.quote_date" class="ow-input">
+                        @error($ep.'form.quote_date')<div class="ow-field-error">{{ $message }}</div>@enderror
+                    </div>
+                @endif
                 <div class="ow-field">
-                    <label>Salesperson</label>
-                    <select wire:model.live="form.salesperson_id" class="ow-select" @disabled(! $this->salespersonEditable())>
+                    <label>Salesperson @if ($isQuote)<span class="ow-req">*</span>@endif</label>
+                    <select wire:model.live="orders.{{ $oi }}.form.salesperson_id" class="ow-select" @disabled(! $this->salespersonEditable())>
                         @if ($this->allowNoSalesperson())
                             <option value="">— No salesperson yet —</option>
                         @endif
@@ -175,19 +230,13 @@
                             <option value="{{ $id }}">{{ $label }}</option>
                         @endforeach
                     </select>
-                </div>
-                <div class="ow-field">
-                    <label>Payment term <span class="ow-req">*</span></label>
-                    <select wire:model.live="form.order_type" class="ow-select" @disabled(! $headerEditable)>
-                        @foreach ($this->orderTypeOptions() as $value => $label)
-                            <option value="{{ $value }}">{{ $label }}</option>
-                        @endforeach
-                    </select>
-                    @error('form.order_type')<div class="ow-field-error">{{ $message }}</div>@enderror
+                    @error($ep.'form.salesperson_id')<div class="ow-field-error">{{ $message }}</div>@enderror
                 </div>
             </div>
             <p class="ow-note" style="margin-top:.75rem">
-                @if ($editing)
+                @if ($isQuote)
+                    The default price of each product is filled in and can be changed: the price quoted. When the customer agrees, tick this quotation on the quotation list and use <strong>Create order</strong>; the quoted prices become the customer's special prices. A lead becomes a customer then.
+                @elseif ($editing)
                     @if (! $headerEditable)
                         Customer, billing address, received through and payment term are locked because a record of this order is already confirmed. Use <strong>Change payment term</strong> on the order page for the payment term.
                     @endif
@@ -198,10 +247,10 @@
                     @else
                         Salesperson is optional. Without one product prices stay hidden.
                     @endif
-                    Payment terms follow the customer's type: Credit customers Credit / Term, Cash or COD; COD customers COD; Cash customers Cash.
+                    Each consignor &amp; consignee has its own payment term (beside Remove), starting as the customer's type: Credit customers Credit / Term, Cash or COD; COD customers COD; Cash customers Cash.
                 @else
-                    Salesperson is optional. Without one the order is saved as <strong>Pending salesperson</strong> and product prices stay hidden.
-                    Payment terms follow the customer's type: Credit customers Credit / Term, Cash or COD; COD customers COD; Cash customers Cash.
+                    Salesperson is optional. Without one the order is saved as a <strong>New enquiry</strong> and product prices stay hidden; with one it is <strong>Preparing quotation</strong>.
+                    Each consignor &amp; consignee has its own payment term (beside Remove), starting as the customer's type: Credit customers Credit / Term, Cash or COD; COD customers COD; Cash customers Cash.
                     Cash orders go through the payment summary (the payment method is recorded with the payment); Credit term and COD orders go straight to invoice and CSN after the customer confirms.
                 @endif
             </p>
@@ -210,7 +259,7 @@
         {{-- 2. Consignor & consignee blocks --}}
         @foreach ($pairs as $i => $pair)
             @php $locked = $this->isPairLocked($i); @endphp
-            <div class="ow-card ow-card-pad ow-pair" wire:key="ow-pair-{{ $i }}">
+            <div class="ow-card ow-card-pad ow-pair" wire:key="ow-o{{ $oi }}-pair-{{ $i }}">
                 <div class="ow-pair-head">
                     <div class="ow-card-title" style="margin:0">{{ 2 + $i }}. Consignor &amp; consignee @if (count($pairs) > 1)<span class="ow-pill ow-pill-gray ow-pill-plain">Record {{ $i + 1 }} of {{ count($pairs) }}</span>@endif
                         @if ($editing)
@@ -224,10 +273,25 @@
                             @endif
                         @endif
                     </div>
-                    @if ($this->canRemovePair($i))
-                        <button type="button" wire:click="removePair({{ $i }})" class="ow-btn ow-btn-sm ow-btn-danger">Remove</button>
-                    @endif
+                    <div class="ow-pair-actions">
+                        {{-- this consignor & consignee's payment term (each record its own; starts as the customer's) --}}
+                        @php
+                            $termOptions = $this->pairOrderTypeOptions($i);
+                            $term = (string) ($pair['order_type'] ?? '');
+                            $termTone = match ($term) { 'cash' => 'cash', 'cod' => 'cod', 'term' => 'term', default => 'none' };
+                        @endphp
+                        @php $termFixed = count($termOptions) <= 1 && array_key_exists($term, $termOptions); @endphp
+                        <select wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.order_type" class="ow-term-select ow-term-{{ $termTone }}" title="{{ $locked ? 'Payment term (locked record)' : ($termFixed ? 'This customer\'s type allows '.($termOptions[$term] ?? $term).' only' : 'Payment term of this consignor & consignee') }}" aria-label="Payment term of consignor &amp; consignee {{ $i + 1 }}" @disabled($locked || count($termOptions) <= 1 && array_key_exists($term, $termOptions))>
+                            @foreach ($termOptions as $value => $label)
+                                <option value="{{ $value }}">{{ $label }}</option>
+                            @endforeach
+                        </select>
+                        @if ($this->canRemovePair($i))
+                            <button type="button" wire:click="inOrder({{ $oi }}, 'removePair', {{ $i }})" class="ow-btn ow-btn-sm ow-btn-danger">Remove</button>
+                        @endif
+                    </div>
                 </div>
+                @error($ep.'pairs.'.$i.'.order_type')<div class="ow-field-error" style="margin:-.5rem 0 .75rem;text-align:right">{{ $message }}</div>@enderror
 
                 @if ($locked)
                     <div class="ow-callout ow-callout-warning" style="margin-bottom:.85rem">{{ $pair['lock_note'] ?? 'This record is locked. Confirmed records are changed with the Revise action on the order page.' }}</div>
@@ -236,7 +300,7 @@
                 @if ($editing)<fieldset @disabled($locked) style="border:0;padding:0;margin:0;min-width:0">@endif
                 @php
                     $isStore = ($pair['service_type'] ?? '') === \App\Enums\ServiceType::Store->value;
-                    $fieldId = 'ow-p'.$i;
+                    $fieldId = 'ow-o'.$oi.'-p'.$i;
                 @endphp
                 <div class="ow-grid-2">
                     <div class="ow-party">
@@ -246,7 +310,7 @@
                             <div class="ow-seg" role="radiogroup" aria-labelledby="{{ $fieldId }}-consignor-title">
                                 @foreach ($serviceOptions as $value => $label)
                                     <label>
-                                        <input type="radio" name="{{ $fieldId }}-mode" value="{{ $value }}" wire:model.live="pairs.{{ $i }}.service_type">
+                                        <input type="radio" name="{{ $fieldId }}-mode" value="{{ $value }}" wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.service_type">
                                         <span>{{ $label }}</span>
                                     </label>
                                 @endforeach
@@ -258,20 +322,20 @@
                                 @if (! $locked)
                                     <span class="ow-quick">
                                         @if (filled($pair['consignor_name'] ?? null))
-                                            <button type="button" wire:click="clearConsignor({{ $i }})" class="ow-btn-link">Clear</button>
+                                            <button type="button" wire:click="inOrder({{ $oi }}, 'clearConsignor', {{ $i }})" class="ow-btn-link">Clear</button>
                                         @endif
                                         @if ($customerName && trim((string) ($pair['consignor_name'] ?? '')) !== $customerName)
-                                            <button type="button" wire:click="useCustomerAsConsignor({{ $i }})" class="ow-btn-link">Use customer</button>
+                                            <button type="button" wire:click="inOrder({{ $oi }}, 'useCustomerAsConsignor', {{ $i }})" class="ow-btn-link">Use customer</button>
                                         @endif
                                     </span>
                                 @endif
                             </div>
-                            <input id="{{ $fieldId }}-consignor" type="text" wire:model.blur="pairs.{{ $i }}.consignor_name" list="ow-consignor-list" class="ow-input" autocomplete="off">
-                            @error('pairs.'.$i.'.consignor_name')<div class="ow-field-error">{{ $message }}</div>@enderror
+                            <input id="{{ $fieldId }}-consignor" type="text" wire:model.blur="orders.{{ $oi }}.pairs.{{ $i }}.consignor_name" list="ow-consignor-list" class="ow-input" autocomplete="off">
+                            @error($ep.'pairs.'.$i.'.consignor_name')<div class="ow-field-error">{{ $message }}</div>@enderror
                         </div>
                         @if ($isStore)
                             @php $storeInfo = $this->storeInfo($pair['store_id'] ?? null); @endphp
-                            <div class="ow-field" wire:key="ow-pair-{{ $i }}-store">
+                            <div class="ow-field" wire:key="ow-o{{ $oi }}-pair-{{ $i }}-store">
                                 <div class="ow-label-row">
                                     <label for="{{ $fieldId }}-store">Store <span class="ow-req">*</span></label>
                                     <span class="ow-quick">
@@ -281,13 +345,13 @@
                                         <a href="{{ \App\Filament\Resources\StoreResource::getUrl('create') }}" target="_blank" rel="noopener" class="ow-btn-link">New store</a>
                                     </span>
                                 </div>
-                                <select id="{{ $fieldId }}-store" wire:model.live="pairs.{{ $i }}.store_id" class="ow-select" @disabled($locked)>
+                                <select id="{{ $fieldId }}-store" wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.store_id" class="ow-select" @disabled($locked)>
                                     <option value="">— Select store —</option>
                                     @foreach ($stores as $id => $store)
                                         <option value="{{ $id }}" @if ($store['sub'] !== '') data-og-sub="{{ $store['sub'] }}" @endif>{{ $store['label'] }}</option>
                                     @endforeach
                                 </select>
-                                @error('pairs.'.$i.'.store_id')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                @error($ep.'pairs.'.$i.'.store_id')<div class="ow-field-error">{{ $message }}</div>@enderror
                                 @if ($storeInfo)
                                     <div class="ow-store-card">
                                         @if ($storeInfo['address'] !== '')
@@ -308,7 +372,7 @@
                         @endif
                         <div class="ow-field">
                             <label for="{{ $fieldId }}-from">From (price list location)</label>
-                            <select id="{{ $fieldId }}-from" wire:model="pairs.{{ $i }}.from_location_id" class="ow-select">
+                            <select id="{{ $fieldId }}-from" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.from_location_id" class="ow-select">
                                 <option value="">— Select —</option>
                                 @foreach ($locations as $id => $label)
                                     <option value="{{ $id }}">{{ $label }}</option>
@@ -318,26 +382,26 @@
                         <div class="ow-pic-grid">
                             <div class="ow-field">
                                 <label for="{{ $fieldId }}-consignor-pic">PIC name</label>
-                                <input id="{{ $fieldId }}-consignor-pic" type="text" wire:model="pairs.{{ $i }}.consignor_pic_name" class="ow-input" autocomplete="off">
-                                @error('pairs.'.$i.'.consignor_pic_name')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                <input id="{{ $fieldId }}-consignor-pic" type="text" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.consignor_pic_name" class="ow-input" autocomplete="off">
+                                @error($ep.'pairs.'.$i.'.consignor_pic_name')<div class="ow-field-error">{{ $message }}</div>@enderror
                             </div>
                             <div class="ow-field">
                                 <label for="{{ $fieldId }}-consignor-phone">Contact number</label>
-                                <input id="{{ $fieldId }}-consignor-phone" type="tel" inputmode="tel" wire:model="pairs.{{ $i }}.consignor_pic_phone" class="ow-input" autocomplete="off">
-                                @error('pairs.'.$i.'.consignor_pic_phone')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                <input id="{{ $fieldId }}-consignor-phone" type="tel" inputmode="tel" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.consignor_pic_phone" class="ow-input" autocomplete="off">
+                                @error($ep.'pairs.'.$i.'.consignor_pic_phone')<div class="ow-field-error">{{ $message }}</div>@enderror
                             </div>
                         </div>
                         @if ($isStore)
-                            <div class="ow-field" wire:key="ow-pair-{{ $i }}-pickup-store">
+                            <div class="ow-field" wire:key="ow-o{{ $oi }}-pair-{{ $i }}-pickup-store">
                                 <label for="{{ $fieldId }}-pickup-store">Pickup location</label>
-                                <textarea id="{{ $fieldId }}-pickup-store" wire:model="pairs.{{ $i }}.pickup_location" rows="2" class="ow-textarea" style="resize:vertical" placeholder="The store's address"></textarea>
+                                <textarea id="{{ $fieldId }}-pickup-store" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.pickup_location" rows="2" class="ow-textarea" style="resize:vertical" placeholder="The store's address"></textarea>
                                 <div class="ow-note" style="margin-top:.2rem">From the store · edit it for this record.</div>
-                                @error('pairs.'.$i.'.pickup_location')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                @error($ep.'pairs.'.$i.'.pickup_location')<div class="ow-field-error">{{ $message }}</div>@enderror
                             </div>
                         @else
-                            <div class="ow-field" wire:key="ow-pair-{{ $i }}-pickup">
+                            <div class="ow-field" wire:key="ow-o{{ $oi }}-pair-{{ $i }}-pickup">
                                 <label for="{{ $fieldId }}-pickup">Pickup location</label>
-                                <select id="{{ $fieldId }}-pickup" wire:model.live="pairs.{{ $i }}.pickup_preset" class="ow-select">
+                                <select id="{{ $fieldId }}-pickup" wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.pickup_preset" class="ow-select">
                                     <option value="">— Select —</option>
                                     @foreach ($addresses as $id => $label)
                                         <option value="{{ $id }}">{{ $label }}</option>
@@ -345,11 +409,11 @@
                                     <option value="{{ $newAddress }}">+ New address…</option>
                                 </select>
                                 @if (($pair['pickup_preset'] ?? '') === $newAddress)
-                                    <textarea wire:model="pairs.{{ $i }}.pickup_location" rows="2" class="ow-textarea" style="margin-top:.4rem;resize:vertical" placeholder="Type the pickup address" aria-label="New pickup address"></textarea>
+                                    <textarea wire:model="orders.{{ $oi }}.pairs.{{ $i }}.pickup_location" rows="2" class="ow-textarea" style="margin-top:.4rem;resize:vertical" placeholder="Type the pickup address" aria-label="New pickup address"></textarea>
                                 @elseif (filled($pair['pickup_location'] ?? null))
                                     <div class="ow-note" style="margin-top:.25rem;white-space:pre-line">{{ $pair['pickup_location'] }}</div>
                                 @endif
-                                @error('pairs.'.$i.'.pickup_location')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                @error($ep.'pairs.'.$i.'.pickup_location')<div class="ow-field-error">{{ $message }}</div>@enderror
                             </div>
                         @endif
                     </div>
@@ -360,12 +424,12 @@
                         </div>
                         <div class="ow-field">
                             <label for="{{ $fieldId }}-consignee">Consignee (optional)</label>
-                            <input id="{{ $fieldId }}-consignee" type="text" wire:model="pairs.{{ $i }}.consignee_name" class="ow-input" autocomplete="off">
-                            @error('pairs.'.$i.'.consignee_name')<div class="ow-field-error">{{ $message }}</div>@enderror
+                            <input id="{{ $fieldId }}-consignee" type="text" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.consignee_name" class="ow-input" autocomplete="off">
+                            @error($ep.'pairs.'.$i.'.consignee_name')<div class="ow-field-error">{{ $message }}</div>@enderror
                         </div>
                         <div class="ow-field">
                             <label for="{{ $fieldId }}-to">To (price list location)</label>
-                            <select id="{{ $fieldId }}-to" wire:model.live="pairs.{{ $i }}.to_location_id" class="ow-select">
+                            <select id="{{ $fieldId }}-to" wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.to_location_id" class="ow-select">
                                 <option value="">— Select —</option>
                                 @foreach ($locations as $id => $label)
                                     <option value="{{ $id }}">{{ $label }}</option>
@@ -375,19 +439,19 @@
                         <div class="ow-pic-grid">
                             <div class="ow-field">
                                 <label for="{{ $fieldId }}-consignee-pic">PIC name</label>
-                                <input id="{{ $fieldId }}-consignee-pic" type="text" wire:model="pairs.{{ $i }}.consignee_pic_name" class="ow-input" autocomplete="off">
-                                @error('pairs.'.$i.'.consignee_pic_name')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                <input id="{{ $fieldId }}-consignee-pic" type="text" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.consignee_pic_name" class="ow-input" autocomplete="off">
+                                @error($ep.'pairs.'.$i.'.consignee_pic_name')<div class="ow-field-error">{{ $message }}</div>@enderror
                             </div>
                             <div class="ow-field">
                                 <label for="{{ $fieldId }}-consignee-phone">Contact number</label>
-                                <input id="{{ $fieldId }}-consignee-phone" type="tel" inputmode="tel" wire:model="pairs.{{ $i }}.consignee_pic_phone" class="ow-input" autocomplete="off">
-                                @error('pairs.'.$i.'.consignee_pic_phone')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                <input id="{{ $fieldId }}-consignee-phone" type="tel" inputmode="tel" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.consignee_pic_phone" class="ow-input" autocomplete="off">
+                                @error($ep.'pairs.'.$i.'.consignee_pic_phone')<div class="ow-field-error">{{ $message }}</div>@enderror
                             </div>
                         </div>
                         {{-- same picker as the pickup location: a saved address, or "New address…" typed right below --}}
-                        <div class="ow-field" wire:key="ow-pair-{{ $i }}-dropoff">
+                        <div class="ow-field" wire:key="ow-o{{ $oi }}-pair-{{ $i }}-dropoff">
                             <label for="{{ $fieldId }}-dropoff">Drop-off location</label>
-                            <select id="{{ $fieldId }}-dropoff" wire:model.live="pairs.{{ $i }}.drop_off_preset" class="ow-select">
+                            <select id="{{ $fieldId }}-dropoff" wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.drop_off_preset" class="ow-select">
                                 <option value="">— Select —</option>
                                 @foreach ($addresses as $id => $label)
                                     <option value="{{ $id }}">{{ $label }}</option>
@@ -395,15 +459,15 @@
                                 <option value="{{ $newAddress }}">+ New address…</option>
                             </select>
                             @if (($pair['drop_off_preset'] ?? '') === $newAddress)
-                                <textarea wire:model="pairs.{{ $i }}.drop_off_location" rows="2" class="ow-textarea" style="margin-top:.4rem;resize:vertical" placeholder="Type the drop-off address" aria-label="New drop-off address"></textarea>
+                                <textarea wire:model="orders.{{ $oi }}.pairs.{{ $i }}.drop_off_location" rows="2" class="ow-textarea" style="margin-top:.4rem;resize:vertical" placeholder="Type the drop-off address" aria-label="New drop-off address"></textarea>
                             @elseif (filled($pair['drop_off_location'] ?? null))
                                 <div class="ow-note" style="margin-top:.25rem;white-space:pre-line">{{ $pair['drop_off_location'] }}</div>
                             @endif
-                            @error('pairs.'.$i.'.drop_off_location')<div class="ow-field-error">{{ $message }}</div>@enderror
+                            @error($ep.'pairs.'.$i.'.drop_off_location')<div class="ow-field-error">{{ $message }}</div>@enderror
                         </div>
                         <div class="ow-field">
                             <label for="{{ $fieldId }}-dropoff-type">Drop-off type</label>
-                            <select id="{{ $fieldId }}-dropoff-type" wire:model="pairs.{{ $i }}.drop_off_type" class="ow-select">
+                            <select id="{{ $fieldId }}-dropoff-type" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.drop_off_type" class="ow-select">
                                 @foreach ($this->dropOffTypeOptions() as $value => $label)
                                     <option value="{{ $value }}">{{ $label }}</option>
                                 @endforeach
@@ -414,14 +478,14 @@
 
                 <div class="ow-fgrid ow-fgrid-do">
                     <div class="ow-field">
-                        <label for="{{ $fieldId }}-do">DO number <span class="ow-req">*</span></label>
-                        <input id="{{ $fieldId }}-do" type="text" wire:model="pairs.{{ $i }}.customer_do_number" class="ow-input" placeholder="Customer's DO number">
-                        @error('pairs.'.$i.'.customer_do_number')<div class="ow-field-error">{{ $message }}</div>@enderror
+                        <label for="{{ $fieldId }}-do">DO number @unless ($isQuote)<span class="ow-req">*</span>@endunless</label>
+                        <input id="{{ $fieldId }}-do" type="text" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.customer_do_number" class="ow-input" placeholder="Customer's DO number">
+                        @error($ep.'pairs.'.$i.'.customer_do_number')<div class="ow-field-error">{{ $message }}</div>@enderror
                     </div>
                     <div class="ow-field">
                         <label for="{{ $fieldId }}-delivery">Expected delivery date</label>
-                        <input id="{{ $fieldId }}-delivery" type="text" wire:model="pairs.{{ $i }}.expected_delivery_date" class="ow-input" maxlength="255" autocomplete="off" placeholder="Optional · e.g. 13/10 before noon">
-                        @error('pairs.'.$i.'.expected_delivery_date')<div class="ow-field-error">{{ $message }}</div>@enderror
+                        <input id="{{ $fieldId }}-delivery" type="text" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.expected_delivery_date" class="ow-input" maxlength="255" autocomplete="off" placeholder="Optional · e.g. 13/10 before noon">
+                        @error($ep.'pairs.'.$i.'.expected_delivery_date')<div class="ow-field-error">{{ $message }}</div>@enderror
                     </div>
                 </div>
 
@@ -431,7 +495,7 @@
                             <tr>
                                 <th>Product <span class="ow-req">*</span></th>
                                 <th>Quantity <span class="ow-req">*</span></th>
-                                <th>Photos</th>
+                                @unless ($isQuote)<th>Photos</th>@endunless
                                 <th class="ow-num">Unit price</th>
                                 <th class="ow-num">Line total</th>
                                 <th></th>
@@ -439,27 +503,37 @@
                         </thead>
                         <tbody>
                             @foreach ($pair['items'] as $j => $item)
-                                @php $fixedItem = ($item['line_type'] ?? 'uom') !== 'uom' || (filled($item['item_name'] ?? null) && ! array_key_exists((string) ($item['catalog_key'] ?? ''), $uomOptions)); @endphp
-                                <tr wire:key="ow-pair-{{ $i }}-item-{{ $j }}">
+                                @php $fixedItem = ($item['line_type'] ?? 'uom') === 'item' || (filled($item['item_name'] ?? null) && ! array_key_exists((string) ($item['catalog_key'] ?? ''), $productOptions)); @endphp
+                                <tr wire:key="ow-o{{ $oi }}-pair-{{ $i }}-item-{{ $j }}">
                                     <td style="min-width:22rem">
                                         @if ($fixedItem)
                                             {{-- product kept from the order record that is not in the UOM product list --}}
                                             <input type="text" class="ow-input" value="{{ $item['item_name'] }}" readonly>
                                             <div class="ow-price-hint">{{ ($item['line_type'] ?? '') === 'lorry' ? 'Lorry type' : (($item['line_type'] ?? '') === 'item' && filled($item['catalog_key'] ?? null) ? 'Transport item' : 'Not in the product list · remove it and pick a product to change it') }}</div>
                                         @else
-                                            <select wire:model.live="pairs.{{ $i }}.items.{{ $j }}.catalog_key" class="ow-select">
+                                            <select wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.catalog_key" class="ow-select">
                                                 <option value="">— Select product —</option>
-                                                @foreach ($uomOptions as $key => $label)
-                                                    <option value="{{ $key }}">{{ $label }}</option>
-                                                @endforeach
+                                                <optgroup label="Products">
+                                                    @foreach ($uomOptions as $key => $label)
+                                                        <option value="{{ $key }}">{{ $label }}</option>
+                                                    @endforeach
+                                                </optgroup>
+                                                @if ($lorryOptions !== [])
+                                                    <optgroup label="Chartered lorry (per trip)">
+                                                        @foreach ($lorryOptions as $key => $label)
+                                                            <option value="{{ $key }}">{{ $label }}</option>
+                                                        @endforeach
+                                                    </optgroup>
+                                                @endif
                                             </select>
                                         @endif
-                                        @error('pairs.'.$i.'.items.'.$j.'.item_name')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                        @error($ep.'pairs.'.$i.'.items.'.$j.'.item_name')<div class="ow-field-error">{{ $message }}</div>@enderror
                                     </td>
                                     <td style="width:7rem">
-                                        <input type="number" min="1" step="1" inputmode="numeric" x-on:keydown="if (['.', ',', 'e', 'E', '-', '+'].includes($event.key)) $event.preventDefault()" wire:model.live.debounce.500ms="pairs.{{ $i }}.items.{{ $j }}.quantity" class="ow-input" @disabled(($item['line_type'] ?? 'uom') !== 'uom')>
-                                        @error('pairs.'.$i.'.items.'.$j.'.quantity')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                        <input type="number" min="1" step="1" inputmode="numeric" x-on:keydown="if (['.', ',', 'e', 'E', '-', '+'].includes($event.key)) $event.preventDefault()" wire:model.live.debounce.500ms="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.quantity" class="ow-input" @disabled(($item['line_type'] ?? 'uom') !== 'uom')>
+                                        @error($ep.'pairs.'.$i.'.items.'.$j.'.quantity')<div class="ow-field-error">{{ $message }}</div>@enderror
                                     </td>
+                                    @unless ($isQuote)
                                     <td style="min-width:7.5rem">
                                         {{-- photos of this product: saved ones and the ones picked now (click a tile to view it) --}}
                                         @php $newItemPhotos = $this->newPhotos($i, $j); @endphp
@@ -470,30 +544,43 @@
                                                 </a>
                                             @endforeach
                                             @foreach ($newItemPhotos as $k => $photo)
-                                                <span class="ow-item-photo ow-item-photo-new" wire:key="ow-pair-{{ $i }}-item-{{ $j }}-photo-{{ $k }}" @if ($photo['url']) data-og-view data-url="{{ $photo['url'] }}" data-name="{{ $photo['name'] }}" data-image="1" tabindex="0" role="button" @endif title="{{ $photo['name'] }} · new">
+                                                <span class="ow-item-photo ow-item-photo-new" wire:key="ow-o{{ $oi }}-pair-{{ $i }}-item-{{ $j }}-photo-{{ $k }}" @if ($photo['url']) data-og-view data-url="{{ $photo['url'] }}" data-name="{{ $photo['name'] }}" data-image="1" tabindex="0" role="button" @endif title="{{ $photo['name'] }} · new">
                                                     @if ($photo['url'])<img src="{{ $photo['url'] }}" alt="{{ $photo['name'] }}">@else{{ strtoupper(pathinfo($photo['name'], PATHINFO_EXTENSION) ?: 'FILE') }}@endif
                                                     @unless ($locked)
-                                                        <button type="button" wire:click="removePhoto({{ $i }}, {{ $j }}, {{ $k }})" class="ow-item-photo-x" title="Remove" aria-label="Remove {{ $photo['name'] }}">✕</button>
+                                                        <button type="button" wire:click="inOrder({{ $oi }}, 'removePhoto', {{ $i }}, {{ $j }}, {{ $k }})" class="ow-item-photo-x" title="Remove" aria-label="Remove {{ $photo['name'] }}">✕</button>
                                                     @endunless
                                                 </span>
                                             @endforeach
                                             @unless ($locked)
                                                 <label class="ow-item-photo-add" title="Add photos (JPG, PNG, WEBP or PDF · up to 8 MB each)">
-                                                    <input type="file" wire:model="photoUploads.{{ $i }}.{{ $j }}" multiple accept="image/*,application/pdf" aria-label="Add photos for {{ $item['item_name'] ?: 'this product' }}" x-on:livewire-upload-finish="$el.value = ''" x-on:livewire-upload-error="$el.value = ''">
+                                                    <input type="file" wire:model="photoUploads.{{ $oi }}.{{ $i }}.{{ $j }}" multiple accept="image/*,application/pdf" aria-label="Add photos for {{ $item['item_name'] ?: 'this product' }}" x-on:livewire-upload-finish="$el.value = ''" x-on:livewire-upload-error="$el.value = ''">
                                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
                                                 </label>
                                             @endunless
                                         </div>
-                                        <div wire:loading wire:target="photoUploads.{{ $i }}.{{ $j }}" class="ow-note">Uploading…</div>
-                                        @error('pairs.'.$i.'.items.'.$j.'.photos')<div class="ow-field-error">{{ $message }}</div>@enderror
-                                        @error('pairs.'.$i.'.items.'.$j.'.photos.*')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                        <div wire:loading wire:target="photoUploads.{{ $oi }}.{{ $i }}.{{ $j }}" class="ow-note">Uploading…</div>
+                                        @error($ep.'pairs.'.$i.'.items.'.$j.'.photos')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                        @error($ep.'pairs.'.$i.'.items.'.$j.'.photos.*')<div class="ow-field-error">{{ $message }}</div>@enderror
                                     </td>
+                                    @endunless
                                     <td class="ow-num" style="width:15rem;white-space:normal">
                                         @if (! $showPrices)
                                             <span class="ow-note">Select a salesperson to see prices</span>
                                         @elseif ($item['unit_price'] !== null)
-                                            <div class="ow-l1">RM {{ number_format((float) $item['unit_price'], 2) }}</div>
-                                            @if ($item['tier'])<div class="ow-price-hint">{{ $item['tier'] }}</div>@endif
+                                            {{-- the customer's special price, else the default price, filled in and editable (editing: the record's price) --}}
+                                            <label class="ow-manual-price">
+                                                <span>RM</span>
+                                                <input type="text" inputmode="decimal" autocomplete="off" x-on:input="const v = $el.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'); if (v !== $el.value) $el.value = v" x-on:blur="const n = parseFloat($el.value); if ($el.value.trim() !== '' && ! isNaN(n) && $el.value !== n.toFixed(2)) { $el.value = n.toFixed(2); $el.dispatchEvent(new Event('input')) }" wire:model.live.debounce.500ms="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.manual_price" class="ow-input ow-price-input" placeholder="{{ number_format((float) $item['unit_price'], 2, '.', '') }}" aria-label="Unit price for {{ $item['item_name'] }}" @disabled($locked)>
+                                            </label>
+                                            @php $sourceLabel = match ($item['source'] ?? null) { 'special' => 'Special price', 'master' => 'Default price', default => null }; @endphp
+                                            @if ($item['price_edited'] ?? false)
+                                                <div class="ow-price-hint ow-price-diff">Changed · {{ $sourceLabel ?? 'Current price' }} RM {{ number_format((float) $item['unit_price'], 2) }}</div>
+                                            @elseif ($sourceLabel || $item['tier'])
+                                                <div class="ow-price-hint">
+                                                    @if ($sourceLabel)<span @class(['ow-price-special' => ($item['source'] ?? null) === 'special'])>{{ $sourceLabel }}</span>@endif{{ $sourceLabel && $item['tier'] ? ' · ' : '' }}{{ $item['tier'] }}
+                                                </div>
+                                            @endif
+                                            @error($ep.'pairs.'.$i.'.items.'.$j.'.manual_price')<div class="ow-field-error">{{ $message }}</div>@enderror
                                         @elseif (filled($item['item_name']) && blank($pair['to_location_id']))
                                             <span class="ow-note">Select the "To" location</span>
                                             @if ($item['available'] ?? null)<div class="ow-price-hint">Rated: {{ $item['available'] }}</div>@endif
@@ -501,11 +588,11 @@
                                             {{-- no special / price-list rate: the price is keyed in here (blank = priced later under Items & pricing) --}}
                                             <label class="ow-manual-price">
                                                 <span>RM</span>
-                                                <input type="number" min="0" step="0.01" inputmode="decimal" wire:model.live.debounce.500ms="pairs.{{ $i }}.items.{{ $j }}.manual_price" class="ow-input" placeholder="0.00" aria-label="Unit price for {{ $item['item_name'] }}" @disabled($locked)>
+                                                <input type="text" inputmode="decimal" autocomplete="off" x-on:input="const v = $el.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'); if (v !== $el.value) $el.value = v" x-on:blur="const n = parseFloat($el.value); if ($el.value.trim() !== '' && ! isNaN(n) && $el.value !== n.toFixed(2)) { $el.value = n.toFixed(2); $el.dispatchEvent(new Event('input')) }" wire:model.live.debounce.500ms="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.manual_price" class="ow-input ow-price-input" placeholder="0.00" aria-label="Unit price for {{ $item['item_name'] }}" @disabled($locked)>
                                             </label>
                                             <div class="ow-price-hint ow-price-diff">No rate for this location · key in the price</div>
                                             @if ($item['available'] ?? null)<div class="ow-price-hint">Rated: {{ $item['available'] }}</div>@endif
-                                            @error('pairs.'.$i.'.items.'.$j.'.manual_price')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                            @error($ep.'pairs.'.$i.'.items.'.$j.'.manual_price')<div class="ow-field-error">{{ $message }}</div>@enderror
                                         @else
                                             <span class="ow-note">—</span>
                                         @endif
@@ -517,12 +604,12 @@
                                         <span class="ow-row-actions">
                                             @if (! $locked && filled($form['customer_id'] ?? null) && filled($item['item_name'] ?? null))
                                                 {{-- previous records of this product for the customer (information only) --}}
-                                                <button type="button" wire:click="mountAction('productHistory', { pair: {{ $i }}, item: {{ $j }} })" class="ow-icon-btn" title="Prices &amp; previous records of this product" aria-label="Previous records of {{ $item['item_name'] }} for this customer">
+                                                <button type="button" wire:click="mountAction('productHistory', { order: {{ $oi }}, pair: {{ $i }}, item: {{ $j }} })" class="ow-icon-btn" title="Prices &amp; previous records of this product" aria-label="Previous records of {{ $item['item_name'] }} for this customer">
                                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></svg>
                                                 </button>
                                             @endif
                                             @if (count($pair['items']) > 1 && ! $locked)
-                                                <button type="button" wire:click="removeItem({{ $i }}, {{ $j }})" class="ow-btn-link" title="Remove" style="color:#b91c1c">✕</button>
+                                                <button type="button" wire:click="inOrder({{ $oi }}, 'removeItem', {{ $i }}, {{ $j }})" class="ow-btn-link" title="Remove" style="color:#b91c1c">✕</button>
                                             @endif
                                         </span>
                                     </td>
@@ -532,13 +619,22 @@
                     </table>
                 </div>
                 @if (! $locked)
-                    <button type="button" wire:click="addItem({{ $i }})" class="ow-btn-link" style="margin-top:.5rem">+ Add product</button>
+                    <button type="button" wire:click="inOrder({{ $oi }}, 'addItem', {{ $i }})" class="ow-btn-link" style="margin-top:.5rem">+ Add product</button>
+                @endif
+
+                {{-- price list minimum (pick-up / construction site / drop-off): a lower total is topped up --}}
+                @php $minimum = $totals['minimums'][$i] ?? null; @endphp
+                @if ($minimum && $minimum['top_up'] > 0)
+                    <div class="ow-minimum-charge">
+                        <span><strong>Minimum charge</strong> · {{ $minimum['label'] }} RM {{ number_format($minimum['minimum'], 2) }} (products RM {{ number_format($minimum['subtotal'], 2) }})</span>
+                        <strong>+ RM {{ number_format($minimum['top_up'], 2) }}</strong>
+                    </div>
                 @endif
 
                 {{-- photos / DO attachments saved for this consignor & consignee before photos were kept per product (read-only) --}}
                 @php $savedPhotos = $pair['existing_photos'] ?? []; @endphp
                 @if ($savedPhotos !== [])
-                <div class="ow-field" style="margin-top:.85rem" wire:key="ow-pair-{{ $i }}-photos">
+                <div class="ow-field" style="margin-top:.85rem" wire:key="ow-o{{ $oi }}-pair-{{ $i }}-photos">
                     <label>Photos / DO attachments saved with this record</label>
                         <div class="ow-photo-grid">
                             @foreach ($savedPhotos as $photo)
@@ -558,7 +654,7 @@
 
                 <div class="ow-field" style="margin-top:.85rem">
                     <label>Instructions</label>
-                    <input type="text" wire:model="pairs.{{ $i }}.instructions" class="ow-input" placeholder="e.g. Call before delivery">
+                    <input type="text" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.instructions" class="ow-input" placeholder="e.g. Call before delivery">
                 </div>
                 @if ($editing)</fieldset>@endif
             </div>
@@ -566,9 +662,17 @@
 
         @if ($this->canAddPair())
             <div>
-                <button type="button" wire:click="addPair" class="ow-btn">+ Add another consignor &amp; consignee</button>
+                <button type="button" wire:click="inOrder({{ $oi }}, 'addPair')" class="ow-btn">+ Add another consignor &amp; consignee</button>
             </div>
         @endif
+
+        </div>
+        @endforeach
+        @php
+            // the page logic is back on the order it was working on
+            $this->useOrder($workingOrder);
+            $pairs = $this->orders[$workingOrder]['pairs'] ?? [];
+        @endphp
 
         {{-- files saved earlier for the whole order (customer portal upload / the order-level upload used before
              photos were kept per consignor & consignee): read-only, shown on every record of the order --}}
@@ -591,20 +695,145 @@
             </div>
         @endif
 
+        {{-- amount summary: every order of the page and the total of all --}}
+        @unless ($editing)
+            @php $grand = collect($pageOrders)->filter(fn ($o) => ($o['summary']['priced'] ?? false))->sum(fn ($o) => (float) ($o['summary']['total'] ?? 0)); @endphp
+            <div class="ow-card ow-card-pad">
+                <div class="ow-card-title">{{ $isQuote ? 'Quotation amount' : 'Amount summary' }}</div>
+                <div class="ow-table-wrap">
+                    <table class="ow-price-table ow-order-summary">
+                        <thead>
+                            <tr>
+                                @unless ($isQuote)<th class="ow-pay-col">Pay now</th>@endunless
+                                <th>{{ $isQuote ? 'Quotation' : 'Order' }}</th>
+                                <th>{{ $isQuote ? 'Customer / lead' : 'Customer' }}</th>
+                                <th>Consignor &amp; consignee</th>
+                                <th>Payment term</th>
+                                <th class="ow-num">Products</th>
+                                <th class="ow-num">Minimum charge</th>
+                                <th class="ow-num">Total</th>
+                                @unless ($isQuote)<th>Payment</th>@endunless
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($pageOrders as $order)
+                                @php $s = $order['summary']; @endphp
+                                <tr style="--ow-order-color: {{ $order['color'] }}" x-on:click="document.getElementById('ow-order-section1-{{ $order['index'] }}')?.scrollIntoView({ behavior: 'smooth', block: 'start' })" title="Go to order {{ $order['number'] }}">
+                                    @unless ($isQuote)
+                                    <td class="ow-pay-col" x-on:click.stop>
+                                        <input type="checkbox" @checked($s['pay_now'] ?? false) @disabled(($s['cash_records'] ?? 0) === 0 && ! ($s['pay_now'] ?? false)) wire:click.stop="togglePayOrder({{ $order['index'] }})" title="{{ ($s['cash_records'] ?? 0) === 0 ? 'Needs a consignor & consignee with the Cash payment term' : 'Record the payment of this order now (its Cash records)' }}" aria-label="Pay order {{ $order['number'] }} now">
+                                    </td>
+                                    @endunless
+                                    <td><span class="ow-order-dot" aria-hidden="true"></span> {{ $isQuote ? ($this->quoteNumber() ?? 'New quotation') : 'Order '.$order['number'] }}</td>
+                                    <td>{{ $s['customer'] ?? '—' }}</td>
+                                    <td>{{ $s['records'] ?? 0 }}</td>
+                                    <td>{{ implode(', ', $s['terms'] ?? []) ?: '—' }}</td>
+                                    @if ($s['priced'] ?? false)
+                                        <td class="ow-num">RM {{ number_format((float) $s['items'], 2) }}</td>
+                                        <td class="ow-num">{{ (float) $s['minimum'] > 0 ? 'RM '.number_format((float) $s['minimum'], 2) : '—' }}</td>
+                                        <td class="ow-num"><strong>RM {{ number_format((float) $s['total'], 2) }}</strong></td>
+                                    @else
+                                        <td class="ow-num" colspan="3"><span class="ow-note">Not priced · assign a salesperson</span></td>
+                                    @endif
+                                    @unless ($isQuote)<td>{{ ($s['pay_now'] ?? false) ? 'Pay now · '.(($s['priced'] ?? false) ? 'RM '.number_format((float) ($s['cash_total'] ?? 0), 2) : 'not priced') : '—' }}</td>@endunless
+                                </tr>
+                            @endforeach
+                        </tbody>
+                        @if ($multiOrder)
+                            <tfoot>
+                                <tr>
+                                    <td colspan="7"><strong>All {{ count($pageOrders) }} orders</strong></td>
+                                    <td class="ow-num"><strong>RM {{ number_format($grand, 2) }}</strong></td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        @endif
+                    </table>
+                </div>
+            </div>
+        @endunless
+
+        {{-- one payment for every order ticked "Pay now" in the Amount summary: their Cash records are confirmed, paid in
+             full and billed (Cash Bill + CSN) on save --}}
+        @unless ($editing || $isQuote)
+            @php $paying = collect($pageOrders)->filter(fn ($o) => $o['summary']['pay_now'] ?? false)->values(); @endphp
+            <div class="ow-card ow-card-pad">
+                <div class="ow-card-title">Payment</div>
+                @if ($paying->isEmpty())
+                    <p class="ow-note">Tick <strong>Pay now</strong> for each order paid now. Their Cash consignor &amp; consignee records are confirmed for the customer, paid in full, and their Cash Bill and CSN are created on save.</p>
+                @else
+                    <div class="ow-pay-list">
+                        @foreach ($paying as $order)
+                            <span class="ow-pay-chip" style="--ow-order-color: {{ $order['color'] }}"><span class="ow-order-dot" aria-hidden="true"></span> Order {{ $order['number'] }} · {{ $order['summary']['customer'] ?? 'no customer yet' }} · {{ ($order['summary']['priced'] ?? false) ? 'RM '.number_format((float) ($order['summary']['cash_total'] ?? 0), 2) : 'not priced' }}</span>
+                        @endforeach
+                        <strong class="ow-pay-total">Total RM {{ number_format((float) $paying->sum(fn ($o) => ($o['summary']['priced'] ?? false) ? (float) ($o['summary']['cash_total'] ?? 0) : 0), 2) }}</strong>
+                    </div>
+                    @error('payment.record')<div class="ow-field-error">{{ $message }}</div>@enderror
+                    <div class="ow-fgrid" style="margin-top:.85rem">
+                        <div class="ow-field">
+                            <label>Payment method <span class="ow-req">*</span></label>
+                            <select wire:model.live="payment.method" class="ow-select">
+                                @foreach ($this->paymentMethodOptions() as $value => $label)
+                                    <option value="{{ $value }}">{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            @error('payment.method')<div class="ow-field-error">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="ow-field">
+                            <label>Payment date <span class="ow-req">*</span></label>
+                            <input type="date" wire:model="payment.payment_date" max="{{ now()->toDateString() }}" class="ow-input">
+                            @error('payment.payment_date')<div class="ow-field-error">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="ow-field">
+                            <label>Reference (optional)</label>
+                            <input type="text" wire:model="payment.reference" class="ow-input" placeholder="e.g. bank reference / receipt no." autocomplete="off">
+                            @error('payment.reference')<div class="ow-field-error">{{ $message }}</div>@enderror
+                        </div>
+                    </div>
+                    <div class="ow-field" style="margin-top:.75rem">
+                        <label>Payment proof (slip / receipt)</label>
+                        <input type="file" wire:model="paymentProofs" multiple accept="image/*,application/pdf" class="ow-input">
+                        <div wire:loading wire:target="paymentProofs" class="ow-note">Uploading…</div>
+                        @if ($paymentProofs !== [])
+                            <div class="ow-pay-proofs">
+                                @foreach ($paymentProofs as $k => $proof)
+                                    <span class="ow-pill ow-pill-gray" wire:key="ow-proof-{{ $k }}">{{ method_exists($proof, 'getClientOriginalName') ? $proof->getClientOriginalName() : 'file' }} <button type="button" wire:click="removePaymentProof({{ $k }})" title="Remove" aria-label="Remove this proof">✕</button></span>
+                                @endforeach
+                            </div>
+                        @endif
+                        @error('paymentProofs.*')<div class="ow-field-error">{{ $message }}</div>@enderror
+                    </div>
+                    @if (in_array($payment['method'] ?? '', ['cash', 'counter'], true))
+                        <p class="ow-note" style="margin-top:.6rem">Cash / Pay at Counter payments need a second user to approve them before the Cash Bill and CSN are created (two approval levels). Bank transfer, online, e-wallet and cheque go straight to CSN created.</p>
+                    @endif
+                @endif
+            </div>
+        @endunless
+
         <div class="ow-footer-bar">
             <div class="ow-footer-meta">
-                Price: {{ $showPrices && $totals['items'] > 0 ? 'RM '.number_format($totals['items'], 2).' (products)' : 'Not priced' }}
+                @php $footerTotal = collect($pageOrders)->filter(fn ($o) => ($o['summary']['priced'] ?? false))->sum(fn ($o) => (float) ($o['summary']['total'] ?? 0)); @endphp
+                Price: {{ $footerTotal > 0 ? 'RM '.number_format($footerTotal, 2).($multiOrder ? ' ('.count($pageOrders).' orders)' : '') : 'Not priced' }}
                 @if ($editing)
                     · {{ count($pairs) }} {{ $this->enquiryOnly ? 'consignor & consignee '.\Illuminate\Support\Str::plural('block', count($pairs)) : \Illuminate\Support\Str::plural('record', count($pairs)) }} under {{ $this->orderNumber }}
                     @if ($lockedCount > 0) · {{ $lockedCount }} locked @endif
                 @else
-                    · Customer confirmation: Not requested
-                    · {{ count($pairs) }} {{ \Illuminate\Support\Str::plural('record', count($pairs)) }} under one order number
+                    · {{ $isQuote ? 'Pending confirmation until Create order' : 'Customer confirmation: Not requested' }}
+                    · {{ $multiOrder ? count($pageOrders).' orders, '.collect($pageOrders)->sum(fn ($o) => $o['summary']['records'] ?? 0).' records' : count($pairs).' '.\Illuminate\Support\Str::plural('record', count($pairs)).' under one order number' }}
                 @endif
             </div>
             <div class="ow-actions">
                 <a href="{{ $copy['cancel_url'] }}" class="ow-btn">Cancel</a>
-                <button type="button" wire:click="save" wire:loading.attr="disabled" class="ow-btn ow-btn-primary">{{ $copy['submit'] }}</button>
+                @php
+                    $payNow = $this->paysAny();
+                    $submit = match (true) {
+                        $editing => $copy['submit'],
+                        $multiOrder => 'Save '.count($pageOrders).' orders'.($payNow ? ' & record payment' : '').' →',
+                        $payNow => 'Save order & record payment →',
+                        default => $copy['submit'],
+                    };
+                @endphp
+                <button type="button" wire:click="save" wire:loading.attr="disabled" class="ow-btn ow-btn-primary">{{ $submit }}</button>
             </div>
         </div>
     </div>
@@ -632,6 +861,11 @@
         (() => {
             if (window.ogOrderPhotoViewerReady) return;
             window.ogOrderPhotoViewerReady = true;
+
+            // a row of the Amount summary opens its order: scroll to its "1. Customer & ownership"
+            window.addEventListener('og-order-opened', (event) => setTimeout(() => {
+                document.getElementById('ow-order-section1-' + (event.detail?.order ?? 0))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 120));
 
             const open = (tile) => window.dispatchEvent(new CustomEvent('og-file-view', { detail: {
                 url: tile.dataset.url,

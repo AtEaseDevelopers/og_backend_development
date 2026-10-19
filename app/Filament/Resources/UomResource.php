@@ -52,15 +52,22 @@ class UomResource extends Resource
                     }),
                 Forms\Components\Toggle::make('is_active')->default(true),
             ])->columns(2),
-            Forms\Components\Section::make('Location rate tiers')->schema([
+            Forms\Components\Section::make('Location rate tiers')
+                ->description('The default price per location and quantity range. A customer\'s special price is not edited here: it comes from the special price list and from accepted quotations (Customer → Special price).')
+                ->schema([
                 Forms\Components\Repeater::make('rateTiers')
-                    ->relationship()
+                    // the default price rows only: the customers' special price rows stay as they are
+                    ->relationship('rateTiers', fn (\Illuminate\Database\Eloquent\Builder $query) => $query->whereNull('customer_code'))
                     ->schema([
                         Forms\Components\Select::make('location_id')
                             ->relationship('location', 'name')
                             ->searchable()
                             ->preload()
                             ->required(),
+                        Forms\Components\Select::make('drop_off_type')
+                            ->options(\App\Enums\DropOffType::options())
+                            ->default(\App\Enums\DropOffType::Default->value)
+                            ->selectablePlaceholder(false),
                         Forms\Components\TextInput::make('min_qty')
                             ->numeric()
                             ->default(1)
@@ -72,8 +79,11 @@ class UomResource extends Resource
                             ->numeric()
                             ->prefix('RM')
                             ->required(),
+                        Forms\Components\TextInput::make('pickup_min_charge')->label('Pick-up min.')->numeric()->prefix('RM'),
+                        Forms\Components\TextInput::make('construction_min_charge')->label('Construction site min.')->numeric()->prefix('RM'),
+                        Forms\Components\TextInput::make('drop_off_min_charge')->label('Drop-off min.')->numeric()->prefix('RM'),
                     ])
-                    ->columns(4)
+                    ->columns(3)
                     ->defaultItems(0)
                     ->columnSpanFull(),
             ]),
@@ -84,8 +94,13 @@ class UomResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('code')->searchable()->sortable(),
-                Tables\Columns\TextColumn::make('name')->searchable()->sortable(),
+                Tables\Columns\TextColumn::make('code')->searchable()->sortable()->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('name')->searchable()->sortable()->wrap(),
+                Tables\Columns\TextColumn::make('category')
+                    ->badge()
+                    ->formatStateUsing(fn (?string $state) => $state ? ucfirst($state) : null)
+                    ->placeholder('—')
+                    ->sortable(),
                 Tables\Columns\TextColumn::make('rate_tiers_count')
                     ->counts('rateTiers')
                     ->label('Rate tiers'),

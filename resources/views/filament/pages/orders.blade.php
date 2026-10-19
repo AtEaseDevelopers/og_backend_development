@@ -21,6 +21,10 @@
         <div class="ow-actions">
             {{-- OCR quotation processing (no menu item since 10 Oct 2026) --}}
             <a href="{{ \App\Filament\Resources\OcrUploadResource::getUrl('index') }}" class="ow-btn">OCR quotation processing</a>
+            {{-- the counter's cash bill payment page (user, 20 Oct 2026) --}}
+            @if (\App\Filament\Pages\CashBillCalculator::canAccess())
+                <a href="{{ \App\Filament\Pages\CashBillCalculator::getUrl() }}" class="ow-btn">Cash Bill Payment (Counter Use)</a>
+            @endif
             <a href="{{ $this->createUrl() }}" class="ow-btn ow-btn-primary">+ Create order for customer</a>
         </div>
     </div>

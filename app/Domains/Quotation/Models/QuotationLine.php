@@ -10,6 +10,8 @@ class QuotationLine extends Model
     protected $fillable = [
         'quotation_id', 'quotation_destination_id', 'item_name', 'uom',
         'quantity', 'weight', 'dimensions', 'unit_price', 'line_total', 'handling_notes',
+        // 'minimum': the automatic minimum charge top-up line (OrderMinimumCharge)
+        'charge_type',
     ];
 
     protected function casts(): array

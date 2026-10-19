@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class CharteredLorry extends Model
 {
-    protected $fillable = ['code', 'name', 'is_active'];
+    protected $fillable = ['code', 'name', 'max_weight', 'is_active'];
 
     protected function casts(): array
     {

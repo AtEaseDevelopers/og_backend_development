@@ -5,7 +5,16 @@
     $outstanding = $this->outstandingAmount;
     $change = $this->changeAmount;
     $customerCsns = $this->customerCsns;
-    $allTicked = $customerCsns->isNotEmpty() && $customerCsns->every(fn ($c) => in_array($c->id, $this->selectedCsnIds, true));
+    $customerOrders = $this->customerOrders;
+    $selectedOrders = $this->selectedOrders;
+    $openCsns = $customerCsns->reject(fn ($c) => in_array($c->id, $this->selectedCsnIds, true));
+    $openOrders = $customerOrders->reject(fn ($o) => in_array($o->id, $this->selectedOrderIds, true));
+    $allPicked = ($openCsns->isNotEmpty() || $openOrders->isNotEmpty())
+        && $openCsns->every(fn ($c) => in_array($c->id, $this->pickedCsnIds, true))
+        && $openOrders->every(fn ($o) => in_array($o->id, $this->pickedOrderIds, true));
+    $pickedCount = count($this->pickedCsnIds) + count($this->pickedOrderIds);
+    $listCount = $selectedCsns->count() + $selectedOrders->count();
+    $customerCount = $selectedCsns->map(fn ($c) => $c->customer_id ?: 'name:'.$c->customer_name)->concat($selectedOrders->pluck('customer_id'))->unique()->count();
     $money = fn (float $amount): string => 'RM '.number_format($amount, 2);
     $lcd = fn (float $amount): string => number_format($amount, 2);
 @endphp
@@ -18,7 +27,8 @@
         </div>
     </div>
 
-    {{-- Cash Bill Calculator: customer -> tick the unpaid Cash Bill CSNs (or scan their QR codes) --}}
+    {{-- Cash Bill Calculator: pick a customer's unpaid Cash Bill CSNs (tick + Add) or scan them into one payment
+         list, which may hold CSNs of different customers, paid together --}}
     <section class="cb-card">
         <div class="cb-card-head">
             <h2 class="cb-card-title">Cash Bill Calculator</h2>
@@ -45,7 +55,7 @@
                         type="text"
                         wire:model="scan"
                         wire:keydown.enter.prevent="scanCsn"
-                        placeholder="Scan or type the CSN number, then Enter"
+                        placeholder="Scan or type the CSN number, then Enter (adds it to the payment list)"
                         autocomplete="off"
                         class="cb-search-input"
                     />
@@ -53,46 +63,148 @@
             </div>
         </div>
 
+        {{-- the customer's unpaid Cash Bill CSNs: tick and Add them to the payment list --}}
+        @if ($this->customerId)
+            <div class="cb-pick-head">
+                <span class="cb-section-label">Unpaid CSNs and orders of this customer</span>
+                <button type="button" wire:click="addPicked" class="cb-add-btn" @disabled($pickedCount === 0)>
+                    Add{{ $pickedCount > 0 ? ' '.$pickedCount : '' }} to the payment list
+                </button>
+            </div>
+            <div class="cb-table-wrap">
+                <table class="cb-table">
+                    <thead>
+                        <tr>
+                            <th class="cb-check-col">
+                                @if ($openCsns->isNotEmpty() || $openOrders->isNotEmpty())
+                                    <input type="checkbox" wire:click="togglePickAll" @checked($allPicked) title="Tick all">
+                                @endif
+                            </th>
+                            <th>CSN / Order</th>
+                            <th>CSN date</th>
+                            <th>Source Branch</th>
+                            <th class="cb-num">Amount due</th>
+                            <th>Payment Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($customerCsns as $csn)
+                            @php
+                                $added = in_array($csn->id, $this->selectedCsnIds, true);
+                                $picked = in_array($csn->id, $this->pickedCsnIds, true);
+                            @endphp
+                            <tr wire:key="cb-pick-{{ $csn->id }}" @class(['cb-row-picked' => $picked, 'cb-row-added' => $added]) @unless ($added) wire:click="togglePick({{ $csn->id }})" style="cursor:pointer" @endunless>
+                                <td class="cb-check-col">
+                                    @if ($added)
+                                        <span class="cb-added-tag">Added</span>
+                                    @else
+                                        <input type="checkbox" @checked($picked) wire:click.stop="togglePick({{ $csn->id }})">
+                                    @endif
+                                </td>
+                                <td class="cb-mono">{{ $csn->number }}</td>
+                                <td>{{ $csn->issued_at?->format('d/m/Y') ?? '—' }}</td>
+                                <td>{{ $csn->sourceBranch?->name ?: '—' }}</td>
+                                <td class="cb-num">
+                                    {{ $money($this->dueFor($csn)) }}
+                                    @if ((float) ($csn->paid_total ?? 0) > 0)<div class="cb-paid-note">of {{ $money((float) $csn->total_amount) }} · paid {{ $money((float) $csn->paid_total) }}</div>@endif
+                                </td>
+                                <td><span class="cb-status-pill">{{ $this->paymentStatusLabel($csn) }}</span></td>
+                            </tr>
+                        @empty
+                            @if ($customerOrders->isEmpty())
+                                <tr><td colspan="6" class="cb-empty">This customer has no unpaid Cash Bill CSNs or orders.</td></tr>
+                            @endif
+                        @endforelse
+                        {{-- Cash orders in Pending payment (no CSN yet): their Cash Bill and CSN are created once fully paid --}}
+                        @foreach ($customerOrders as $order)
+                            @php
+                                $added = in_array($order->id, $this->selectedOrderIds, true);
+                                $picked = in_array($order->id, $this->pickedOrderIds, true);
+                            @endphp
+                            <tr wire:key="cb-pick-order-{{ $order->id }}" @class(['cb-row-picked' => $picked, 'cb-row-added' => $added]) @unless ($added) wire:click="togglePickOrder({{ $order->id }})" style="cursor:pointer" @endunless>
+                                <td class="cb-check-col">
+                                    @if ($added)
+                                        <span class="cb-added-tag">Added</span>
+                                    @else
+                                        <input type="checkbox" @checked($picked) wire:click.stop="togglePickOrder({{ $order->id }})">
+                                    @endif
+                                </td>
+                                <td class="cb-mono">{{ $order->number }} <span class="cb-order-tag">Order · no CSN yet</span></td>
+                                <td>{{ $order->created_at?->format('d/m/Y') ?? '—' }}</td>
+                                <td>{{ $order->branch?->name ?: '—' }}</td>
+                                <td class="cb-num">
+                                    {{ $money($this->dueForOrder($order)) }}
+                                    @if ($this->dueForOrder($order) + 0.005 < (float) $order->total_amount)<div class="cb-paid-note">of {{ $money((float) $order->total_amount) }}</div>@endif
+                                </td>
+                                <td><span class="cb-status-pill">PENDING PAYMENT</span></td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+
+    </section>
+
+    {{-- the payment list: CSNs added from any customers, paid together --}}
+    <section class="cb-card">
+        <div class="cb-card-head cb-card-head-split">
+            <h2 class="cb-card-title">Payment list</h2>
+            <p class="cb-card-note">{{ $customerCount > 1 ? 'CSNs of '.$customerCount.' customers, paid together' : 'The CSNs paid in this transaction' }}</p>
+        </div>
         <div class="cb-table-wrap">
             <table class="cb-table">
                 <thead>
                     <tr>
-                        <th class="cb-check-col">
-                            @if ($customerCsns->isNotEmpty())
-                                <input type="checkbox" wire:click="toggleAll" @checked($allTicked) title="Tick all">
-                            @endif
-                        </th>
-                        <th>CSN Number</th>
+                        <th>CSN / Order</th>
+                        <th>Customer</th>
                         <th>CSN date</th>
                         <th>Source Branch</th>
-                        <th class="cb-num">Amount</th>
+                        <th class="cb-num">Amount due</th>
                         <th>Payment Status</th>
+                        <th class="cb-check-col"></th>
                     </tr>
                 </thead>
                 <tbody>
-                    @forelse ($customerCsns as $csn)
-                        @php $ticked = in_array($csn->id, $this->selectedCsnIds, true); @endphp
-                        <tr wire:key="cb-csn-{{ $csn->id }}" @class(['cb-row-ticked' => $ticked]) wire:click="toggleCsn({{ $csn->id }})" style="cursor:pointer">
-                            <td class="cb-check-col"><input type="checkbox" @checked($ticked) wire:click.stop="toggleCsn({{ $csn->id }})"></td>
+                    @forelse ($selectedCsns as $csn)
+                        <tr wire:key="cb-csn-{{ $csn->id }}" class="cb-row-ticked">
                             <td class="cb-mono">{{ $csn->number }}</td>
+                            <td>{{ $csn->customer?->company_name ?: ($csn->customer_name ?: '—') }}</td>
                             <td>{{ $csn->issued_at?->format('d/m/Y') ?? '—' }}</td>
                             <td>{{ $csn->sourceBranch?->name ?: '—' }}</td>
-                            <td class="cb-num">{{ $money((float) $csn->total_amount) }}</td>
+                            <td class="cb-num">
+                                {{ $money($this->dueFor($csn)) }}
+                                @if ((float) ($csn->paid_total ?? 0) > 0)<div class="cb-paid-note">of {{ $money((float) $csn->total_amount) }} · paid {{ $money((float) $csn->paid_total) }}</div>@endif
+                            </td>
                             <td><span class="cb-status-pill">{{ $this->paymentStatusLabel($csn) }}</span></td>
+                            <td class="cb-check-col"><button type="button" wire:click="removeCsn({{ $csn->id }})" class="cb-row-remove" title="Remove from the payment list" aria-label="Remove {{ $csn->number }}">✕</button></td>
                         </tr>
                     @empty
-                        <tr>
-                            <td colspan="6" class="cb-empty">
-                                {{ $this->customerId ? 'This customer has no unpaid Cash Bill CSNs.' : 'Choose a customer, or scan a CSN QR code, to list the unpaid Cash Bill CSNs.' }}
-                            </td>
-                        </tr>
+                        @if ($selectedOrders->isEmpty())
+                            <tr>
+                                <td colspan="7" class="cb-empty">
+                                    Choose a customer, tick its CSNs or orders and click Add, or scan a CSN QR code. Different customers can be paid together.
+                                </td>
+                            </tr>
+                        @endif
                     @endforelse
+                    @foreach ($selectedOrders as $order)
+                        <tr wire:key="cb-order-{{ $order->id }}" class="cb-row-ticked">
+                            <td class="cb-mono">{{ $order->number }} <span class="cb-order-tag">Order · no CSN yet</span></td>
+                            <td>{{ $order->customer?->company_name ?: '—' }}</td>
+                            <td>{{ $order->created_at?->format('d/m/Y') ?? '—' }}</td>
+                            <td>{{ $order->branch?->name ?: '—' }}</td>
+                            <td class="cb-num">{{ $money($this->dueForOrder($order)) }}</td>
+                            <td><span class="cb-status-pill">PENDING PAYMENT</span></td>
+                            <td class="cb-check-col"><button type="button" wire:click="removeOrderItem({{ $order->id }})" class="cb-row-remove" title="Remove from the payment list" aria-label="Remove {{ $order->number }}">✕</button></td>
+                        </tr>
+                    @endforeach
                 </tbody>
             </table>
         </div>
 
         <div class="cb-table-footer">
-            <span>Selected CSNs: <strong>{{ $selectedCsns->count() }}</strong>@if ($customerCsns->isNotEmpty()) of {{ $customerCsns->count() }}@endif</span>
+            <span>In the payment list: <strong>{{ $listCount }}</strong>@if ($customerCount > 1) · {{ $customerCount }} customers @endif</span>
             <span class="cb-footer-total">
                 <span class="cb-footer-total-label">Total Selected Amount</span>
                 <span class="cb-lcd cb-lcd-dark">RM {{ $lcd($totalDue) }}</span>
@@ -146,11 +258,15 @@
                 </div>
                 <div class="cb-amount-block">
                     <label class="cb-section-label" for="amountReceived">Amount Received (RM)</label>
+                    {{-- digits and one dot only; always 2 decimals once you leave it (50 → 50.00) --}}
                     <input
                         id="amountReceived"
                         type="text"
                         inputmode="decimal"
+                        autocomplete="off"
                         wire:model.live.debounce.400ms="amountReceived"
+                        x-on:input="const v = $el.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'); if (v !== $el.value) $el.value = v"
+                        x-on:blur="const n = parseFloat($el.value); const f = isNaN(n) ? '0.00' : n.toFixed(2); if ($el.value !== f) { $el.value = f; $el.dispatchEvent(new Event('input')) }"
                         class="cb-lcd-input"
                     />
                 </div>
@@ -183,6 +299,23 @@
             @endif
         </div>
 
+        {{-- received less than due: the balance stays on one CSN of the list (Partial, paid next time) --}}
+        @if ($listCount > 0 && $received > 0 && $outstanding > 0.009)
+            @php $balanceOptions = $this->balanceOptions; $balanceItem = $this->balanceItem; @endphp
+            <div class="cb-balance">
+                @if ($balanceOptions->isEmpty())
+                    <span>Balance <strong>RM {{ $lcd($outstanding) }}</strong> is more than any one item's amount due: remove one from the payment list or collect more.</span>
+                @else
+                    <label for="cbBalanceCsn">Balance <strong>RM {{ $lcd($outstanding) }}</strong> stays on</label>
+                    <select id="cbBalanceCsn" wire:model.live="balanceKey" class="cb-select cb-balance-select">
+                        @foreach ($balanceOptions as $option)
+                            <option value="{{ $option['key'] }}" @selected(($balanceItem['key'] ?? null) === $option['key'])>{{ $option['number'] }} · {{ $option['customer'] }} · due {{ $money($option['due']) }}</option>
+                        @endforeach
+                    </select>
+                @endif
+            </div>
+        @endif
+
         <div class="cb-settlement-bar">
             <div class="cb-settlement-math">
                 <div class="cb-math-item">
@@ -210,7 +343,7 @@
                     type="button"
                     wire:click="applyFullPayment"
                     class="cb-btn cb-btn-outline"
-                    @disabled($selectedCsns->isEmpty())
+                    @disabled($listCount === 0)
                 >
                     Fill Amount Due
                 </button>
@@ -218,9 +351,9 @@
                     type="button"
                     wire:click="process"
                     class="cb-btn cb-btn-primary"
-                    @disabled($selectedCsns->isEmpty() || $outstanding > 0.009)
+                    @disabled($listCount === 0 || $received <= 0 || ($outstanding > 0.009 && ! $this->balanceItem))
                 >
-                    Full Payment
+                    Paid
                 </button>
             </div>
         </div>
@@ -241,6 +374,23 @@
         .cb-select { width: 100%; height: 2.6rem; padding: 0 2rem 0 .75rem; border: 1px solid rgb(209 213 219); border-radius: .5rem; background-color: #fff; font-size: .9rem; color: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .cb-pick-grid .cb-section-label { display: block; margin-bottom: .35rem; }
         .cb-pick-grid .cb-search-field { width: 100%; }
+        .cb-pick-head { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: 14px 18px 8px; }
+        .cb-add-btn { padding: .45rem .9rem; border-radius: .5rem; font-size: .82rem; font-weight: 600; background: rgb(15 23 42); color: #fff; }
+        .cb-add-btn:disabled { opacity: .45; cursor: not-allowed; }
+        .dark .cb-add-btn { background: rgb(241 245 249); color: rgb(15 23 42); }
+        .cb-row-picked td { background: rgb(239 246 255); }
+        .dark .cb-row-picked td { background: rgb(30 64 175 / .2); }
+        .cb-row-added td { color: rgb(148 163 184); }
+        .cb-added-tag { font-size: .68rem; font-weight: 700; color: rgb(21 128 61); }
+        .cb-paid-note { font-size: .7rem; color: rgb(100 116 139); }
+        .cb-order-tag { margin-left: .35rem; padding: 0 .35rem; border-radius: .25rem; font-family: inherit; font-size: .62rem; font-weight: 700; background: rgb(237 233 254); color: rgb(91 33 182); }
+        .dark .cb-order-tag { background: rgb(76 29 149 / .35); color: rgb(196 181 253); }
+        .cb-balance { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; margin: 0 18px 14px; padding: .7rem .9rem; border-radius: .6rem; background: rgb(255 251 235); border: 1px solid rgb(253 230 138); color: rgb(146 64 14); font-size: .88rem; }
+        .cb-balance-select { width: auto; min-width: 18rem; }
+        .dark .cb-balance { background: rgb(245 158 11 / .12); border-color: rgb(245 158 11 / .35); color: rgb(252 211 77); }
+        .cb-row-remove { width: 1.6rem; height: 1.6rem; border-radius: 999px; color: rgb(185 28 28); font-weight: 700; }
+        .cb-row-remove:hover { background: rgb(254 226 226); }
+        .dark .cb-row-remove:hover { background: rgb(127 29 29 / .4); }
         .dark .cb-select { background: rgb(17 24 39); border-color: rgb(55 65 81); }
         .cb-check-col { width: 2.5rem; text-align: center; }
         .cb-row-ticked td { background: rgb(240 253 244); }

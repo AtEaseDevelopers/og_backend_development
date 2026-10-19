@@ -4,7 +4,7 @@
 > what is done, what is left, and the rules the user has set. Update it whenever an item changes status,
 > and refresh "Last updated" with the output of plain `date` (local Malaysia time).
 
-**Last updated:** Thu Oct 15 02:17:11 MPST 2026 · commission split by rule between the CSN's drivers
+**Last updated:** Tue Oct 20 02:44:48 MPST 2026 · Quotation module, special price tab; Round 3 code pushed
 
 **Previous round:** finished and pushed as commit `a29b179` on `main` (8 Oct 2026: orders, order details,
 billing / COD / Term, CSN bulk actions, QR codes, returned-CSN scanning, cash bill calculator). Its details are
@@ -147,9 +147,86 @@ Legend: [x] done · [~] done in code, not yet browser-checked · [ ] not started
 ### 17. Commission split by rule between the CSN's drivers (user, 15 Oct) — done
 - [x] The main driver got the full commission (e.g. 80% × RM 20 = 16) while a Pickup leg's driver got 0, and a Transfer leg's driver got the full amount again. Now each CSN earns **one** commission: the rule's rate % of the CSN total, **shared** between the main driver and every subsheet leg that has a driver, using the rule for that number of drivers (1 = Single, 2 = Split 2, 3 = Split 3, 4+ = Split 4) and its share % (main first, then the legs in the order created). With no rule for that number, the branch's first rule applies, shared equally. Nobody is paid twice; the old profit-sharing (PSI) path no longer drives commission. `ResolveCommissionShares::splitFor`; the same numbers feed the commission slips and the CSN page, which shows "Share 40% of 2 drivers" under the rule. Checked locally: CSN 45 Transfer leg = 10% × RM 30 × 40% = MYR 1.20 (was 0).
 
+## Round 3 (user, 19–20 Oct) — code committed and pushed 20 Oct (client data files held back, see item 35)
+
+### 18. Client price lists: default price + customer special price — done
+- [x] The client's two workbooks ("O&G Customer Pricing Setup Template", every sheet) are imported: **Default Price** (Measurement 156 rows, Items 210, Chartered Lorry 76, Special Area 106) and **Special Price** (12 customer sheets by debtor code, 166 rows). 119 products (one per size / weight band, e.g. "Carton · L+W+H ≤ 149 cm · L ≤ 60 cm · up to 30 kg"), 7 lorry types, 63 new destinations; quantity ranges A–E, minimum charges, drop-off type, branch and effective date kept per row. "Weight * 0.14" rows are per-kg products (quantity = weight in kg). The old price list's 63 products are no longer offered (past orders keep their names).
+- [x] Loaded by `php artisan migrate` (data migration with the bundled copies in `database/data/client-price-list-*.xlsx`), again with `php artisan og:import-client-prices`, and later files with **Import price list** (Master Data → UOM). Re-importing replaces the prices a file holds.
+- [x] **Pricing rule:** when a customer is selected and has a special price for the product and destination, it is used; otherwise the default price (`PriceListRates`). A special price listed for another drop-off type (e.g. Own Company) is still the customer's price. Special prices are keyed by debtor code: they apply as soon as a customer with that code exists (none of the 12 codes is a local customer yet).
+- [x] **Minimum charges, automatic:** a record below its pick-up (Pick Up service), construction site (Construction Site drop-off) or drop-off minimum (per route) gets a "Minimum charge" line topping it up (`OrderMinimumCharge`, in `QuotationMatrix::sync`). Shown on the create page too.
+- [x] Order form: products of the customer's special list are offered too; chartered lorries are in the product list (priced per trip); "Special price" / "Default price" tag with the quantity range; drop-off types are the price list's 10.
+- [x] Checked locally: default carton prices by quantity range; a customer with a special price gets it instead; a chartered lorry priced per trip; saved records get the minimum charge line (rolled back).
+
+### 19. Order statuses — done
+- [x] No **Pending salesperson** and no **Invoice issued**: without a salesperson an order is a **New enquiry**; with one it is **Preparing quotation**; a released order goes straight to **CSN created** (release already creates the CSN). Checked on the local orders.
+
+### 20. Consignor PIC from section 1 — done
+- [x] The consignor's PIC name and contact number are filled from section 1's (each Pickup block that is blank or still has the previous value; a Store block keeps the store's). Checked in the browser.
+
+### 21. Editable unit price — done
+- [x] The unit price is a box filled with the special / default price; it can be changed ("Changed · Default price RM 11.00") and the entered price is saved. Checked in the browser and on save.
+- [x] It is a text box (no up / down arrows, the mouse wheel cannot change it): digits and one dot only, shown with 2 decimals when you leave it (70 → 70.00).
+
+### 22. Cash Bill Payment button on Orders — done
+- [x] "Cash Bill Payment (Counter Use)" beside "OCR quotation processing".
+
+### 23. Payment term per consignor & consignee — done
+- [x] No Payment term field in section 1; each consignor & consignee has a coloured payment term tag (a dropdown, no label) beside Remove, starting as the customer's type (Cash green, COD amber, Credit / Term blue); each record is saved with its own term (Create and Edit order). A Cash customer has only Cash, a COD customer only COD (the tag is locked and says why); a credit customer Credit / Term, Cash or COD.
+
+### 24. Several orders on one page — done
+- [x] "+ Add another order" (top right, beside the page title) adds a new order **below** the others; **every order stays open and editable**, each framed in its own colour with "Order n of N · customer" and **Remove order** on the right. One Save creates them all (an order with a mistake scrolls into view with its errors). Checked in the browser (two orders, editing order 1 after adding order 2) and on save (rolled back); Edit order (one order) checked too.
+
+### 25. Amount summary and record payment while creating — done
+- [x] **Amount summary** above the save bar: each order (products, minimum charge, total, payment) and the total of all orders; clicking a row scrolls to that order's "1. Customer & ownership".
+- [x] **Pay now** tick per order in the summary (several orders paid together); **Payment** card below the summary with one method, date, reference and proof for all ticked orders. On save each Cash record is confirmed for the customer, paid in full and billed: Cash Bill issued, CSN created (`RecordOrderCreationPayment`). A Cash / Pay at Counter payment still needs a second user's approval before the CSN (two approval levels). Checked: Cash order paid by bank transfer → CSN created (rolled back).
+
+### 26. Cash Bill Payment (Counter Use) — done
+- [x] Customer dropdown as before; that customer's unpaid Cash Bill CSNs listed below to tick (one, several or all) and **Add** to the **Payment list** (its own card), which can hold CSNs of different customers and totals them; a scanned QR code adds straight to the list.
+- [x] **Paid less than due:** the balance and a "stays on" CSN choice show; the other CSNs are paid in full, the chosen one is paid less and stays Partial; next time it shows only its balance due. Checked: RM 40 of RM 52 → Partial, RM 12 due next time (rolled back).
+
+### 27. Smaller changes (20 Oct) — done
+- [x] Create order: the "Entered by HQ Admin · On behalf of customer" box removed; section 1's PIC / contact number fill the consignors as you type.
+- [x] UOM view: the default price and each customer's special price are separate tables (a product with 6 tiers = 3 default + 3 special), with the minimum charges.
+
+### 28. Cash Bill page: Pending payment Cash orders — done
+- [x] A customer's Cash orders in Pending payment (no CSN yet) are listed with their unpaid Cash Bill CSNs (and counted in the customer dropdown); tick and Add them to the Payment list like CSNs. Paid in full → Cash Bill issued, CSN created (same steps as Add payment on the order); a balance can stay on an order (it stays Pending payment). Cash / Pay at Counter still needs a second user's approval. Checked: RM 2,000 for two KL Cash Mart orders (RM 1,950 + RM 500) → the first CSN created, RM 450 left on the second (rolled back).
+- [x] "Paid" button (was "Full Payment"); Amount received always shows 2 decimals; the balance note text removed.
+
+### 29. Customers from the price list file — done
+- [x] Migration `2026_10_20_100000_import_client_customers` adds the 929 customers (debtor code + company name, `database/data/client-customers.csv`, from the Lists sheet) as **new** customers of the KL branch, Cash, no address or contact. Existing customers are not changed and a code already there is skipped (safe to run on production; running it again adds nothing). Their special prices apply at once. Run locally: 929 added.
+
+### 30. Smaller changes — done
+- [x] From / To location dropdowns show the name only, A–Z (order page and CSN pages).
+- [x] "Pending payment" kept for a confirmed Cash order waiting for its payment (user, 20 Oct).
+- [x] CSN view: "D/O No." is now **Customer Reference DO Number** (the customer's DO number from the order; the system DO number stays under Traceability). The CSN overview takes what was entered on Create order: DO number, From / To, the order's contact number (Telephone), billing address (Customer address) and the consignor & consignee's instructions (Remark); new CSNs carry them, older CSNs show their order's. Checked on a new order paid on create (rolled back).
+
+### 31. Commission 80% and pickup commission — done
+- [x] 20% of a CSN's total stays with O&G; the drivers share 80% (`og.default_commission_rate`, a rule's rate when one matches). A **Pickup** subsheet driver gets the fixed amount entered when assigning it to a lorry ("Commission amount (pickup driver)", optional); it is taken off the 80% first and the rest is split equally between the other drivers (RM 30 CSN → RM 24 pool, pickup RM 5, two others RM 9.50 each).
+- [x] A Pickup subsheet needs no transfer code.
+
+### 32. Master Data → Leads — done
+- [x] Name / company, PIC name, contact number, email, billing address, address. A lead becomes a customer when its quotation is accepted (code L + lead number, Cash).
+
+### 33. Operations → Quotation (own `quotes` table) — done
+- [x] Menu above Orders. Numbers **Q00001, Q00002, …** (last number + 1; Q00001 when there is none).
+- [x] **Create quotation** reuses the Create order page: customer or lead (with "+ New lead" modal), quotation date (today), salesperson, PIC and billing address, consignor & consignee blocks with products at the **default price** (editable = the price quoted). The summary says "Quotation amount". Saved as **Pending confirmation**; Edit while pending.
+- [x] List: search, quotation date (range and day strip), customer / lead, status; columns incl. PIC, total, status and **Order** (the order made from it, linked).
+- [x] Row actions: **Accept by customer** (modal: who accepted it, prefilled with the PIC) → the order is created with its blocks, products and quoted prices, a lead becomes a customer, each quoted price is kept as the customer's special price, the quotation becomes **Opened as order** with "Accepted by …"; **Duplicate** (a new pending quotation, today, opens to edit, e.g. to change the lead); **PDF** (the earlier quotation layout: letterhead, Ref No., date and page no. on the right, customer, products per destination, minimum charge top-ups, total, terms); Edit; Delete (pending only). The bulk action does the same Accept for ticked quotations.
+- [x] Fixed: the quotation date filter showed nothing (it compared with `1` instead of the date).
+- [x] Local sample quotations Q00001–Q00004 (two for leads, two for customers, pending; plus the sample lead "Kedai Runcit Maju Jaya (sample)").
+
+### 34. Customer → Special price tab — done
+- [x] Customer view has a **Special price** tab (count badge): product / chartered lorry, destination, drop-off type, quantity range, price, minimum charges, effective date and where it came from (special price list or "Quotation Q…"). Read only.
+- [x] Special prices cannot be added or edited by hand: the UOM edit form edits the default prices only (customers' special rows stay as they are on save; checked rolled back). They come from the special price list and accepted quotations.
+
+### 35. Held back from the push — waiting for the user
+- [ ] The GitHub repo is **public**, so `database/data/client-customers.csv` (929 customers), `client-price-list-default.xlsx`, `client-price-list-special.xlsx` and their two data migrations (`2026_10_19_100100_import_client_price_lists`, `2026_10_20_100000_import_client_customers`) are **not committed**. They stay in the local folder. Production needs them for the prices and customers.
+
 ## Open questions for the user
-- Commission rules are now picked by the number of drivers. The server's "Default single driver 10%" is set to 80%; check each Split 2 / 3 / 4 rule has the rate and shares you want (without one, the single rule's rate is shared equally).
-- For price-list (UOM) products the order form never checks a special price (special → price list → keyed in is the agreed order). Change it?
+- How should the client's customer list and price lists reach production (item 35): make the repo private and push them, or copy them to the server (not in git) and run the import there?
+- Should an order created from an accepted quotation be confirmed at once, or start as Preparing quotation like a new order?
+- The pick-up minimum is applied per record (each consignor → consignee). Two records collected from the same consignor are each topped up: confirm with the client, or should it be once per order?
+- The Import price list button (Master Data → UOM) can still load a special price file. Keep it, or limit it to default prices so quotations are the only way?
 - Credit / Term orders need branch manager approval only when a credit check fails. Should every Credit / Term order need approval?
 
 ## Next steps

@@ -626,7 +626,12 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
                 ->options(fn (Forms\Get $get) => static::transferCodeOptions($get('task_type')))
                 ->default($codes->count() === 1 ? $codes->first() : null)
                 ->searchable()
-                ->required();
+                ->visible(fn (Forms\Get $get) => $get('task_type') !== 'incoming_psi')
+                ->required(fn (Forms\Get $get) => $get('task_type') !== 'incoming_psi');
+            $fields[] = static::pickupCommissionField()
+                ->default($subsheets->count() === 1 && (float) $subsheets->first()->psi_amount > 0 ? number_format((float) $subsheets->first()->psi_amount, 2, '.', '') : null)
+                ->visible(fn (Forms\Get $get) => $get('task_type') === 'incoming_psi')
+                ->columnSpanFull();
         }
 
         return [Forms\Components\Group::make($fields)->columns(2)];
@@ -683,8 +688,9 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
                 $wasAssigned = $subsheet->isAssigned();
                 app(CreateSubsheet::class)->assignToLorry($subsheet, $lorry, array_filter([
                     'task_type' => $data['task_type'] ?? null,
-                    'transfer_code' => $data['transfer_code'] ?? null,
-                ], fn ($value) => filled($value)));
+                    // a Pickup has no transfer code
+                    'transfer_code' => ($data['task_type'] ?? null) === 'incoming_psi' ? null : ($data['transfer_code'] ?? null),
+                ], fn ($value) => filled($value)) + (($data['task_type'] ?? null) === 'incoming_psi' && is_numeric($data['psi_amount'] ?? null) ? ['psi_amount' => (float) $data['psi_amount']] : []));
                 $doneSubsheets++;
                 $moved += $wasAssigned ? 1 : 0;
             } catch (Throwable $e) {
@@ -836,12 +842,13 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
     /** @return array<int, string> */
     public static function locationOptions(): array
     {
+        // the location's name only (as on the order page)
         return Location::query()
             ->where('is_active', true)
-            ->orderBy('code')
+            ->orderBy('name')
             ->get()
             ->mapWithKeys(fn (Location $location) => [
-                $location->id => trim($location->code.' — '.$location->name),
+                $location->id => trim((string) $location->name),
             ])
             ->all();
     }
@@ -893,18 +900,38 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
                 ->live()
                 ->afterStateUpdated(fn (Forms\Set $set) => $set('transfer_code', null))
                 ->required(),
+            // a Pickup needs no transfer code (user, 20 Oct 2026)
             Forms\Components\Select::make('transfer_code')
                 ->label('Transfer code')
                 ->options(fn (Forms\Get $get) => static::transferCodeOptions($get('task_type')))
                 ->searchable()
-                ->required(),
+                ->visible(fn (Forms\Get $get) => $get('task_type') !== 'incoming_psi')
+                ->required(fn (Forms\Get $get) => $get('task_type') !== 'incoming_psi'),
             Forms\Components\Select::make('sub_lorry_ids')
                 ->label('Lorries')
                 ->helperText('Optional. One subsheet per lorry; without a lorry the subsheet is created now and assigned to a lorry later.')
                 ->options(fn () => static::lorryOptions())
                 ->multiple()
+                ->live()
                 ->searchable(),
+            static::pickupCommissionField()
+                ->visible(fn (Forms\Get $get) => $get('task_type') === 'incoming_psi' && filled($get('sub_lorry_ids'))),
         ];
+    }
+
+    /**
+     * A Pickup put on a lorry: the commission for its driver (optional), taken from the CSN's commission (80% of the
+     * CSN total) before the other drivers share the rest.
+     */
+    public static function pickupCommissionField(): Forms\Components\TextInput
+    {
+        return Forms\Components\TextInput::make('psi_amount')
+            ->label('Commission amount (pickup driver)')
+            ->helperText('Optional. Paid to this lorry\'s driver and deducted from the CSN\'s commission; the other drivers share the rest equally.')
+            ->numeric()
+            ->minValue(0)
+            ->prefix('RM')
+            ->placeholder('0.00');
     }
 
     /** Type label of a subsheet: Pickup, Transfer or Break bulk (the same wherever a task type shows). */
@@ -932,7 +959,7 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
      */
     public static function subsheetOptionFields(bool $includeAmounts = false): array
     {
-        return array_values(array_filter(static::subsheetCreateForm(), fn ($field) => $field->getName() !== 'sub_lorry_ids'));
+        return array_values(array_filter(static::subsheetCreateForm(), fn ($field) => ! in_array($field->getName(), ['sub_lorry_ids', 'psi_amount'], true)));
     }
 
     /**

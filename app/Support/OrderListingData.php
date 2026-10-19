@@ -330,8 +330,8 @@ class OrderListingData
         $url = OrderDetail::urlFor('order', $q->id);
         $nextUrl = match ($stage['key']) {
             'csn' => ConsignmentNoteResource::getUrl('index', ['tableFilters' => ['quotation_id' => ['value' => $q->id]]]),
-            'payment', 'billed' => $url.'?tab=payment',
-            'quotation', 'pending_salesperson' => $url.'?tab=pricing',
+            'payment' => $url.'?tab=payment',
+            'quotation' => $url.'?tab=pricing',
             default => $url,
         };
 

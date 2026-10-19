@@ -437,6 +437,12 @@
     .ow-price-hint { font-size: .68rem; color: var(--ow-muted); margin-top: .15rem; white-space: nowrap; }
     .ow-price-diff { color: #b45309; }
     .dark .ow-page .ow-price-diff { color: #fcd34d; }
+    /* the customer's special price (else the default price) */
+    .ow-price-special { color: #047857; font-weight: 600; }
+    .dark .ow-page .ow-price-special { color: #6ee7b7; }
+    /* a block below its price list minimum charge */
+    .ow-minimum-charge { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .35rem 1rem; margin-top: .6rem; padding: .5rem .75rem; border-radius: .5rem; font-size: .8rem; background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+    .dark .ow-page .ow-minimum-charge { background: rgba(245, 158, 11, .12); border-color: rgba(245, 158, 11, .35); color: #fcd34d; }
     .ow-money { position: relative; }
     .ow-money > span { position: absolute; left: .55rem; top: 50%; transform: translateY(-50%); font-size: .72rem; color: var(--ow-muted); }
     .ow-money > .ow-input { padding-left: 2rem; text-align: right; font-variant-numeric: tabular-nums; }
@@ -485,6 +491,42 @@
     /* --- create order ------------------------------------------------- */
     .ow-pair { position: relative; }
     .ow-pair-head { display: flex; justify-content: space-between; align-items: center; gap: .75rem; margin-bottom: .85rem; }
+    .ow-pair-actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; justify-content: flex-end; }
+    /* several orders on one page: the open order's cards and the folded order cards carry the order's colour */
+    .ow-order { display: grid; gap: 1rem; grid-template-columns: minmax(0, 1fr); }
+    .ow-order-multi { padding: .75rem; border-radius: .9rem; background: var(--ow-order-tint); border: 1px solid var(--ow-order-color); }
+    .ow-order-multi > .ow-card { border-left: 4px solid var(--ow-order-color); }
+    .ow-order-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; font-weight: 700; color: var(--ow-order-color); }
+    .ow-order-dot { display: inline-block; width: .7rem; height: .7rem; border-radius: 999px; background: var(--ow-order-color); flex: none; }
+    .ow-order-card { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .5rem 1rem; padding: .75rem 1rem; border-radius: .75rem; border: 1px solid var(--ow-order-color); border-left-width: 5px; background: var(--ow-order-tint); }
+    .ow-order-card-main { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; min-width: 0; }
+    .ow-order-card-side { display: flex; align-items: center; gap: .5rem; }
+    .ow-order-summary tbody tr { cursor: pointer; }
+    .ow-order-summary tbody tr.ow-summary-open { cursor: default; background: var(--ow-done-bg); }
+    .ow-order-summary tfoot td { border-top: 2px solid var(--ow-line); padding-top: .6rem; }
+    .ow-pay-now { display: flex; gap: .6rem; align-items: flex-start; font-size: .88rem; }
+    .ow-pay-now input { margin-top: .2rem; }
+    .ow-pay-proofs { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .5rem; }
+    .ow-pay-proofs button { margin-left: .3rem; font-weight: 700; }
+    .ow-input-static { display: flex; align-items: center; font-weight: 600; background: var(--ow-done-bg); }
+    /* a label with a link on its right (Customer / lead · + New lead) */
+    .ow-label-row { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+    .ow-pay-col { width: 4.5rem; text-align: center; cursor: default; }
+    .ow-pay-col input { width: 1rem; height: 1rem; cursor: pointer; }
+    .ow-pay-col input:disabled { cursor: not-allowed; }
+    .ow-pay-list { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; }
+    .ow-pay-chip { display: inline-flex; align-items: center; gap: .35rem; padding: .25rem .6rem; border-radius: 999px; border: 1px solid var(--ow-order-color); font-size: .8rem; }
+    .ow-pay-total { margin-left: auto; }
+    /* a consignor & consignee's payment term: a coloured tag that is a dropdown */
+    .ow-term-select { appearance: none; -webkit-appearance: none; cursor: pointer; border: 1px solid; border-radius: 999px; padding: .3rem 1.75rem .3rem .8rem; font-size: .78rem; font-weight: 700; line-height: 1.2;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%2364748b'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat; background-position: right .5rem center; background-size: .9rem; }
+    .ow-term-select:disabled { cursor: default; opacity: .85; }
+    .ow-term-cash { background-color: var(--ow-done-bg); color: var(--ow-done-fg); border-color: var(--ow-done-bd); }
+    .ow-term-cod { background-color: var(--ow-action-bg); color: var(--ow-action-fg); border-color: var(--ow-action-bd); }
+    .ow-term-term { background-color: var(--ow-progress-bg); color: var(--ow-progress-fg); border-color: var(--ow-progress-bd); }
+    .ow-term-none { background-color: transparent; color: var(--ow-muted); border-color: var(--ow-border, #cbd5e1); }
+    .ow-term-select option { color: #0f172a; background: #fff; }
     .ow-party { border: 1px solid var(--ow-line-2); border-radius: .6rem; padding: .85rem; background: var(--ow-soft); }
     .ow-party-title { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--ow-muted); font-weight: 700; margin-bottom: .6rem; }
     .ow-party .ow-field + .ow-field { margin-top: .6rem; }

@@ -67,7 +67,7 @@ class QuotationMatrix
      */
     public static function unpricedItems(Quotation $quotation): array
     {
-        $names = $quotation->lines()->whereNull('unit_price')->orderBy('id')->pluck('item_name');
+        $names = $quotation->lines()->whereNull('unit_price')->whereNull('charge_type')->orderBy('id')->pluck('item_name');
 
         // products of older records that only come back from the order form (no line yet) are unpriced too
         if ($quotation->portal_enquiry_id && ($enquiry = $quotation->portalEnquiry)) {
@@ -87,7 +87,7 @@ class QuotationMatrix
      * @param  list<array{item_name: string, line_type?: string, quantity?: mixed, prices: array<string, mixed>}>  $rows
      * @return list<array{item: string, destination: string, standard: float, entered: float}>
      */
-    public function detectOverrides(?int $customerId, array $columns, array $rows): array
+    public function detectOverrides(?int $customerId, array $columns, array $rows, array $dropOffTypes = []): array
     {
         $lookup = app(QuotationPricingLookup::class);
         $overrides = [];
@@ -109,7 +109,7 @@ class QuotationMatrix
                     continue;
                 }
 
-                $standard = $lookup->lookupForCustomer($customerId, $itemName, $column, $quantity)['price'] ?? null;
+                $standard = $lookup->lookupForCustomer($customerId, $itemName, $column, $quantity, $dropOffTypes[$column] ?? null)['price'] ?? null;
 
                 if ($standard === null) {
                     continue; // nothing to compare against: manual pricing, not an override
@@ -163,11 +163,14 @@ class QuotationMatrix
 
         $lookup = app(QuotationPricingLookup::class);
         $subtotal = 0;
+        // the lines of each destination, for its minimum charge
+        $byColumn = [];
 
         foreach ($rows as $row) {
             $itemName = trim((string) ($row['item_name'] ?? ''));
 
-            if ($itemName === '') {
+            // the minimum charge is worked out below from the lines, never kept from before
+            if ($itemName === '' || $itemName === OrderMinimumCharge::LINE) {
                 continue;
             }
 
@@ -197,6 +200,37 @@ class QuotationMatrix
                     'unit_price' => $unitPrice,
                     'line_total' => $lineTotal,
                 ]);
+
+                $byColumn[$column][] = ['item_name' => $itemName, 'quantity' => $quantity, 'line_total' => $lineTotal, 'priced' => $unitPrice !== null];
+            }
+        }
+
+        // a drop-off below its minimum charge (price list: pick-up / construction site / drop-off minimum) is
+        // topped up with a "Minimum charge" line
+        $minimums = app(OrderMinimumCharge::class);
+
+        foreach ($byColumn as $column => $lines) {
+            $typeSetting = $destinationTypes->get($column, []);
+            $minimum = $minimums->forDestination(
+                $quotation->customer_id ? (int) $quotation->customer_id : null,
+                (string) $column,
+                $typeSetting['drop_off_type'] ?? null,
+                $typeSetting['service_type'] ?? $quotation->service_type?->value,
+                $lines,
+            );
+
+            if ($minimum['top_up'] > 0) {
+                $quotation->lines()->create([
+                    'quotation_destination_id' => $destinations[$column]->id,
+                    'item_name' => OrderMinimumCharge::LINE,
+                    'charge_type' => 'minimum',
+                    'uom' => null,
+                    'quantity' => 1,
+                    'unit_price' => $minimum['top_up'],
+                    'line_total' => $minimum['top_up'],
+                    'handling_notes' => $minimum['note'],
+                ]);
+                $subtotal += $minimum['top_up'];
             }
         }
 

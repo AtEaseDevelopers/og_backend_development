@@ -22,7 +22,7 @@
             <div class="csn-field"><div class="csn-label">Destination</div><div class="csn-value">{{ $display($overview['destination'] ?? null) }}</div></div>
             <div class="csn-field"><div class="csn-label">CSN No.</div><div class="csn-value font-semibold">{{ $display($overview['number'] ?? null) }}</div></div>
             <div class="csn-field"><div class="csn-label">CSN Date</div><div class="csn-value">{{ $display($overview['issued_at'] ?? null) }}</div></div>
-            <div class="csn-field"><div class="csn-label">D/O No.</div><div class="csn-value">{{ $display($overview['do_number'] ?? null) }}</div></div>
+            <div class="csn-field"><div class="csn-label">Customer Reference DO Number</div><div class="csn-value">{{ $display($overview['customer_do_number'] ?? null) }}</div></div>
             <div class="csn-field"><div class="csn-label">Job No.</div><div class="csn-value">{{ $display($overview['job_no'] ?? null) }}</div></div>
             <div class="csn-field"><div class="csn-label">Reference No.</div><div class="csn-value">{{ $display($overview['customer_reference'] ?? null) }}</div></div>
             <div class="csn-field"><div class="csn-label">Job date</div><div class="csn-value">{{ $display($overview['job_date'] ?? null) }}</div></div>

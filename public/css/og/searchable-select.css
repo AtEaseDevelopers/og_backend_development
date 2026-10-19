@@ -319,6 +319,8 @@ select[data-og-ss-open]:not(.fi-select-input) {
 .og-ss-tag-cash { border-color: #bbf7d0; background: #f0fdf4; color: #15803d; }
 .og-ss-tag-cod { border-color: #fde68a; background: #fffbeb; color: #b45309; }
 .og-ss-tag-credit { border-color: #bfdbfe; background: #eff6ff; color: #1d4ed8; }
+/* a lead (Create quotation): not a customer yet */
+.og-ss-tag-lead { border-color: #ddd6fe; background: #f5f3ff; color: #6d28d9; }
 
 .og-ss-sub {
     /* the whole second line (address, From, PIC, contact) stays readable: it wraps instead of cutting off */
@@ -333,4 +335,5 @@ select[data-og-ss-open]:not(.fi-select-input) {
 .dark .og-ss-tag-cash { border-color: rgb(34 197 94 / .4); background: rgb(34 197 94 / .15); color: #86efac; }
 .dark .og-ss-tag-cod { border-color: rgb(245 158 11 / .4); background: rgb(245 158 11 / .15); color: #fcd34d; }
 .dark .og-ss-tag-credit { border-color: rgb(59 130 246 / .4); background: rgb(59 130 246 / .15); color: #93c5fd; }
+.dark .og-ss-tag-lead { border-color: rgb(139 92 246 / .4); background: rgb(139 92 246 / .15); color: #c4b5fd; }
 .dark .og-ss-sub { color: rgb(var(--og-ss-gray-400)); }

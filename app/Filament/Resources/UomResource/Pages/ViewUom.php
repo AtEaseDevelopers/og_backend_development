@@ -2,7 +2,10 @@
 
 namespace App\Filament\Resources\UomResource\Pages;
 
+use App\Domains\MasterData\Models\Customer;
 use App\Domains\MasterData\Models\Uom;
+use App\Enums\DropOffType;
+use Illuminate\Support\Collection;
 use App\Filament\Resources\UomResource;
 use Filament\Actions;
 use Filament\Infolists;
@@ -27,17 +30,71 @@ class ViewUom extends ViewRecord
                 Infolists\Components\TextEntry::make('code')->extraAttributes(['style' => 'overflow-wrap:anywhere;word-break:break-all']),
                 Infolists\Components\TextEntry::make('name'),
                 Infolists\Components\IconEntry::make('is_active')->boolean(),
+                Infolists\Components\TextEntry::make('category')->formatStateUsing(fn (?string $state) => $state ? ucfirst($state) : null)->placeholder('—'),
+                Infolists\Components\TextEntry::make('sub_category')->placeholder('—'),
+                Infolists\Components\TextEntry::make('base_item')->label('Item')->placeholder('—'),
             ])->columns(3),
             Infolists\Components\Section::make('Location rate tiers')
-                ->description('Unit price (RM) by quantity range and location. The range that matches the order quantity is applied.')
+                ->description('Unit price (RM) by quantity range and location. The default price is used unless the selected customer has a special price; the range that matches the order quantity is applied.')
                 ->schema([
                     Infolists\Components\ViewEntry::make('rate_matrix')
                         ->hiddenLabel()
                         ->view('filament.infolists.uom-rate-matrix')
-                        ->viewData(['matrix' => static::rateMatrix($this->getRecord())])
+                        ->viewData(['sets' => static::rateSets($this->getRecord())])
                         ->columnSpanFull(),
                 ]),
         ]);
+    }
+
+    /**
+     * One price table per price set: the default price first, then each customer's special price (by debtor code)
+     * and each drop-off type with its own price.
+     *
+     * @return list<array{title: string, special: bool, matrix: array<string, mixed>, minimums: list<string>}>
+     */
+    public static function rateSets(Uom $uom): array
+    {
+        $tiers = $uom->rateTiers()->with('location')->get();
+        $codes = $tiers->pluck('customer_code')->filter()->unique()->values();
+        $names = $codes->isEmpty() ? collect() : Customer::query()->whereIn('code', $codes)->pluck('company_name', 'code');
+
+        return $tiers
+            ->groupBy(fn ($tier) => (string) $tier->customer_code.'|'.($tier->drop_off_type ?: DropOffType::Default->value))
+            ->sortBy(fn (Collection $set, string $key) => [str_starts_with($key, '|') ? 0 : 1, $key])
+            ->map(function (Collection $set) use ($names) {
+                $first = $set->first();
+                $type = DropOffType::tryFrom((string) $first->drop_off_type) ?? DropOffType::Default;
+                $code = $first->customer_code;
+                $title = $code
+                    ? 'Special price · '.$code.' '.($names[$code] ?? '(not a customer yet)')
+                    : 'Default price';
+
+                if ($type !== DropOffType::Default) {
+                    $title .= ' · '.$type->getLabel().' drop-off';
+                }
+
+                $minimums = collect([
+                    'Pick-up minimum' => $set->max('pickup_min_charge'),
+                    'Construction site minimum' => $set->max('construction_min_charge'),
+                ])->filter(fn ($value) => (float) $value > 0)->map(fn ($value, $label) => $label.' RM '.number_format((float) $value, 2))->values();
+
+                $dropOff = $set->filter(fn ($tier) => (float) $tier->drop_off_min_charge > 0)
+                    ->groupBy(fn ($tier) => $tier->location?->name ?? 'Unknown')
+                    ->map(fn (Collection $rows, string $location) => $location.' RM '.number_format((float) $rows->max('drop_off_min_charge'), 2));
+
+                if ($dropOff->isNotEmpty()) {
+                    $minimums->push('Drop-off minimum: '.$dropOff->implode(', '));
+                }
+
+                return [
+                    'title' => $title,
+                    'special' => $code !== null,
+                    'matrix' => static::rateMatrix($set),
+                    'minimums' => $minimums->all(),
+                ];
+            })
+            ->values()
+            ->all();
     }
 
     /**
@@ -46,9 +103,9 @@ class ViewUom extends ViewRecord
      *
      * @return array{shared: bool, locations: list<string>, ranges: list<string>, cells: array<string, array<string, float>>, byLocation: array<string, list<array{range: string, price: float}>>}
      */
-    public static function rateMatrix(Uom $uom): array
+    public static function rateMatrix(Collection $tiers): array
     {
-        $tiers = $uom->rateTiers()->with('location')->get()
+        $tiers = $tiers
             ->sortBy([fn ($a, $b) => strcmp($a->location?->name ?? '', $b->location?->name ?? ''), fn ($a, $b) => (float) $a->min_qty <=> (float) $b->min_qty]);
 
         $fmt = fn (float $n): string => rtrim(rtrim(number_format($n, 2, '.', ''), '0'), '.');

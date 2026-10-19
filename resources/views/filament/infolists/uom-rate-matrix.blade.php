@@ -1,4 +1,4 @@
-{{-- UOM price list: quantity range × location matrix (fits on one screen). --}}
+{{-- UOM price list: one quantity range × location matrix per price set (default price, then each customer's special price). --}}
 <style>
     .uom-matrix { width: 100%; border-collapse: separate; border-spacing: 0; font-size: .875rem; }
     .uom-matrix th, .uom-matrix td { padding: .55rem .9rem; border-bottom: 1px solid rgb(229 231 235); text-align: right; white-space: nowrap; }
@@ -13,15 +13,25 @@
     .uom-cards { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); }
     .uom-card-title { font-weight: 600; padding: .6rem .9rem; border-bottom: 1px solid rgb(229 231 235); background: rgb(248 250 252); }
     .uom-legend { font-size: .75rem; color: rgb(100 116 139); margin-top: .5rem; }
+    .uom-set + .uom-set { margin-top: 1.25rem; }
+    .uom-set-title { font-size: .85rem; font-weight: 600; margin-bottom: .5rem; color: rgb(15 23 42); }
+    .uom-set-title.is-special { color: rgb(4 120 87); }
+    .dark .uom-set-title { color: rgb(241 245 249); }
+    .dark .uom-set-title.is-special { color: rgb(110 231 183); }
     .dark .uom-matrix th, .dark .uom-card-title { background: rgb(17 24 39); color: rgb(148 163 184); }
     .dark .uom-matrix th, .dark .uom-matrix td, .dark .uom-wrap, .dark .uom-card-title { border-color: rgb(55 65 81); }
     .dark .uom-matrix td:first-child { color: rgb(241 245 249); }
     .dark .uom-matrix tbody tr:hover td { background: rgb(31 41 55); }
 </style>
 
-@if ($matrix['locations'] === [])
+@if ($sets === [])
     <p class="text-sm text-gray-500 dark:text-gray-400">No rate tiers yet. Use Edit to add a price per location and quantity range.</p>
-@elseif ($matrix['shared'])
+@endif
+@foreach ($sets as $set)
+@php $matrix = $set['matrix']; @endphp
+<div class="uom-set">
+<div @class(['uom-set-title', 'is-special' => $set['special']])>{{ $set['title'] }}</div>
+@if ($matrix['shared'])
     <div class="uom-wrap">
         <table class="uom-matrix">
             <thead>
@@ -64,3 +74,8 @@
     </div>
     <div class="uom-legend">Locations use different quantity ranges, so each location is shown separately. "+" means that quantity and above.</div>
 @endif
+@if ($set['minimums'] !== [])
+    <div class="uom-legend">{{ implode(' · ', $set['minimums']) }}</div>
+@endif
+</div>
+@endforeach

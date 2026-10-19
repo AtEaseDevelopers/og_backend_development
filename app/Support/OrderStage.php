@@ -13,12 +13,15 @@ use App\Enums\QuotationStatus;
 
 /**
  * Single source of truth for where an order sits in the flow
- * Enquiry → Quotation → Confirmation → Proforma → Payment / Release → Billing → CSN,
+ * Enquiry → Quotation → Confirmation → Proforma → Payment / Release → CSN,
  * and for the stage tags that filter the Orders workspace.
+ *
+ * No "Pending salesperson" or "Invoice issued" stage (user, 19 Oct 2026): an order without a salesperson is a New
+ * enquiry, one with a salesperson is Preparing quotation, and a released order goes straight to CSN created.
  */
 class OrderStage
 {
-    public const STEPS = ['Enquiry', 'Quotation', 'Confirmation', 'Proforma', 'Payment / Release', 'Invoice', 'CSN'];
+    public const STEPS = ['Enquiry', 'Quotation', 'Confirmation', 'Proforma', 'Payment / Release', 'CSN'];
 
     /**
      * Stage keys (as returned in forEnquiry / forOrder 'key') → tag label and colour, in flow order.
@@ -28,12 +31,10 @@ class OrderStage
      */
     public const STAGES = [
         'enquiry' => ['label' => 'New enquiry', 'color' => 'progress'],
-        'pending_salesperson' => ['label' => 'Pending salesperson', 'color' => 'action'],
         'quotation' => ['label' => 'Preparing quotation', 'color' => 'progress'],
         'awaiting_customer' => ['label' => 'Awaiting customer', 'color' => 'customer'],
         'confirmation' => ['label' => 'Confirmation', 'color' => 'action'],
         'payment' => ['label' => 'Payment / release', 'color' => 'action'],
-        'billed' => ['label' => 'Invoice issued', 'color' => 'released'],
         'csn' => ['label' => 'CSN created', 'color' => 'done'],
         'closed' => ['label' => 'Rejected / closed', 'color' => 'issue'],
     ];
@@ -48,14 +49,10 @@ class OrderStage
             : PortalEnquiryStatus::tryFrom((string) $enquiry->status);
 
         $stage = match (true) {
-            $status === PortalEnquiryStatus::Rejected, $status === PortalEnquiryStatus::Cancelled => null,
-            ! $enquiry->salesperson_id => ['pending_salesperson', 1, 'Pending salesperson', 'action', 'No salesperson assigned · Assign one to continue', 'Assign salesperson', false],
-            default => null,
-        } ?? match ($status) {
-            PortalEnquiryStatus::InReview => ['quotation', 2, 'Preparing quotation', 'progress', 'Approved for pricing · Prepare the order', 'Provide pricing', false],
-            PortalEnquiryStatus::Rejected => ['closed', 1, 'Rejected', 'issue', 'Rejected at review', 'View enquiry', true],
-            PortalEnquiryStatus::Cancelled => ['closed', 1, 'Cancelled', 'issue', 'Cancelled by customer', 'View enquiry', true],
-            default => ['enquiry', 1, 'New enquiry', 'progress', 'New submission · Review required', 'Review submitted order', false],
+            $status === PortalEnquiryStatus::Rejected => ['closed', 1, 'Rejected', 'issue', 'Rejected at review', 'View enquiry', true],
+            $status === PortalEnquiryStatus::Cancelled => ['closed', 1, 'Cancelled', 'issue', 'Cancelled by customer', 'View enquiry', true],
+            ! $enquiry->salesperson_id => ['enquiry', 1, 'New enquiry', 'progress', 'No salesperson assigned · Assign one to continue', 'Assign salesperson', false],
+            default => ['quotation', 2, 'Preparing quotation', 'progress', 'Salesperson assigned · Prepare the order', 'Provide pricing', false],
         };
 
         return [
@@ -91,8 +88,9 @@ class OrderStage
         $type = $q->orderType();
 
         $stage = match (true) {
-            $status === QuotationStatus::Converted || $hasCsn => ['csn', 7, 'CSN created', 'done', 'Invoice issued · Continue in CSN', 'View CSN', false],
-            $status === QuotationStatus::Confirmed && $billing === BillingStatus::Generated => ['billed', 6, 'Invoice issued', 'released', 'Invoice / Cash Bill issued · CSN pending', 'View invoice', false],
+            $status === QuotationStatus::Converted || $hasCsn => ['csn', 6, 'CSN created', 'done', 'Released · Continue in CSN management', 'View CSN', false],
+            // billing issued but its CSN not created (a release creates both, so only after an error)
+            $status === QuotationStatus::Confirmed && $billing === BillingStatus::Generated => ['csn', 6, 'CSN pending', 'action', 'Released · The CSN was not created · Create it to continue', 'Create CSN', false],
             $status === QuotationStatus::Confirmed && $billing === BillingStatus::Failed => ['payment', 5, 'Billing failed', 'issue', 'Billing generation failed · Retry', 'Retry billing', false],
             $status === QuotationStatus::Confirmed && $q->cod_blocked => ['payment', 5, 'COD blocked', 'issue', $q->cod_block_reason ?: 'COD order blocked by admin', 'Review COD block', false],
             $status === QuotationStatus::Confirmed && $q->isReleased() => ['payment', 5, 'Ready to bill', 'released', 'Admin released · Billing not issued', 'Review billing', false],
@@ -108,7 +106,7 @@ class OrderStage
             $status === QuotationStatus::PendingReview => ['awaiting_customer', 3, 'Awaiting customer', 'customer', 'Pending customer review · No response yet', 'View quotation', false],
             $status === QuotationStatus::Sent => ['awaiting_customer', 3, 'Awaiting customer', 'customer', 'Quotation sent · Customer has not confirmed', 'View quotation', false],
             $status === QuotationStatus::Negotiation => ['quotation', 3, 'Customer rejected · revising', 'action', 'Customer rejected the price · Edit and send again', 'Edit pricing', false],
-            $status === QuotationStatus::Draft && ! $q->salesperson_id => ['pending_salesperson', 2, 'Pending salesperson', 'action', 'No salesperson assigned · Assign one to continue', 'Assign salesperson', false],
+            $status === QuotationStatus::Draft && ! $q->salesperson_id => ['enquiry', 1, 'New enquiry', 'progress', 'No salesperson assigned · Assign one to continue', 'Assign salesperson', false],
             $status === QuotationStatus::Draft => ['quotation', 2, 'Preparing quotation', 'progress', $total > 0 ? 'Priced · Ready to send for confirmation' : 'Pricing in progress · Salesperson editing', $total > 0 ? 'Send quotation' : 'Provide pricing', false],
             $status === QuotationStatus::Superseded => ['closed', 2, 'Old version', 'gray', 'Replaced by a newer version · kept for reference', 'View order', true],
             default => ['closed', 2, $status->getLabel() ?? 'Closed', 'issue', $q->rejection_reason ?: $q->closed_reason ?: ($status->getLabel() ?? 'Closed'), 'View order', true],
@@ -125,7 +123,7 @@ class OrderStage
             'hint' => $stage[4],
             'next' => $stage[5],
             'closed' => $stage[6],
-            'attention' => in_array($key, ['pending_salesperson', 'quotation', 'confirmation'], true) || ($key === 'payment' && in_array($color, ['action', 'issue'], true)),
+            'attention' => in_array($key, ['enquiry', 'quotation', 'confirmation'], true) || (in_array($key, ['payment', 'csn'], true) && in_array($color, ['action', 'issue'], true)),
             'ready_to_bill' => $key === 'payment' && $color === 'released',
         ];
     }

@@ -135,8 +135,10 @@ class OrderDetailData
         }
 
         return match ($stage['key']) {
-            'enquiry' => $this->b('info', 'Review submitted order', 'Customer submitted the form. Admin must review the details and provide pricing.', 'Review submitted order →', 'scroll', 'og-admin-action'),
-            'pending_salesperson' => $this->b('warning', 'Pending salesperson', 'No salesperson owns this order yet. Assign one to see product prices and continue with pricing.', 'Assign salesperson →', 'method', 'focusAssign'),
+            // a New enquiry has no salesperson yet: assigning one moves it to Preparing quotation
+            'enquiry' => ($order?->salesperson_id ?? $enquiry?->salesperson_id)
+                ? $this->b('info', 'Review submitted order', 'Customer submitted the form. Admin must review the details and provide pricing.', 'Review submitted order →', 'scroll', 'og-admin-action')
+                : $this->b('warning', 'Assign a salesperson', 'No salesperson owns this order yet. Assign one to see product prices and continue with pricing.', 'Assign salesperson →', 'method', 'focusAssign'),
             'quotation' => $order?->status === QuotationStatus::Negotiation
                 ? $this->b('warning', 'Customer rejected the quotation', 'Reason: '.($order->rejection_reason ?: 'not given').' · Edit the pricing and send it again.', 'Edit pricing →', 'tab', 'pricing')
                 : ($order
@@ -160,8 +162,9 @@ class OrderDetailData
                 'released' => $this->b('success', 'Ready to bill', 'Admin released · issue the Invoice / Cash Bill to create the CSN.', 'Generate billing →', 'action', 'generateBilling'),
                 default => $this->b('info', 'Pending payment', 'Proforma issued · waiting for the customer to pay in full. Payments appear under Payment summary.', 'Review payment →', 'tab', 'payment'),
             },
-            'billed' => $this->b('success', 'Billing issued', 'Invoice / Cash Bill issued · create the CSN to continue to dispatch.', 'Create CSN →', 'action', 'generateBilling'),
-            'csn' => $this->b('success', 'CSN created', 'Invoice issued · continue in CSN management.', 'View CSN →', 'url', $order ? ConsignmentNoteResource::getUrl('index', ['tableFilters' => ['quotation_id' => ['value' => $order->id]]]) : null),
+            'csn' => $stage['color'] === 'action'
+                ? $this->b('warning', 'CSN pending', 'Released, but the CSN was not created · create it to continue to dispatch.', 'Create CSN →', 'action', 'generateBilling')
+                : $this->b('success', 'CSN created', 'Released · continue in CSN management.', 'View CSN →', 'url', $order ? ConsignmentNoteResource::getUrl('index', ['tableFilters' => ['quotation_id' => ['value' => $order->id]]]) : null),
             'closed' => $order?->status === QuotationStatus::Superseded
                 ? $this->oldVersionBanner($order)
                 : $this->b('danger', $stage['label'], $stage['hint'], $order?->status === QuotationStatus::Closed ? 'Reopen case' : null, 'action', 'reopen'),
@@ -277,8 +280,8 @@ class OrderDetailData
                 'status_label' => $stage['label'],
                 'status_color' => $stage['color'],
                 'text' => match ($stage['key']) {
-                    'pending_salesperson' => 'Assign a salesperson so the order has an owner, then check the route, quantities and DO number and prepare the customer\'s price.',
-                    'quotation' => 'Approved for pricing. Create the order record(s) and enter the charges.',
+                    'enquiry' => 'Assign a salesperson so the order has an owner, then check the route, quantities and DO number and prepare the customer\'s price.',
+                    'quotation' => 'Salesperson assigned. Create the order record(s) and enter the charges.',
                     'closed' => $stage['hint'],
                     default => 'Check the route, quantities and DO number, then prepare the customer\'s price.',
                 },
@@ -531,7 +534,7 @@ class OrderDetailData
         $rows = $itemLines->map(function ($line) use ($destinationById, $order) {
             $destination = $destinationById->get($line->quotation_destination_id);
             $column = $destination?->consignee_name ?? '—';
-            $tier = $this->lookup->matchedUomTier($line->item_name, $column, (float) $line->quantity);
+            $tier = $this->lookup->matchedUomTier($line->item_name, $column, (float) $line->quantity, $order->customer_id ? (int) $order->customer_id : null, $destination?->drop_off_type);
 
             // a product kept on the order without a price yet shows no amount
             $priced = $line->unit_price !== null;
@@ -675,8 +678,10 @@ class OrderDetailData
 
         $rows = array_values($rows);
 
+        $dropOffTypes = $order->destinations->mapWithKeys(fn ($destination) => [(string) $destination->consignee_name => $destination->drop_off_type])->all();
+
         foreach ($rows as &$row) {
-            $row['list'] = $this->listPrices($customerId, $row['item_name'], $columns, (float) $row['quantity']);
+            $row['list'] = $this->listPrices($customerId, $row['item_name'], $columns, (float) $row['quantity'], $dropOffTypes);
         }
         unset($row);
 
@@ -704,13 +709,14 @@ class OrderDetailData
      * @param  list<string>  $columns
      * @return array<string, array{price: ?float, source: ?string, tier: ?string}>
      */
-    public function listPrices(?int $customerId, string $itemName, array $columns, float $quantity): array
+    public function listPrices(?int $customerId, string $itemName, array $columns, float $quantity, array $dropOffTypes = []): array
     {
         $out = [];
 
         foreach ($columns as $column) {
-            $resolved = $this->lookup->lookupForCustomer($customerId, $itemName, $column, max(0.01, $quantity));
-            $tier = $this->lookup->matchedUomTier($itemName, $column, max(0.01, $quantity));
+            $type = $dropOffTypes[$column] ?? null;
+            $resolved = $this->lookup->lookupForCustomer($customerId, $itemName, $column, max(0.01, $quantity), $type);
+            $tier = $this->lookup->matchedUomTier($itemName, $column, max(0.01, $quantity), $customerId, $type);
 
             $out[$column] = [
                 'price' => $resolved['price'] !== null ? (float) $resolved['price'] : null,

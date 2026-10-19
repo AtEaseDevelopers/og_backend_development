@@ -117,6 +117,11 @@ class CreateSubsheet
                 $subsheet->fill(['transfer_code' => $transferCode, 'task_type' => $this->taskType($data + ['task_type' => $subsheet->task_type], $transferCode)]);
             }
 
+            // a Pickup's commission: the fixed amount entered when it is put on the lorry
+            if (array_key_exists('psi_amount', $data)) {
+                $subsheet->psi_amount = round((float) $data['psi_amount'], 2);
+            }
+
             $jobSheet = $this->resolveJobSheet->forLorry($lorry, $date, $driverId, $lorry->company_id ?? $csn->company_id, $isShared);
 
             $subDo = DeliveryOrder::query()->create([
@@ -202,6 +207,10 @@ class CreateSubsheet
         }
 
         return DB::transaction(function () use ($subsheet, $lorry, $data, $do) {
+            if (array_key_exists('psi_amount', $data)) {
+                $subsheet->update(['psi_amount' => round((float) $data['psi_amount'], 2)]);
+            }
+
             if (array_key_exists('transfer_code', $data) || array_key_exists('task_type', $data)) {
                 $transferCode = array_key_exists('transfer_code', $data) ? (filled($data['transfer_code']) ? (string) $data['transfer_code'] : null) : $subsheet->transfer_code;
                 $subsheet->fill(['transfer_code' => $transferCode, 'task_type' => $this->taskType($data + ['task_type' => $subsheet->task_type], $transferCode)])->save();

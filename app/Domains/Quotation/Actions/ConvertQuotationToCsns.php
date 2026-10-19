@@ -92,7 +92,10 @@ class ConvertQuotationToCsns
                     'customer_name' => $quotation->customer->company_name,
                     'customer_brn' => $quotation->customer->brn,
                     'customer_tin' => $quotation->customer->tin,
-                    'customer_phone' => $quotation->customer->phone,
+                    // the contact number entered on the order (section 1), else the customer's
+                    'customer_phone' => $quotation->customer_pic_phone ?: $quotation->customer->phone,
+                    // the consignor & consignee's instructions on the order
+                    'remarks' => UpdateOrderRecords::instructionsFromNotes($quotation->notes) ?: null,
                     // a consignor left blank on the order stays blank ('' = blank on purpose; the CSN document shows "—").
                     // Older records without an order form never had one: the customer, as before.
                     'consignor_name' => $quotation->consignor_name ?: ($quotation->portal_enquiry_id ? '' : $quotation->customer->company_name),

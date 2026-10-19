@@ -22,7 +22,7 @@
     </div>
 @elseif (! $hasOwner)
     <div class="ow-card ow-card-pad">
-        <div class="ow-card-title">Admin pricing <span class="ow-pill ow-pill-action">Pending salesperson</span></div>
+        <div class="ow-card-title">Admin pricing <span class="ow-pill ow-pill-action">No salesperson</span></div>
         <p>Product prices are hidden until a salesperson owns this order. Assign one under <strong>Record ownership</strong>; the rates from the UOM price list are then filled in automatically.</p>
         <div class="ow-actions" style="margin-top:.75rem">
             <button type="button" wire:click="focusAssign" class="ow-btn ow-btn-primary">Assign salesperson →</button>

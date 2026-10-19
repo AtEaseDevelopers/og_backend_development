@@ -546,12 +546,13 @@ class ConsignmentNoteForm
     /** @return array<int, string> */
     public static function locationOptions(): array
     {
+        // the location's name only (as on the order page)
         return Location::query()
             ->where('is_active', true)
-            ->orderBy('code')
+            ->orderBy('name')
             ->get()
             ->mapWithKeys(fn (Location $location) => [
-                $location->id => trim($location->code.' — '.$location->name),
+                $location->id => trim((string) $location->name),
             ])
             ->all();
     }

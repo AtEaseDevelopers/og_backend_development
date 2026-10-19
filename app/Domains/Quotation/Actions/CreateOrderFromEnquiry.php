@@ -11,9 +11,11 @@ use App\Enums\DocumentType;
 use App\Enums\PortalEnquiryStatus;
 use App\Enums\QuotationStatus;
 use App\Enums\ServiceType;
+use App\Enums\OrderType;
 use App\Models\User;
 use App\Services\DocumentNumberingService;
 use App\Support\OrderFormOptions;
+use App\Support\OrderMinimumCharge;
 use App\Support\QuotationMatrix;
 use App\Support\QuotationPricingLookup;
 use Illuminate\Support\Arr;
@@ -31,7 +33,8 @@ use InvalidArgumentException;
  */
 class CreateOrderFromEnquiry
 {
-    public const CHARGE_LINES = ['Pickup charge', 'Drop-off charge', 'Other charges'];
+    /** Charge lines of a record (not products); "Minimum charge" is added by QuotationMatrix::sync itself. */
+    public const CHARGE_LINES = ['Pickup charge', 'Drop-off charge', 'Other charges', OrderMinimumCharge::LINE];
 
     public function __construct(
         private DocumentNumberingService $numbering,
@@ -100,7 +103,8 @@ class CreateOrderFromEnquiry
                     'salesperson_id' => $enquiry->salesperson_id,
                     'salesperson_locked' => $enquiry->salesperson_id !== null,
                     'sa_location_id' => $enquiry->sa_location_id ?? $enquiry->salesperson?->sa_location_id,
-                    'order_type' => $enquiry->order_type?->value ?? $enquiry->customer?->default_order_type,
+                    // the block's own payment term (admin entry), else the order's
+                    'order_type' => OrderType::tryFrom((string) ($pair['order_type'] ?? ''))?->value ?? $enquiry->order_type?->value ?? $enquiry->customer?->default_order_type,
                     'service_type' => $serviceType,
                     'store_branch_id' => $storeBranchId,
                     'store_id' => $storeId,
@@ -348,19 +352,21 @@ class CreateOrderFromEnquiry
             return [];
         }
 
-        return $items->map(function (array $item) use ($enquiry, $column): array {
+        $dropOffType = $pair['drop_off_type'] ?? null;
+
+        return $items->map(function (array $item) use ($enquiry, $column, $dropOffType): array {
             $name = (string) $item['item_name'];
             $catalogKey = $item['catalog_key'] ?? ($this->lookup->resolveCatalogKey($name) ?: ($item['uom'] ?? null ? $this->lookup->resolveCatalogKey((string) $item['uom']) : null));
             $lineType = $item['line_type'] ?? $this->lookup->inferLineType($catalogKey, $name);
             $quantity = $lineType === 'uom' ? max(0.01, (float) ($item['quantity'] ?? 1)) : 1.0;
-            // Prices come from the UOM price list, and only once a salesperson owns the order
-            $price = $lineType === 'lorry' || ! $enquiry->salesperson_id
+            // Prices come from the price list (the customer's special price, else the default), and only once a
+            // salesperson owns the order; a price entered on the order page (filled in from the list, maybe changed)
+            // is used as entered
+            $price = ! $enquiry->salesperson_id
                 ? null
-                : ($this->lookup->lookupForCustomer($enquiry->customer_id ? (int) $enquiry->customer_id : null, $name, $column, $quantity)['price'] ?? null);
-
-            if ($price === null && $enquiry->salesperson_id && filled($item['unit_price'] ?? null)) {
-                $price = (float) $item['unit_price'];
-            }
+                : (is_numeric($item['unit_price'] ?? null)
+                    ? round((float) $item['unit_price'], 2)
+                    : ($this->lookup->lookupForCustomer($enquiry->customer_id ? (int) $enquiry->customer_id : null, $name, $column, $quantity, $dropOffType)['price'] ?? null));
 
             return [
                 'line_type' => $lineType,

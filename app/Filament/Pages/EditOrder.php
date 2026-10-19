@@ -150,7 +150,8 @@ class EditOrder extends CreateOrder
         $this->lockedRecordIds = $records->reject(fn (Quotation $q) => UpdateOrderRecords::isEditable($q))->map(fn (Quotation $q) => (int) $q->id)->values()->all();
         $this->removableRecordIds = $enquiry ? $records->filter(fn (Quotation $q) => UpdateOrderRecords::isRemovable($q))->map(fn (Quotation $q) => (int) $q->id)->values()->all() : [];
         $this->knownRecordIds = $records->map(fn (Quotation $q) => (int) $q->id)->values()->all();
-        $this->recordOrderTypes = $records->map(fn (Quotation $q) => array_map(fn (OrderType $type) => $type->value, $q->allowedOrderTypes()))->values()->all();
+        // record id → the payment terms that record may change to (each block has its own term)
+        $this->recordOrderTypes = $records->mapWithKeys(fn (Quotation $q) => [(int) $q->id => array_map(fn (OrderType $type) => $type->value, $q->allowedOrderTypes())])->all();
         $this->salespersonLocked =$enquiry && $enquiry->salesperson_locked && $enquiry->salesperson_id && ! $user?->isSuperadmin();
 
         $this->form = $this->formFrom($enquiry, $records);
@@ -319,6 +320,9 @@ class EditOrder extends CreateOrder
             return [
                 'record_id' => (int) $q->id,
                 'record_number' => $q->number,
+                // the record's own payment term (kept to restore it when the customer is switched back)
+                'order_type' => $q->orderType()?->value ?? ($enquiry?->order_type?->value ?? OrderType::Cash->value),
+                'original_order_type' => $q->orderType()?->value,
                 'locked' => $lock !== null,
                 'lock_label' => $lock['label'] ?? null,
                 'lock_note' => $lock['note'] ?? null,
@@ -344,7 +348,7 @@ class EditOrder extends CreateOrder
                 'drop_off_location' => trim((string) ($q->drop_off_location ?? '')),
                 'customer_do_number' => (string) ($q->customer_do_number ?? ''),
                 'expected_delivery_date' => (string) ($q->expected_delivery_date ?? ''),
-                'drop_off_type' => DropOffType::tryFrom((string) $type)?->value ?? DropOffType::Other->value,
+                'drop_off_type' => DropOffType::tryFrom((string) $type)?->value ?? DropOffType::Default->value,
                 'existing_photos' => $this->recordPhotos($q, $enquiry),
                 'instructions' => UpdateOrderRecords::instructionsFromNotes($q->notes),
                 'items' => $items !== [] ? $items : [$this->itemTemplate()],
@@ -428,6 +432,7 @@ class EditOrder extends CreateOrder
             return [
                 'record_id' => null,
                 'record_number' => null,
+                'order_type' => $enquiry->order_type?->value ?? OrderType::Cash->value,
                 'locked' => false,
                 'lock_label' => null,
                 'lock_note' => null,
@@ -454,7 +459,7 @@ class EditOrder extends CreateOrder
                 'drop_off_location' => $dropOff,
                 'customer_do_number' => (string) ($d['customer_do_number'] ?? $enquiry->customer_do_number ?? ''),
                 'expected_delivery_date' => (string) (array_key_exists('expected_delivery_date', $d) ? ($d['expected_delivery_date'] ?? '') : ($enquiry->preferred_delivery_date?->format('d/m/Y') ?? '')),
-                'drop_off_type' => DropOffType::tryFrom((string) ($d['drop_off_type'] ?? ''))?->value ?? DropOffType::Other->value,
+                'drop_off_type' => DropOffType::tryFrom((string) ($d['drop_off_type'] ?? ''))?->value ?? DropOffType::Default->value,
                 // photos saved for this block on the order form before photos were kept per product (shown read-only)
                 'existing_photos' => $this->photoList(array_values(array_filter($d['attachments'] ?? [], 'is_array'))),
                 'instructions' => (string) (array_key_exists('instructions', $d) ? ($d['instructions'] ?? '') : ($i === 0 ? ($enquiry->special_requirements ?? '') : '')),
@@ -481,7 +486,7 @@ class EditOrder extends CreateOrder
             'tier' => $priced ? 'Current price · kept' : null,
             'source' => $priced ? 'existing' : null,
             'available' => null,
-            'manual_price' => '',
+            'manual_price' => '', 'price_edited' => false,
             // photos of this product: saved ones shown, new ones picked on the page
             'photos' => [],
             'existing_photos' => $this->photoList(array_values(array_filter($item['attachments'] ?? [], fn ($file) => is_array($file) || is_string($file)))),
@@ -688,6 +693,30 @@ class EditOrder extends CreateOrder
      * whose term the customer type would not offer now can keep it. An order moved to another customer
      * takes one of that customer's terms.
      */
+    /**
+     * A block's payment terms: a record of the same customer the terms it may change to (and its own); a new
+     * block, or a record moved to another customer, the customer type's terms.
+     */
+    public function pairOrderTypeOptions(int $index): array
+    {
+        $pair = $this->pairs[$index] ?? [];
+        $options = parent::orderTypeOptions();
+        $recordId = (int) ($pair['record_id'] ?? 0);
+        $sameCustomer = (string) ($this->form['customer_id'] ?? '') === (string) ($this->originalForm['customer_id'] ?? '');
+
+        if ($recordId && $sameCustomer && isset($this->recordOrderTypes[$recordId])) {
+            $options = array_intersect_key(OrderType::options(), array_flip((array) $this->recordOrderTypes[$recordId]));
+        }
+
+        $current = (string) ($pair['original_order_type'] ?? '');
+
+        if ($recordId && ($this->isPairLocked($index) || $sameCustomer) && $current !== '' && ! array_key_exists($current, $options) && ($type = OrderType::tryFrom($current))) {
+            $options[$type->value] = $type->getLabel().' (current)';
+        }
+
+        return $options;
+    }
+
     public function orderTypeOptions(): array
     {
         $options = parent::orderTypeOptions();
@@ -731,9 +760,15 @@ class EditOrder extends CreateOrder
 
         parent::updatedForm($value, $key);
 
-        // back on the order's own customer: its own payment term again (not the customer type's default)
+        // back on the order's own customer: its own payment terms again (not the customer type's default)
         if ($key === 'customer_id' && (string) $value === (string) ($this->originalForm['customer_id'] ?? '') && filled($this->originalForm['order_type'] ?? null)) {
             $this->form['order_type'] = $this->originalForm['order_type'];
+
+            foreach ($this->pairs as $index => $pair) {
+                if (filled($pair['original_order_type'] ?? null)) {
+                    $this->pairs[$index]['order_type'] = $pair['original_order_type'];
+                }
+            }
         }
     }
 
@@ -775,6 +810,7 @@ class EditOrder extends CreateOrder
             $this->pairs[$index]['items'][$itemIndex]['tier'] = 'Current price · kept';
             $this->pairs[$index]['items'][$itemIndex]['source'] = 'existing';
             $this->pairs[$index]['items'][$itemIndex]['available'] = null;
+            $this->fillPriceBox($this->pairs[$index]['items'][$itemIndex]);
 
             return;
         }
@@ -861,7 +897,9 @@ class EditOrder extends CreateOrder
             $this->form['salesperson_id'] = $this->originalForm['salesperson_id'] ?? '';
         }
 
-        $this->validate($this->orderValidationRules(), $this->orderValidationMessages());
+        // the order's fields are working copies of $orders[0] (not public properties): checked directly
+        $this->errorOrder = null;
+        $this->validateWorkingOrder();
 
         [$enquiry, $single] = $this->resolveTarget($this->recordType, $this->recordId);
 
@@ -891,11 +929,12 @@ class EditOrder extends CreateOrder
                 'customer_pic_phone' => trim((string) ($this->form['customer_pic_phone'] ?? '')),
                 'received_through' => (string) ($this->form['received_through'] ?? ''),
                 'salesperson_id' => $this->form['salesperson_id'] ?: null,
-                'order_type' => $this->form['order_type'],
+                // each record has its own payment term (its block's); the order form keeps the first block's
+                'order_type' => $pairs[0]['order_type'] ?? $this->form['order_type'],
                 // the order form's pickup / store (the first block's); each record takes its own block's
                 'service_type' => $pairs[0]['service_type'] ?? null,
                 // only a header value the user changed is applied to every record (one set per record is kept)
-                'header_changed' => collect(['order_type', 'customer_address', 'customer_pic_name', 'customer_pic_phone'])
+                'header_changed' => collect(['customer_address', 'customer_pic_name', 'customer_pic_phone'])
                     ->mapWithKeys(fn (string $key) => [$key => trim((string) ($this->form[$key] ?? '')) !== trim((string) ($this->originalForm[$key] ?? ''))])
                     ->all(),
                 'known_record_ids' => $this->knownRecordIds,

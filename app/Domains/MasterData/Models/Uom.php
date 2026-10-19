@@ -7,11 +7,25 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Uom extends Model
 {
-    protected $fillable = ['code', 'name', 'is_active'];
+    /** A product of the client's price list is one size / weight band of an item (category measurement | item). */
+    protected $fillable = [
+        'code', 'name', 'is_active', 'category', 'sub_category', 'base_item',
+        'min_lwh', 'max_lwh', 'min_length', 'max_length', 'max_width', 'max_height', 'min_weight', 'max_weight',
+    ];
 
     protected function casts(): array
     {
-        return ['is_active' => 'boolean'];
+        return [
+            'is_active' => 'boolean',
+            'min_lwh' => 'decimal:2',
+            'max_lwh' => 'decimal:2',
+            'min_length' => 'decimal:2',
+            'max_length' => 'decimal:2',
+            'max_width' => 'decimal:2',
+            'max_height' => 'decimal:2',
+            'min_weight' => 'decimal:2',
+            'max_weight' => 'decimal:2',
+        ];
     }
 
     public function rateTiers(): HasMany

@@ -56,7 +56,9 @@ class SaveOrderPricing
             throw new InvalidArgumentException('Add at least one item to price.');
         }
 
-        $overrides = $this->matrix->detectOverrides($order->customer_id ? (int) $order->customer_id : null, $columns, $itemRows);
+        // compared with the price for each destination's drop-off type
+        $dropOffTypes = collect($order->destination_types ?? [])->mapWithKeys(fn ($type) => [(string) ($type['column'] ?? '') => $type['drop_off_type'] ?? null])->all();
+        $overrides = $this->matrix->detectOverrides($order->customer_id ? (int) $order->customer_id : null, $columns, $itemRows, $dropOffTypes);
         $overrideReason = trim((string) ($pricing['override_reason'] ?? ''));
 
         if ($overrides !== []) {

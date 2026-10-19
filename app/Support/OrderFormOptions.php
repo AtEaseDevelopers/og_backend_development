@@ -17,12 +17,13 @@ class OrderFormOptions
     /** @return array<int, string> */
     public static function locationOptions(): array
     {
+        // the location's name only (its code repeated the name: "BAN_LONG — Ban Long", user 20 Oct 2026)
         return Location::query()
             ->where('is_active', true)
-            ->orderBy('code')
+            ->orderBy('name')
             ->get()
             ->mapWithKeys(fn (Location $location) => [
-                $location->id => trim($location->code.' — '.$location->name),
+                $location->id => trim((string) $location->name),
             ])
             ->all();
     }

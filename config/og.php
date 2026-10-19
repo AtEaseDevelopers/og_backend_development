@@ -10,7 +10,8 @@ return [
     /*
     | Default commission rate (% of CSN freight) when no matching rule applies.
     */
-    'default_commission_rate' => (float) env('OG_DEFAULT_COMMISSION_RATE', 10),
+    // drivers' commission when no rule applies: 80% of the CSN total (the other 20% is O&G's, user 20 Oct 2026)
+    'default_commission_rate' => (float) env('OG_DEFAULT_COMMISSION_RATE', 80),
 
     'autocount' => [
         'enabled' => (bool) env('OG_AUTOCOUNT_ENABLED', true),

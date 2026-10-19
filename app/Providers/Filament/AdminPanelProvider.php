@@ -85,24 +85,9 @@ class AdminPanelProvider extends PanelProvider
             ->authenticatedTenantRoutes(function (): void {
                 Route::get('/quotations/{quotation}/pdf', QuotationPdfController::class)
                     ->name('quotations.pdf');
-                // Legacy "Quotation Management" links: the Quotation resource was retired in favour of the Orders workspace.
-                Route::get('/quotations', fn (): RedirectResponse => redirect()->to(Orders::getUrl()))
-                    ->name('quotations.legacy-index');
-                Route::get('/quotations/create', fn (): RedirectResponse => redirect()->to(CreateOrder::getUrl()))
-                    ->name('quotations.legacy-create');
-                Route::get('/quotations/{quotation}', fn (Request $request): RedirectResponse => redirect()->to(
-                    OrderDetail::urlFor('order', (int) $request->route('quotation')),
-                ))
-                    ->whereNumber('quotation')
-                    ->name('quotations.legacy-view');
-                Route::get('/quotations/{quotation}/edit', function (Request $request): RedirectResponse {
-                    $orderUrl = OrderDetail::urlFor('order', (int) $request->route('quotation'));
-
-                    // The edit-order page lives at orders/order/{id}/edit; fall back to the order's pricing section without it.
-                    return redirect()->to(class_exists(EditOrder::class) ? $orderUrl.'/edit' : $orderUrl.'?tab=pricing');
-                })
-                    ->whereNumber('quotation')
-                    ->name('quotations.legacy-edit');
+                // the Quotation pages (QuoteResource, own table, 20 Oct 2026) use /quotations; the order PDF route above stays
+                Route::get('/quotes/{quote}/pdf', \App\Http\Controllers\Admin\QuotePdfController::class)
+                    ->name('quotes.pdf');
                 Route::get('/consignment-notes/{consignmentNote}/pdf', ConsignmentNotePdfController::class)
                     ->name('consignment-notes.pdf');
                 Route::get('/invoices/{invoice}/pdf', InvoicePdfController::class)

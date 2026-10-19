@@ -44,15 +44,14 @@ class CommissionRuleResource extends Resource
                 ->required()
                 ->live()
                 ->default('single'),
+            // the drivers' commission (80%: the other 20% is O&G's); shared equally by the drivers after any
+            // Pickup driver's fixed amount (user, 20 Oct 2026)
             Forms\Components\TextInput::make('rate_percent')
                 ->numeric()
                 ->required()
-                ->default(10)
-                ->suffix('% of freight'),
-            Forms\Components\TagsInput::make('percentages.shares')
-                ->label('Share % per driver')
-                ->helperText('e.g. 50, 50 for split_2. Defaults apply if empty.')
-                ->suggestions(['100', '50', '40', '30', '25']),
+                ->default(80)
+                ->suffix('% of freight')
+                ->helperText('The drivers\' commission. A Pickup driver\'s fixed amount is taken first; the rest is shared equally (e.g. 2 drivers: half each).'),
             Forms\Components\Toggle::make('is_active')->default(true),
         ]);
     }

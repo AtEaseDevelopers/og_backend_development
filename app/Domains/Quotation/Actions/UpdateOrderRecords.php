@@ -16,6 +16,7 @@ use App\Enums\QuotationStatus;
 use App\Enums\ServiceType;
 use App\Models\User;
 use App\Support\OrderFormOptions;
+use App\Support\OrderMinimumCharge;
 use App\Support\QuotationMatrix;
 use App\Support\QuotationPricingLookup;
 use BackedEnum;
@@ -782,7 +783,7 @@ class UpdateOrderRecords
     {
         $payload = $enquiry->payload ?? [];
         // portal destinations carry no DO number / delivery date / pickup-or-store of their own: they inherit the enquiry's
-        $fallback = ['customer_do_number' => $enquiry->customer_do_number, 'expected_delivery_date' => $enquiry->preferred_delivery_date?->toDateString(), 'drop_off_type' => DropOffType::Other->value, 'service_type' => $enquiry->service_type?->value ?? ServiceType::Pickup->value];
+        $fallback = ['customer_do_number' => $enquiry->customer_do_number, 'expected_delivery_date' => $enquiry->preferred_delivery_date?->toDateString(), 'drop_off_type' => DropOffType::Default->value, 'service_type' => $enquiry->service_type?->value ?? ServiceType::Pickup->value];
         $keys = ['consignee_name', 'address', 'city', 'drop_off_type', 'customer_do_number', 'expected_delivery_date', 'service_type', 'store_branch_id', 'store_id', 'consignor_pic_name', 'consignor_pic_phone', 'consignee_pic_name', 'consignee_pic_phone', 'attention', 'customer_pic_phone'];
 
         return [
@@ -916,7 +917,7 @@ class UpdateOrderRecords
             ?? ($this->headerChanged($data, 'service_type')
                 ? ($headerService ?? $order->service_type?->value)
                 : ($order->service_type?->value ?? $headerService));
-        $dropOffType = DropOffType::tryFrom((string) ($pair['drop_off_type'] ?? ''))?->value ?? DropOffType::Other->value;
+        $dropOffType = DropOffType::tryFrom((string) ($pair['drop_off_type'] ?? ''))?->value ?? DropOffType::Default->value;
 
         $fields = [];
         foreach (array_keys(self::PAIR_FIELDS) as $key) {
@@ -942,7 +943,8 @@ class UpdateOrderRecords
         $fields['notes'] = static::notesWithInstructions($order->notes, $pair['instructions'] ?? null);
 
         if ($headerEditable) {
-            $type = OrderType::tryFrom((string) ($data['order_type'] ?? ''));
+            // the block's own payment term (Edit order); older callers: the order form's
+            $type = OrderType::tryFrom((string) ($pair['order_type'] ?? ($data['order_type'] ?? '')));
             $current = $order->orderType();
             $newCustomerId = filled($data['customer_id'] ?? null) ? (int) $data['customer_id'] : null;
             // a still-editable record (draft / negotiation) that moves to another customer takes the payment term
@@ -955,7 +957,7 @@ class UpdateOrderRecords
 
             if ($type && $current === null) {
                 $fields['order_type'] = $type->value;
-            } elseif ($type && $current !== $type && ($customerChanged || $this->headerChanged($data, 'order_type'))) {
+            } elseif ($type && $current !== $type && ($customerChanged || filled($pair['order_type'] ?? null) || $this->headerChanged($data, 'order_type'))) {
                 // same customer: the rules of "Change payment term" (ChangeOrderType): any until the customer
                 // confirms or a payment is recorded, fixed after that
                 if (! $customerChanged && ! $order->canChangeOrderTypeTo($type)) {
@@ -1044,12 +1046,15 @@ class UpdateOrderRecords
             // whole units (the page only lets UOM products change quantity; others keep the loaded one)
             $quantity = max(1, (int) round((float) ($item['quantity'] ?? 1)));
 
-            if ($existing && $existing->unit_price !== null) {
+            // the unit price box of the page (the record's price, the list price or one changed by hand)
+            if ($ownerId && is_numeric($item['unit_price'] ?? null)) {
+                $price = round((float) $item['unit_price'], 2);
+            } elseif ($existing && $existing->unit_price !== null) {
                 $price = (float) $existing->unit_price;
             } else {
-                $price = $lineType === 'lorry' || ! $ownerId
+                $price = ! $ownerId
                     ? null
-                    : ($this->lookup->lookupForCustomer($customerId, $name, $column, (float) $quantity)['price'] ?? null);
+                    : ($this->lookup->lookupForCustomer($customerId, $name, $column, (float) $quantity, $pair['drop_off_type'] ?? null)['price'] ?? null);
 
                 // no special / price-list rate: the price keyed in on the page
                 if ($price === null && $ownerId && is_numeric($item['unit_price'] ?? null)) {
@@ -1103,9 +1108,9 @@ class UpdateOrderRecords
         activity()->withoutLogs(fn () => $order->update($fields));
 
         if ($linesChanged || $columnChanged) {
-            // Pickup / drop-off / other charges stay as they are
+            // Pickup / drop-off / other charges stay as they are (the minimum charge is worked out again)
             $chargeRows = $order->lines
-                ->filter(fn ($line) => in_array($line->item_name, CreateOrderFromEnquiry::CHARGE_LINES, true))
+                ->filter(fn ($line) => in_array($line->item_name, CreateOrderFromEnquiry::CHARGE_LINES, true) && $line->item_name !== OrderMinimumCharge::LINE)
                 ->map(fn ($line) => [
                     'line_type' => (float) $line->quantity !== 1.0 ? 'uom' : 'item',
                     'item_name' => $line->item_name,

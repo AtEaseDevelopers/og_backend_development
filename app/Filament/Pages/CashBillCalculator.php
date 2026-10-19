@@ -3,10 +3,16 @@
 namespace App\Filament\Pages;
 
 use App\Domains\Billing\Actions\RecordPayment;
+use App\Domains\Billing\Actions\RefreshOrderPaidAmount;
+use App\Domains\Billing\Actions\ReviewPaymentSubmission;
+use App\Domains\Billing\Actions\SubmitPaymentEvidence;
+use App\Domains\Quotation\Models\Quotation;
 use App\Domains\Consignment\Models\ConsignmentNote;
 use App\Domains\MasterData\Models\Customer;
 use App\Enums\CsnBillingType;
 use App\Enums\CsnStatus;
+use App\Enums\OrderType;
+use App\Enums\QuotationStatus;
 use App\Enums\PaymentStatus;
 use App\Filament\Resources\PaymentResource;
 use App\Support\CurrentCompany;
@@ -40,13 +46,26 @@ class CashBillCalculator extends Page
 
     protected static string $view = 'filament.pages.cash-bill-calculator';
 
+    /** The customer whose unpaid Cash Bill CSNs are listed to pick from. */
     public ?int $customerId = null;
 
-    /** Scanned / typed CSN number (QR code on the CSN). */
+    /** Scanned / typed CSN number (QR code on the CSN): added straight to the payment list. */
     public string $scan = '';
 
-    /** @var list<int> */
+    /** CSNs ticked in the customer's list, added with "Add". @var list<int> */
+    public array $pickedCsnIds = [];
+
+    /** Cash orders in Pending payment (no CSN yet) ticked in the customer's list. @var list<int> */
+    public array $pickedOrderIds = [];
+
+    /** The payment list: the CSNs to pay, of any customers (user, 20 Oct 2026). @var list<int> */
     public array $selectedCsnIds = [];
+
+    /** …and the Pending payment Cash orders: paid here, their Cash Bill and CSN are created once fully paid. @var list<int> */
+    public array $selectedOrderIds = [];
+
+    /** Paid less than due: the CSN ("csn:12") or order ("order:34") of the list that keeps the balance. */
+    public ?string $balanceKey = null;
 
     public string $method = 'cash';
 
@@ -110,6 +129,11 @@ class CashBillCalculator extends Page
             ->groupBy('customer_id')
             ->pluck('n', 'customer_id');
 
+        // …and the customers' Cash orders waiting for payment (no CSN yet)
+        foreach ($this->pendingCashOrders()->countBy('customer_id') as $customerId => $n) {
+            $counts[$customerId] = ($counts[$customerId] ?? 0) + $n;
+        }
+
         return Customer::query()
             ->whereIn('id', $counts->keys())
             ->orderBy('company_name')
@@ -118,12 +142,73 @@ class CashBillCalculator extends Page
             ->all();
     }
 
-    /** A different customer: only CSNs of the new customer stay ticked. */
+    /** Another customer: its CSNs are listed to pick from; the payment list keeps what was added (any customers). */
     public function updatedCustomerId(): void
     {
         $this->customerId = $this->customerId ?: null;
-        $keep = $this->customerId ? $this->unpaidCashBillQuery()->where('customer_id', $this->customerId)->pluck('id')->all() : [];
-        $this->selectedCsnIds = array_values(array_intersect($this->selectedCsnIds, $keep));
+        $this->pickedCsnIds = [];
+        $this->pickedOrderIds = [];
+        $this->lastReceiptNumber = null;
+    }
+
+    /**
+     * Confirmed Cash orders still owed (Pending payment, no CSN yet) of this company, with what is still due.
+     *
+     * @return Collection<int, Quotation>
+     */
+    protected function pendingCashOrders(?int $customerId = null): Collection
+    {
+        return Quotation::query()
+            ->where('status', QuotationStatus::Confirmed->value)
+            ->where('order_type', OrderType::Cash->value)
+            ->whereDoesntHave('consignmentNotes')
+            ->when(CurrentCompany::id(), fn ($q, $id) => $q->where('company_id', $id))
+            ->when($customerId, fn ($q) => $q->where('customer_id', $customerId))
+            ->whereNotNull('customer_id')
+            ->with(['customer:id,company_name', 'branch'])
+            ->orderBy('id')
+            ->get()
+            ->filter(fn (Quotation $order) => $order->isLatestVersion() && $this->dueForOrder($order) > 0.009)
+            ->values();
+    }
+
+    /** Still due on an order: its total less its completed payments. */
+    public function dueForOrder(Quotation $order): float
+    {
+        return RefreshOrderPaidAmount::liveOutstanding($order);
+    }
+
+    /** The chosen customer's Pending payment Cash orders. @return Collection<int, Quotation> */
+    #[Computed]
+    public function customerOrders(): Collection
+    {
+        return $this->customerId ? $this->pendingCashOrders($this->customerId) : collect();
+    }
+
+    /** @return Collection<int, Quotation> the orders of the payment list */
+    #[Computed]
+    public function selectedOrders(): Collection
+    {
+        return $this->selectedOrderIds === []
+            ? collect()
+            : Quotation::query()->with(['customer:id,company_name', 'branch'])->whereIn('id', $this->selectedOrderIds)->get()
+                ->sortBy(fn (Quotation $order) => array_search($order->id, $this->selectedOrderIds, true))->values();
+    }
+
+    public function togglePickOrder(int $orderId): void
+    {
+        if (in_array($orderId, $this->selectedOrderIds, true)) {
+            return;
+        }
+
+        $this->pickedOrderIds = in_array($orderId, $this->pickedOrderIds, true)
+            ? array_values(array_filter($this->pickedOrderIds, fn (int $id) => $id !== $orderId))
+            : [...$this->pickedOrderIds, $orderId];
+    }
+
+    public function removeOrderItem(int $orderId): void
+    {
+        $this->selectedOrderIds = array_values(array_filter($this->selectedOrderIds, fn (int $id) => $id !== $orderId));
         $this->lastReceiptNumber = null;
     }
 
@@ -135,7 +220,7 @@ class CashBillCalculator extends Page
             return collect();
         }
 
-        return $this->unpaidCashBillQuery()
+        return $this->withPaid($this->unpaidCashBillQuery())
             ->with(['sourceBranch'])
             ->where('customer_id', $this->customerId)
             ->orderBy('issued_at')
@@ -143,19 +228,97 @@ class CashBillCalculator extends Page
             ->get();
     }
 
-    public function toggleCsn(int $csnId): void
+    /** @param  Builder<ConsignmentNote>  $query */
+    private function withPaid(Builder $query): Builder
     {
-        in_array($csnId, $this->selectedCsnIds, true) ? $this->removeCsn($csnId) : $this->addCsn($csnId);
+        return $query->withSum(['payments as paid_total' => fn ($q) => $q->where('status', 'completed')], 'amount');
     }
 
-    public function toggleAll(): void
+    /** Still due on a CSN: its total less what was already paid (a CSN left with a balance before). */
+    public function dueFor(ConsignmentNote $csn): float
     {
-        $ids = $this->customerCsns->pluck('id')->map(fn ($id) => (int) $id)->all();
-        $this->selectedCsnIds = count(array_diff($ids, $this->selectedCsnIds)) === 0 ? [] : $ids;
+        return max(0, round((float) $csn->total_amount - (float) ($csn->paid_total ?? 0), 2));
+    }
+
+    /**
+     * Items of the list (CSNs and orders) that can keep the balance when less than the total is received: one
+     * whose due is more than the balance (it is then paid the rest).
+     *
+     * @return Collection<int, array{key: string, number: string, customer: ?string, due: float}>
+     */
+    #[Computed]
+    public function balanceOptions(): Collection
+    {
+        $balance = $this->outstandingAmount;
+
+        if ($balance <= 0.009) {
+            return collect();
+        }
+
+        return $this->selectedCsns
+            ->map(fn (ConsignmentNote $csn) => ['key' => 'csn:'.$csn->id, 'number' => $csn->number, 'customer' => $csn->customer?->company_name ?: $csn->customer_name, 'due' => $this->dueFor($csn)])
+            ->concat($this->selectedOrders->map(fn (Quotation $order) => ['key' => 'order:'.$order->id, 'number' => $order->number, 'customer' => $order->customer?->company_name, 'due' => $this->dueForOrder($order)]))
+            ->filter(fn (array $item) => $item['due'] > $balance + 0.0001)
+            ->values();
+    }
+
+    /** The item keeping the balance: the one chosen, else the last of the list that can. */
+    #[Computed]
+    public function balanceItem(): ?array
+    {
+        $options = $this->balanceOptions;
+
+        return $options->firstWhere('key', $this->balanceKey) ?? $options->last();
+    }
+
+    /** Tick / untick a CSN of the customer's list (not yet in the payment list). */
+    public function togglePick(int $csnId): void
+    {
+        if (in_array($csnId, $this->selectedCsnIds, true)) {
+            return;
+        }
+
+        $this->pickedCsnIds = in_array($csnId, $this->pickedCsnIds, true)
+            ? array_values(array_filter($this->pickedCsnIds, fn (int $id) => $id !== $csnId))
+            : [...$this->pickedCsnIds, $csnId];
+    }
+
+    public function togglePickAll(): void
+    {
+        $open = $this->customerCsns->pluck('id')->map(fn ($id) => (int) $id)->reject(fn (int $id) => in_array($id, $this->selectedCsnIds, true))->values()->all();
+        $openOrders = $this->customerOrders->pluck('id')->map(fn ($id) => (int) $id)->reject(fn (int $id) => in_array($id, $this->selectedOrderIds, true))->values()->all();
+        $all = ($open !== [] || $openOrders !== []) && count(array_diff($open, $this->pickedCsnIds)) === 0 && count(array_diff($openOrders, $this->pickedOrderIds)) === 0;
+        $this->pickedCsnIds = $all ? [] : $open;
+        $this->pickedOrderIds = $all ? [] : $openOrders;
+    }
+
+    /** "Add": the ticked CSNs go into the payment list (which may hold CSNs of different customers). */
+    public function addPicked(): void
+    {
+        if ($this->pickedCsnIds === [] && $this->pickedOrderIds === []) {
+            Notification::make()->title('Tick the CSNs or orders to add')->warning()->send();
+
+            return;
+        }
+
+        foreach ($this->pickedCsnIds as $id) {
+            $this->addCsn((int) $id);
+        }
+
+        $open = $this->pendingCashOrders()->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        foreach ($this->pickedOrderIds as $id) {
+            if (in_array((int) $id, $open, true) && ! in_array((int) $id, $this->selectedOrderIds, true)) {
+                $this->selectedOrderIds[] = (int) $id;
+            }
+        }
+
+        $this->pickedCsnIds = [];
+        $this->pickedOrderIds = [];
         $this->lastReceiptNumber = null;
     }
 
-    /** Scanning a CSN's QR code (or typing its number) ticks it; picks its customer when none is chosen. */
+    /** Scanning a CSN's QR code (or typing its number) adds it straight to the payment list (any customer). */
     public function scanCsn(?string $value = null): void
     {
         $term = trim((string) ($value ?? $this->scan));
@@ -179,13 +342,12 @@ class CashBillCalculator extends Page
             return;
         }
 
-        if ($this->customerId && (int) $csn->customer_id !== (int) $this->customerId) {
-            $this->customerId = (int) $csn->customer_id;
-            $this->selectedCsnIds = [];
-            Notification::make()->title('Switched customer')->body($csn->number.' belongs to '.($csn->customer_name ?: 'another customer').'; the list now shows that customer.')->info()->send();
+        if (in_array((int) $csn->id, $this->selectedCsnIds, true)) {
+            Notification::make()->title('Already in the payment list')->body($csn->number)->info()->send();
+
+            return;
         }
 
-        $this->customerId = (int) $csn->customer_id ?: null;
         $this->addCsn((int) $csn->id);
     }
 
@@ -202,6 +364,7 @@ class CashBillCalculator extends Page
         }
 
         $this->selectedCsnIds[] = $csnId;
+        $this->pickedCsnIds = array_values(array_filter($this->pickedCsnIds, fn (int $id) => $id !== $csnId));
         $this->lastReceiptNumber = null;
     }
 
@@ -238,8 +401,8 @@ class CashBillCalculator extends Page
 
     public function process(): void
     {
-        if ($this->selectedCsnIds === []) {
-            Notification::make()->title('Select at least one CSN')->warning()->send();
+        if ($this->selectedCsnIds === [] && $this->selectedOrderIds === []) {
+            Notification::make()->title('Add at least one CSN or order to the payment list')->warning()->send();
 
             return;
         }
@@ -249,17 +412,27 @@ class CashBillCalculator extends Page
             'slips.*' => ['file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:8192'],
         ], [], ['slips.*' => 'payment slip']);
 
-        $csns = ConsignmentNote::query()
+        $csns = $this->withPaid(ConsignmentNote::query())
             ->whereIn('id', $this->selectedCsnIds)
             ->get();
 
-        $total = (float) $csns->sum('total_amount');
-        $received = (float) $this->amountReceived;
+        $orders = $this->selectedOrders;
+        $total = round((float) $csns->sum(fn (ConsignmentNote $csn) => $this->dueFor($csn)) + (float) $orders->sum(fn (Quotation $order) => $this->dueForOrder($order)), 2);
+        $received = round((float) $this->amountReceived, 2);
+        $balance = max(0, round($total - $received, 2));
+        // paid less than due: one CSN / order keeps the balance (paid its due less the balance, stays Partial / Pending payment)
+        $balanceItem = $balance > 0.009 ? $this->balanceItem : null;
 
-        if ($received + 0.0001 < $total) {
+        if ($received <= 0) {
+            Notification::make()->title('Enter the amount received')->danger()->send();
+
+            return;
+        }
+
+        if ($balance > 0.009 && ! $balanceItem) {
             Notification::make()
-                ->title('Insufficient amount')
-                ->body('Total due is RM '.number_format($total, 2))
+                ->title('The balance is too big for one item')
+                ->body('Received RM '.number_format($received, 2).' of RM '.number_format($total, 2).'. The balance of RM '.number_format($balance, 2).' must stay on one CSN or order with more than that due: remove one from the list or collect more.')
                 ->danger()
                 ->send();
 
@@ -275,11 +448,20 @@ class CashBillCalculator extends Page
         $receiptNumbers = [];
 
         foreach ($csns as $csn) {
+            $due = $this->dueFor($csn);
+            $keepsBalance = $balanceItem && $balanceItem['key'] === 'csn:'.$csn->id;
+
+            if ($due <= 0) {
+                continue;
+            }
+
             $payment = app(RecordPayment::class)->execute([
                 'source_branch_id' => $csn->source_branch_id,
                 'consignment_note_id' => $csn->id,
                 'customer_id' => $csn->customer_id,
-                'amount' => $csn->total_amount,
+                'amount' => $keepsBalance ? round($due - $balance, 2) : $due,
+                'expected_amount' => $due,
+                'shortage_amount' => $keepsBalance ? $balance : null,
                 'method' => $this->method,
                 'slip_path' => $slipPaths[0] ?? null,
                 'slip_paths' => $slipPaths !== [] ? $slipPaths : null,
@@ -290,16 +472,59 @@ class CashBillCalculator extends Page
             }
         }
 
-        $change = round($received - $total, 2);
+        // Pending payment Cash orders: paid like Add payment on the order (fully paid → Cash Bill + CSN)
+        $orderLines = [];
+
+        foreach ($orders as $order) {
+            $due = $this->dueForOrder($order);
+            $keepsBalance = $balanceItem && $balanceItem['key'] === 'order:'.$order->id;
+
+            if ($due <= 0) {
+                continue;
+            }
+
+            try {
+                $submission = app(SubmitPaymentEvidence::class)->execute($order, [
+                    'amount' => $keepsBalance ? round($due - $balance, 2) : $due,
+                    'method' => $this->method,
+                    'payment_date' => now()->toDateString(),
+                    'reference' => null,
+                    'receipt_path' => $slipPaths[0] ?? null,
+                    'receipt_paths' => $slipPaths !== [] ? $slipPaths : null,
+                    'remarks' => ($keepsBalance ? 'Partial payment.' : 'Full payment.').' Cash Bill Payment (Counter Use).',
+                ], auth()->user(), 'admin');
+
+                $review = app(ReviewPaymentSubmission::class);
+
+                if ($submission->requiresTwoApprovals()) {
+                    $review->verify($submission, auth()->user());
+                    $orderLines[] = $order->number.': paid, a second user approves it'.($keepsBalance ? '' : ' to create the CSN');
+                } else {
+                    $result = $review->approve($submission, auth()->user());
+                    $orderLines[] = $order->number.': paid'.(($result['billing']['ok'] ?? null) === true ? ' · Cash Bill issued, CSN created' : '');
+                }
+            } catch (\Throwable $e) {
+                $orderLines[] = $order->number.': '.$e->getMessage();
+            }
+        }
+
+        $change = max(0, round($received - $total, 2));
         $this->lastReceiptNumber = $receiptNumbers[0] ?? null;
 
         Notification::make()
-            ->title('Collected '.count($this->selectedCsnIds).' Cash Bill(s)')
-            ->body('Change: RM '.number_format($change, 2).($slipPaths ? ' · '.count($slipPaths).' slip(s) attached' : ''))
+            ->title('Collected '.(count($this->selectedCsnIds) + count($this->selectedOrderIds)).' item(s)')
+            ->body(($balanceItem
+                    ? 'Balance RM '.number_format($balance, 2).' stays on '.$balanceItem['number'].' (to pay next time)'
+                    : 'Change: RM '.number_format($change, 2))
+                .($slipPaths ? ' · '.count($slipPaths).' slip(s) attached' : '')
+                .($orderLines !== [] ? "\n".implode("\n", $orderLines) : ''))
             ->success()
+            ->persistent()
             ->send();
 
         $this->selectedCsnIds = [];
+        $this->selectedOrderIds = [];
+        $this->balanceKey = null;
         $this->amountReceived = '0.00';
         $this->slips = [];
         $this->scan = '';
@@ -312,7 +537,7 @@ class CashBillCalculator extends Page
             return collect();
         }
 
-        return ConsignmentNote::query()
+        return $this->withPaid(ConsignmentNote::query())
             ->with(['customer', 'sourceBranch'])
             ->whereIn('id', $this->selectedCsnIds)
             ->get()
@@ -322,7 +547,8 @@ class CashBillCalculator extends Page
     #[Computed]
     public function totalDue(): float
     {
-        return (float) $this->selectedCsns->sum('total_amount');
+        return round((float) $this->selectedCsns->sum(fn (ConsignmentNote $csn) => $this->dueFor($csn))
+            + (float) $this->selectedOrders->sum(fn (Quotation $order) => $this->dueForOrder($order)), 2);
     }
 
     #[Computed]
