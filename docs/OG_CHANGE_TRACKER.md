@@ -4,7 +4,7 @@
 > what is done, what is left, and the rules the user has set. Update it whenever an item changes status,
 > and refresh "Last updated" with the output of plain `date` (local Malaysia time).
 
-**Last updated:** Wed Oct 21 03:16:31 MPST 2026 · Round 5 committed: consignor/consignee master data, vehicle maintenance per lorry, lorries from the driver list
+**Last updated:** Wed Oct 21 03:26:06 MPST 2026 · Reports and Master Data as card pages; driver import; committed
 
 **Previous round:** finished and pushed as commit `a29b179` on `main` (8 Oct 2026: orders, order details,
 billing / COD / Term, CSN bulk actions, QR codes, returned-CSN scanning, cash bill calculator). Its details are
@@ -308,6 +308,16 @@ Legend: [x] done · [~] done in code, not yet browser-checked · [ ] not started
 
 ### 52. Lorries from the driver list — done
 - [x] Migration: the current lorries are cleared (a lorry with job sheets is deactivated instead, its trips keep it) and the list's lorries added (JCM 6456, JDW 3887 · 24FT · 10 t) for KL. Locally: 3 removed, 9 deactivated, 2 added.
+
+### 53. Drivers: Import driver list — done
+- [x] Master Data → Drivers → **Import driver list**: upload the Lorry & Driver Details workbook; each row is a driver (same IC, else same name, is updated) with its lorry company, group, lorry and attendant; its lorry is linked (default driver). A placeholder IC (xxxxxx-xx-xxxx) and "NO ATTENDANT" are left empty. Uploaded, not in a migration, so the drivers' personal data is not in the (public) repo. Locally: the example file → 2 drivers, linked to JCM 6456 and JDW 3887.
+
+### 54. Reports: a card per report — done
+- [x] Reports shows a card per report (icon, description) by group (Operations / Finance / Integrations); a card opens the report on its own page (branch, date range, table, Export CSV, ← All reports). The commission report is per lorry with each driver's share.
+- [x] Statements of Account and COD Listing left the menu; they are cards on the Reports page.
+
+### 55. Master Data: one menu item, a card per page — done
+- [x] The Master Data menu group is one **Master Data** item (under Dashboard); its page shows a card per master data page (icon, description) by group: Customers (Customers, Leads, Consignor / Consignee), Products & pricing (UOM, Items, Lorries, Drop-off Min Charges, SA Locations), Fleet & dispatch (Drivers, Transfer Codes, Stores), Organisation (Branches, Staff accounts, System Settings). Only the pages the user may open are shown.
 
 ## Open questions for the user
 - Should the L, W, H and weight entered on Create order be saved on the order (CSN / DO)?

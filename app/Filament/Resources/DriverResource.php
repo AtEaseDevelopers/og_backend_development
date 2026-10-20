@@ -18,6 +18,9 @@ class DriverResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-user';
     protected static ?string $navigationGroup = 'Master Data';
+
+    // opened from its card on the Master Data page (user, 21 Oct 2026), not the menu
+    protected static bool $shouldRegisterNavigation = false;
     protected static ?int $navigationSort = 3;
 
     public static function form(Form $form): Form

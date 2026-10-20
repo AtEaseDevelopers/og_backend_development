@@ -23,6 +23,9 @@ class SaLocationResource extends Resource
 
     protected static ?string $navigationGroup = 'Master Data';
 
+    // opened from its card on the Master Data page (user, 21 Oct 2026), not the menu
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?string $navigationLabel = 'SA Locations';
 
     protected static ?int $navigationSort = 12;

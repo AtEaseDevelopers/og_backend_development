@@ -21,6 +21,9 @@ class BranchResource extends Resource
 
     protected static ?string $navigationGroup = 'Master Data';
 
+    // opened from its card on the Master Data page (user, 21 Oct 2026), not the menu
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?int $navigationSort = 1;
 
     public static function form(Form $form): Form

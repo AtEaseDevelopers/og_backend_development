@@ -27,6 +27,9 @@ class StatementResource extends Resource
 
     protected static ?string $navigationLabel = 'Statements of Account';
 
+    // opened from its card on the Reports page (user, 21 Oct 2026), not the menu
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?int $navigationSort = 22;
 
     public static function form(Form $form): Form
