@@ -4,7 +4,7 @@
 > what is done, what is left, and the rules the user has set. Update it whenever an item changes status,
 > and refresh "Last updated" with the output of plain `date` (local Malaysia time).
 
-**Last updated:** Wed Oct 21 01:24:18 MPST 2026 · Round 4: products by category, template price rows, accept = special prices, type-first product row
+**Last updated:** Wed Oct 21 03:16:31 MPST 2026 · Round 5 committed: consignor/consignee master data, vehicle maintenance per lorry, lorries from the driver list
 
 **Previous round:** finished and pushed as commit `a29b179` on `main` (8 Oct 2026: orders, order details,
 billing / COD / Term, CSN bulk actions, QR codes, returned-CSN scanning, cash bill calculator). Its details are
@@ -44,7 +44,9 @@ in the git history of this file and that commit's message; they are not tracked 
 
 ## Server steps for this round
 
-**Round 4 (21 Oct, not committed yet):** `git pull`, `php artisan migrate` (3 new migrations below), `php artisan optimize:clear`.
+**Round 5 (21 Oct, not committed yet):** `git pull`, `php artisan migrate` (`2026_10_21_130000_create_transfer_code_user_table`, `140000_add_details_to_drivers`, `150000_remove_old_drivers` — removes the drivers created before 21 Oct, `160000_add_item_received_to_quotations`, `170000_commission_batch_csns`, `180000_add_system_amount_to_commission_line_items`, `190000_commission_po_per_lorry`, `200000_create_consignor_consignees_table`, `210000_replace_lorries_from_driver_list`), `php artisan optimize:clear`.
+
+**Round 4 (21 Oct, pushed as `e24538f`):** `git pull`, `php artisan migrate` (3 new migrations below), `php artisan optimize:clear`.
 - `2026_10_21_100000_chartered_lorries_to_products`: imports the bundled price lists again so chartered lorries become products (Lorries menu) with all their columns; pending quotations that quoted a lorry now quote its product.
 - `2026_10_21_110000_quotes_accepted_status`: `quotes.accepted_at`; status Opened as order → Accepted.
 - `2026_10_21_120000_remove_old_price_list_products`: deletes the 63 old price list products (no category, no prices, inactive).
@@ -257,6 +259,55 @@ Legend: [x] done · [~] done in code, not yet browser-checked · [ ] not started
 - [x] Each product row: **Type** (Measurement / Item / Lorry) first, then only that type's products. **Measurement**: the product (Carton, Bundle, Case, Pallet) with **L, W, H (cm) and Weight (kg)**; the size band they fit is the product priced (L+W+H, length, width, height, weight ranges; tightest band if several). Then the customer's special price if any, else the default price (checked: 30×20×20 cm 10 kg → Carton ≤ 149 cm; 90×50×40 → Big Carton 150–249 cm; 300 cm → "No Carton size band fits"; 3000-A008 RM 7.00 special vs RM 11.00 default for 5). Rows of saved orders / quotations open with their type.
 - [ ] The L, W, H and weight entered are not saved on the order line yet (the band's name is).
 
+
+## Round 5 (user, 21 Oct) — committed and pushed 21 Oct (Round 4 was `e24538f`)
+
+### 42. Create order product row, more — done
+- [x] A Measurement size that no band fits: the line is named by its size ("Bundle · 150 × 100 × 25 cm · 100 kg") and the unit price box shows to key in the price; the box also shows once the product is chosen, before the size is complete. Checked: saved at a keyed-in RM 80.
+- [x] An Item / Lorry row's weight is only noted (it does not change the product).
+
+### 43. Create order: + New customer — done
+- [x] "+ New customer" beside the Customer field: company name, debtor account (blank = auto), Business Registration No (BRN), customer type (Cash / COD / Credit with its term), PIC, contact number, email, billing address. Added to Master Data → Customers and picked for the order (billing address, PIC and payment term follow). Checked (rolled back).
+- [x] "Registration no." is **Business Registration No (BRN)** on the customer form and view (BRN in the list).
+
+### 44. Create quotation: products only — done
+- [x] No salesperson and no consignor & consignee: section 1 (customer / lead, billing address, PIC, contact number, quotation date) and **2. Products**: each row Type → product (Measurement: L, W, H, weight; Item / Lorry: weight), pickup location, drop-off location (required), drop-off type, quantity, unit price (default price, editable), line total; + Add product. Each row is kept as a one-product record (Accept by customer and the PDF read it). An older quotation's block of several products opens as one row each.
+- [x] The bottom shows the **Quotation total** only. The list's "Consignor & consignee" column is "Products".
+- [x] Minimum charges: a row with a pickup location has the pick-up minimum (e.g. 1 × RM 110 → RM 250, "Pick-up minimum RM 250 · +RM 140"); without one only the construction site / drop-off minimums. The PDF shows the top-ups too.
+
+### 45. Paying less than the total: split it — done
+- [x] **Cash Bill Payment:** received less than the payment list's total → a **Paying (RM)** box on each row (filled in list order, editable): all to one item, half each, 40 / 60, …; together exactly the amount received, each at most its due. An item paid less than its due is a partial payment (CSN Partial / order stays Pending payment). The old "remove one or collect more" rule is gone. More than the total → change. Checked: RM 100 for two orders (RM 500 + RM 1,950) as 40 / 60 → two partial payments.
+- [x] **Create order → Payment:** **Amount received** (blank = in full). Less → Paying per order paid now (same rules); an order paid in full gets its Cash Bill and CSN, one paid partly stays Pending payment with the partial payment; more → "Change to give back to the customer". Checked: RM 800 for RM 500 + RM 650 → first paid + CSN, second RM 300 partial, Pending payment; RM 1,200 → RM 50 change.
+
+### 46. Transfer code staff and Assign to lorry — done
+- [x] Master Data → Transfer Codes: **Staff** (users, not customers / drivers) per code (`transfer_code_user`).
+- [x] CSN page: **Assign to lorry** beside Scan returned CSN. Pick the lorry, then tick (or Select all): a transfer code's staff see the subsheets of their codes not on a lorry yet; admin (no transfer code) sees this company's CSNs not on a lorry yet. Assigned like the table's Assign to lorry (a subsheet keeps its type and code). Checked (rolled back).
+
+### 47. Drivers: the driver list's columns — done
+- [x] Driver form / table: Driver IC, Phone, Emergency Contact, Address; Lorry Group Code / Group, Lorry Company Code / Company, Lorry Number / Type / Tonne; Attendant Name, IC, Phone, Emergency Contact, Address. The lorry number fills Master Data → Lorries (created if new, type, tonne as capacity in kg, this driver as default driver).
+- [x] Fixed: a new driver could not be saved (the company had no drivers relation).
+- [x] Migration removes the drivers created before 21 Oct 2026 (user: the current driver data are removed); ones on commission slips / POs / COD reconciliations are kept. Delivery orders, job sheets, lorries and driver logins lose their link to the removed drivers. Locally: 12 removed. **Production: the same on migrate.**
+
+### 48. Orders: Payment verification / Pending item, Store orders — done
+- [x] The stage "Payment / release" is **Payment verification / Pending item**.
+- [x] A **Store** order (the customer brings the goods to the store) paid / released is billed (Cash Bill etc.) but its CSN waits: stage "Pending item", next step **Ready for CSN** on the Orders row (confirm) → the CSN is created and the order is **CSN created** (who / when kept: `quotations.item_received_at / _by`). Checked: Cash Store order paid on create → Pending item → Ready for CSN → CSN created.
+
+### 49. Commission: only returned CSNs — done
+- [x] Generate / rebuild batch takes every CSN of the branch **returned on or before the cutoff** ("CSN return cutoff", default the month's end) and not in another batch (`commission_batch_csns`, one batch per CSN). A CSN not returned earns nothing yet (a later batch takes it once returned); the old carry-forward lines are no longer made. After Submit the batch page opens with its **Returned CSNs** table (CSN, customer, returned date, CSN total, drivers, commission).
+- [x] Fixed: batches and slips were saved without a company, so the Commission lists showed nothing ("Submit does nothing"); existing ones fixed by the migration.
+- [x] **Commission by lorry** on the batch page (as the client's Commission Adjustment Processing): lorry, lorry company, branch, drivers and what each earned, job sheets, CSNs, sales amount, commission, gross profit, PO status. A row opens the **lorry page**: its job sheets (date, driver) with each CSN's commission editable (system amount kept beside it); a job sheet opens the **job sheet page**: its CSNs (date, D/O no., customer / consignee, sales amount, commission, gross profit), editable. **Save · generate PO** keeps the amounts and generates the lorry's PO.
+- [x] **Purchase Order (PO)** (was Commission Slips): one per lorry per batch, listing each driver's commission (Driver A RM x · Driver B RM y). Only saved (or confirmed) ones are listed. Checked: CSN RM 90 → RM 123.45, Save → PO generated, listed with the driver's amount.
+- [x] Driver: Lorry Group Name / Code and Lorry Company Code / Name as the Lorry & Driver Details Excel (all 17 columns).
+
+### 50. Master Data → Consignor / Consignee — done
+- [x] Name, used as (consignor / consignee / both), address, PIC, telephone, area (price list location, optional) and **customer tagging** (several customers).
+- [x] Create order: **Saved consignor** / **Saved consignee** on each block (the selected customer's tagged ones first, then others); picking one fills the name, address (pickup / drop-off), PIC, telephone and From / To (the price follows).
+
+### 51. Vehicle Maintenance: one row per lorry — done
+- [x] One row per lorry: insurance, road tax, permit expiry, next service (date / mileage), records, total cost (due dates in red). A row opens the lorry's records (view); Edit changes them together (insurance, road tax, service, … as a list); New adds records for a lorry.
+
+### 52. Lorries from the driver list — done
+- [x] Migration: the current lorries are cleared (a lorry with job sheets is deactivated instead, its trips keep it) and the list's lorries added (JCM 6456, JDW 3887 · 24FT · 10 t) for KL. Locally: 3 removed, 9 deactivated, 2 added.
 
 ## Open questions for the user
 - Should the L, W, H and weight entered on Create order be saved on the order (CSN / DO)?

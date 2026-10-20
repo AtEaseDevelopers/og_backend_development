@@ -13,7 +13,7 @@ class CommissionLineItem extends Model
 {
     protected $fillable = [
         'commission_slip_id', 'delivery_order_id', 'consignment_note_id',
-        'driver_id', 'lorry_id', 'amount', 'split_percent', 'line_type',
+        'driver_id', 'lorry_id', 'amount', 'system_amount', 'split_percent', 'line_type',
         'is_eligible', 'is_hidden', 'hidden_reason', 'is_carry_forward', 'notes',
     ];
 

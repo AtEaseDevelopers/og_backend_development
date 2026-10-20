@@ -57,6 +57,12 @@ class Company extends Model implements HasName
         return $this->belongsTo(User::class, 'registered_by');
     }
 
+    /** The company's drivers (Master Data → Drivers creates them under the current company). */
+    public function drivers(): HasMany
+    {
+        return $this->hasMany(Driver::class);
+    }
+
     public function customers(): HasMany
     {
         return $this->hasMany(Customer::class);

@@ -366,6 +366,8 @@ class OrderListingData
             'total' => $total,
             'next_step' => $stage['next'],
             'next_url' => $nextUrl,
+            // a Store order paid / released waiting for its goods: "Ready for CSN" on the row
+            'ready_for_csn' => $stage['key'] === 'payment' && $stage['next'] === 'Ready for CSN',
             'is_closed' => $stage['closed'],
             'attention' => $stage['attention'],
             'ready_to_bill' => $stage['ready_to_bill'],

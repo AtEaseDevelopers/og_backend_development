@@ -21,6 +21,7 @@ use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use App\Support\PaymentAllocation;
 use Livewire\Attributes\Computed;
 use Livewire\WithFileUploads;
 
@@ -64,8 +65,11 @@ class CashBillCalculator extends Page
     /** …and the Pending payment Cash orders: paid here, their Cash Bill and CSN are created once fully paid. @var list<int> */
     public array $selectedOrderIds = [];
 
-    /** Paid less than due: the CSN ("csn:12") or order ("order:34") of the list that keeps the balance. */
-    public ?string $balanceKey = null;
+    /**
+     * Received less than the list's total (user, 21 Oct 2026): how much goes to each item ("csn_12" / "order_34" →
+     * RM), entered by the user; filled in list order until changed. @var array<string, string>
+     */
+    public array $allocations = [];
 
     public string $method = 'cash';
 
@@ -143,6 +147,37 @@ class CashBillCalculator extends Page
     }
 
     /** Another customer: its CSNs are listed to pick from; the payment list keeps what was added (any customers). */
+    /** Another amount received: the split over the list starts again (in list order). */
+    public function updatedAmountReceived(): void
+    {
+        $this->allocations = [];
+    }
+
+    /** The split shown in the Paying column: the amounts entered, the missing ones filled in list order. */
+    public function dehydrate(): void
+    {
+        $this->allocations = PaymentAllocation::amounts($this->itemDues(), round((float) $this->amountReceived, 2), $this->allocations);
+    }
+
+    /**
+     * The payment list's items and their dues, in list order (CSNs, then orders).
+     *
+     * @return array<string, float>
+     */
+    public function itemDues(): array
+    {
+        return $this->selectedCsns->mapWithKeys(fn (ConsignmentNote $csn) => ['csn_'.$csn->id => $this->dueFor($csn)])
+            ->merge($this->selectedOrders->mapWithKeys(fn (Quotation $order) => ['order_'.$order->id => $this->dueForOrder($order)]))
+            ->all();
+    }
+
+    /** How the amount received is spread over the list (PaymentAllocation::plan). */
+    #[Computed]
+    public function allocationPlan(): array
+    {
+        return PaymentAllocation::plan($this->itemDues(), round((float) $this->amountReceived, 2), $this->allocations);
+    }
+
     public function updatedCustomerId(): void
     {
         $this->customerId = $this->customerId ?: null;
@@ -238,37 +273,6 @@ class CashBillCalculator extends Page
     public function dueFor(ConsignmentNote $csn): float
     {
         return max(0, round((float) $csn->total_amount - (float) ($csn->paid_total ?? 0), 2));
-    }
-
-    /**
-     * Items of the list (CSNs and orders) that can keep the balance when less than the total is received: one
-     * whose due is more than the balance (it is then paid the rest).
-     *
-     * @return Collection<int, array{key: string, number: string, customer: ?string, due: float}>
-     */
-    #[Computed]
-    public function balanceOptions(): Collection
-    {
-        $balance = $this->outstandingAmount;
-
-        if ($balance <= 0.009) {
-            return collect();
-        }
-
-        return $this->selectedCsns
-            ->map(fn (ConsignmentNote $csn) => ['key' => 'csn:'.$csn->id, 'number' => $csn->number, 'customer' => $csn->customer?->company_name ?: $csn->customer_name, 'due' => $this->dueFor($csn)])
-            ->concat($this->selectedOrders->map(fn (Quotation $order) => ['key' => 'order:'.$order->id, 'number' => $order->number, 'customer' => $order->customer?->company_name, 'due' => $this->dueForOrder($order)]))
-            ->filter(fn (array $item) => $item['due'] > $balance + 0.0001)
-            ->values();
-    }
-
-    /** The item keeping the balance: the one chosen, else the last of the list that can. */
-    #[Computed]
-    public function balanceItem(): ?array
-    {
-        $options = $this->balanceOptions;
-
-        return $options->firstWhere('key', $this->balanceKey) ?? $options->last();
     }
 
     /** Tick / untick a CSN of the customer's list (not yet in the payment list). */
@@ -417,11 +421,9 @@ class CashBillCalculator extends Page
             ->get();
 
         $orders = $this->selectedOrders;
-        $total = round((float) $csns->sum(fn (ConsignmentNote $csn) => $this->dueFor($csn)) + (float) $orders->sum(fn (Quotation $order) => $this->dueForOrder($order)), 2);
         $received = round((float) $this->amountReceived, 2);
-        $balance = max(0, round($total - $received, 2));
-        // paid less than due: one CSN / order keeps the balance (paid its due less the balance, stays Partial / Pending payment)
-        $balanceItem = $balance > 0.009 ? $this->balanceItem : null;
+        // received less than due: each item takes the amount the user gave it (less than its due = partial)
+        $plan = PaymentAllocation::plan($this->itemDues(), $received, $this->allocations);
 
         if ($received <= 0) {
             Notification::make()->title('Enter the amount received')->danger()->send();
@@ -429,10 +431,10 @@ class CashBillCalculator extends Page
             return;
         }
 
-        if ($balance > 0.009 && ! $balanceItem) {
+        if (! $plan['ok']) {
             Notification::make()
-                ->title('The balance is too big for one item')
-                ->body('Received RM '.number_format($received, 2).' of RM '.number_format($total, 2).'. The balance of RM '.number_format($balance, 2).' must stay on one CSN or order with more than that due: remove one from the list or collect more.')
+                ->title('Split the amount received over the payment list')
+                ->body('Received RM '.number_format($received, 2).' of RM '.number_format($plan['total'], 2).'. Enter how much goes to each item (Paying column): together RM '.number_format($received, 2).', each at most its due'.(abs($plan['left']) >= 0.005 ? ' · RM '.number_format($plan['left'], 2).' '.($plan['left'] > 0 ? 'not given to an item yet' : 'too much') : '').'.')
                 ->danger()
                 ->send();
 
@@ -447,21 +449,27 @@ class CashBillCalculator extends Page
 
         $receiptNumbers = [];
 
+        $partial = [];
+
         foreach ($csns as $csn) {
             $due = $this->dueFor($csn);
-            $keepsBalance = $balanceItem && $balanceItem['key'] === 'csn:'.$csn->id;
+            $amount = round((float) ($plan['amounts']['csn_'.$csn->id] ?? 0), 2);
 
-            if ($due <= 0) {
+            if ($due <= 0 || $amount <= 0) {
                 continue;
+            }
+
+            if ($amount < $due - 0.004) {
+                $partial[] = $csn->number.' RM '.number_format($amount, 2).' of RM '.number_format($due, 2);
             }
 
             $payment = app(RecordPayment::class)->execute([
                 'source_branch_id' => $csn->source_branch_id,
                 'consignment_note_id' => $csn->id,
                 'customer_id' => $csn->customer_id,
-                'amount' => $keepsBalance ? round($due - $balance, 2) : $due,
+                'amount' => $amount,
                 'expected_amount' => $due,
-                'shortage_amount' => $keepsBalance ? $balance : null,
+                'shortage_amount' => $amount < $due - 0.004 ? round($due - $amount, 2) : null,
                 'method' => $this->method,
                 'slip_path' => $slipPaths[0] ?? null,
                 'slip_paths' => $slipPaths !== [] ? $slipPaths : null,
@@ -477,15 +485,20 @@ class CashBillCalculator extends Page
 
         foreach ($orders as $order) {
             $due = $this->dueForOrder($order);
-            $keepsBalance = $balanceItem && $balanceItem['key'] === 'order:'.$order->id;
+            $amount = round((float) ($plan['amounts']['order_'.$order->id] ?? 0), 2);
+            $keepsBalance = $amount < $due - 0.004;
 
-            if ($due <= 0) {
+            if ($due <= 0 || $amount <= 0) {
                 continue;
+            }
+
+            if ($keepsBalance) {
+                $partial[] = $order->number.' RM '.number_format($amount, 2).' of RM '.number_format($due, 2);
             }
 
             try {
                 $submission = app(SubmitPaymentEvidence::class)->execute($order, [
-                    'amount' => $keepsBalance ? round($due - $balance, 2) : $due,
+                    'amount' => $amount,
                     'method' => $this->method,
                     'payment_date' => now()->toDateString(),
                     'reference' => null,
@@ -508,14 +521,13 @@ class CashBillCalculator extends Page
             }
         }
 
-        $change = max(0, round($received - $total, 2));
         $this->lastReceiptNumber = $receiptNumbers[0] ?? null;
 
         Notification::make()
             ->title('Collected '.(count($this->selectedCsnIds) + count($this->selectedOrderIds)).' item(s)')
-            ->body(($balanceItem
-                    ? 'Balance RM '.number_format($balance, 2).' stays on '.$balanceItem['number'].' (to pay next time)'
-                    : 'Change: RM '.number_format($change, 2))
+            ->body(($partial !== []
+                    ? 'Partial payment: '.implode(', ', $partial).' (the rest is paid next time)'
+                    : 'Change: RM '.number_format($plan['change'], 2))
                 .($slipPaths ? ' · '.count($slipPaths).' slip(s) attached' : '')
                 .($orderLines !== [] ? "\n".implode("\n", $orderLines) : ''))
             ->success()
@@ -524,7 +536,7 @@ class CashBillCalculator extends Page
 
         $this->selectedCsnIds = [];
         $this->selectedOrderIds = [];
-        $this->balanceKey = null;
+        $this->allocations = [];
         $this->amountReceived = '0.00';
         $this->slips = [];
         $this->scan = '';

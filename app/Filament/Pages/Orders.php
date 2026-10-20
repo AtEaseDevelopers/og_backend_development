@@ -558,4 +558,38 @@ class Orders extends Page
     {
         return OrderStage::STEPS;
     }
+
+    /**
+     * "Ready for CSN" on a Store order's row (user, 21 Oct 2026): its goods are at the store, so its CSN is created
+     * and the order moves to CSN created.
+     */
+    public function readyForCsnAction(): \Filament\Actions\Action
+    {
+        return \Filament\Actions\Action::make('readyForCsn')
+            ->requiresConfirmation()
+            ->modalIcon('heroicon-o-archive-box-arrow-down')
+            ->modalHeading(fn (array $arguments) => 'Goods of '.(\App\Domains\Quotation\Models\Quotation::query()->find($arguments['order'] ?? 0)?->orderNumber() ?? 'this order').' at the store?')
+            ->modalDescription('Confirm the customer\'s goods are at the store and ready to send: the CSN is created and the order moves to CSN created.')
+            ->modalSubmitActionLabel('Ready for CSN')
+            ->action(function (array $arguments): void {
+                $order = \App\Domains\Quotation\Models\Quotation::query()->find($arguments['order'] ?? 0);
+
+                if (! $order || (CurrentCompany::id() && (int) $order->company_id !== (int) CurrentCompany::id())) {
+                    \Filament\Notifications\Notification::make()->title('Order not found')->danger()->send();
+
+                    return;
+                }
+
+                try {
+                    $csns = app(\App\Domains\Quotation\Actions\MarkStoreItemReady::class)->execute($order, auth()->user());
+                    \Filament\Notifications\Notification::make()
+                        ->title('Order '.$order->orderNumber().' ready · CSN created')
+                        ->body($csns->pluck('number')->implode(', ') ?: null)
+                        ->success()
+                        ->send();
+                } catch (\Throwable $e) {
+                    \Filament\Notifications\Notification::make()->title($e->getMessage())->danger()->send();
+                }
+            });
+    }
 }

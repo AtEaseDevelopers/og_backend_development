@@ -64,7 +64,7 @@ class QuoteResource extends Resource
                 Tables\Columns\TextColumn::make('form.customer_pic_name')->label('PIC')->placeholder('—'),
                 Tables\Columns\TextColumn::make('quote_date')->label('Quotation date')->date('d/m/Y')->sortable(),
                 Tables\Columns\TextColumn::make('records')
-                    ->label('Consignor & consignee')
+                    ->label('Products')
                     ->state(fn (Quote $record) => count((array) $record->pairs))
                     ->alignCenter(),
                 Tables\Columns\TextColumn::make('total_amount')->label('Total')->money('MYR')->alignEnd()->sortable(),

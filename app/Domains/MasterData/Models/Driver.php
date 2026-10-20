@@ -16,6 +16,10 @@ class Driver extends Model
     protected $fillable = [
         'company_id', 'branch_id', 'code', 'name', 'phone', 'ic_number',
         'type', 'subcontractor_id', 'is_active',
+        // the driver list's columns (21 Oct 2026)
+        'emergency_contact', 'address', 'lorry_group_code', 'lorry_group', 'lorry_company_code', 'lorry_company',
+        'lorry_number', 'lorry_type', 'tonnage',
+        'attendant_name', 'attendant_ic', 'attendant_phone', 'attendant_emergency_contact', 'attendant_address',
     ];
 
     protected function casts(): array

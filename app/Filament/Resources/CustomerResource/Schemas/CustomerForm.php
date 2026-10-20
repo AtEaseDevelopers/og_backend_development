@@ -73,7 +73,7 @@ class CustomerForm
             ]),
             Forms\Components\Grid::make(3)->schema([
                 Forms\Components\TextInput::make('brn')
-                    ->label('Registration no.')
+                    ->label('Business Registration No (BRN)')
                     ->maxLength(50),
                 Forms\Components\Select::make('status')
                     ->label('Active')

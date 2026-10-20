@@ -21,6 +21,7 @@ use App\Models\User;
 use App\Support\CurrentCompany;
 use Closure;
 use Filament\Actions;
+use Filament\Forms;
 use Filament\Notifications\Notification;
 use Filament\Resources\Components\Tab;
 use Filament\Resources\Pages\ListRecords;
@@ -266,8 +267,130 @@ class ListConsignmentNotes extends ListRecords
                     $this->returnScan = '';
                     $this->returnScanLog = [];
                 }),
+            // Assign to lorry (user, 21 Oct 2026): the lorry, then what is waiting for one: a transfer code's staff
+            // see the subsheets of their codes; admin (no transfer code) sees the main CSNs
+            Actions\Action::make('assignMySubsheets')
+                ->label('Assign to lorry')
+                ->icon('heroicon-o-truck')
+                ->color('gray')
+                ->modalHeading(fn () => $this->myTransferCodes() !== [] ? 'Assign subsheets to lorry' : 'Assign CSNs to lorry')
+                ->modalDescription(fn () => $this->myTransferCodes() !== []
+                    ? 'Subsheets with your transfer code'.(count($this->myTransferCodes()) > 1 ? 's' : '').' '.implode(', ', $this->myTransferCodes()).' that are not on a lorry yet. Pick the lorry, tick them (or Select all) and assign.'
+                    : 'CSNs not on a lorry yet. Pick the lorry, tick them (or Select all) and assign. (A transfer code\'s staff see the subsheets of their codes here.)')
+                ->modalWidth('3xl')
+                ->form(fn () => array_values(array_filter([
+                    Forms\Components\Select::make('lorry_id')
+                        ->label('Lorry')
+                        ->placeholder('Select lorry')
+                        ->helperText('The lorry\'s default driver drives it.')
+                        ->options(fn () => ConsignmentNoteResource::lorryOptions())
+                        ->required()
+                        ->searchable(),
+                    $this->assignableItems() === []
+                        ? Forms\Components\Placeholder::make('none')->hiddenLabel()->content($this->myTransferCodes() !== [] ? 'No subsheet with your transfer code is waiting for a lorry.' : 'No CSN is waiting for a lorry.')
+                        : Forms\Components\CheckboxList::make('item_keys')
+                            ->label($this->myTransferCodes() !== [] ? 'Subsheets' : 'CSNs')
+                            ->options(fn () => array_map(fn (array $item) => $item['label'], $this->assignableItems()))
+                            ->descriptions(fn () => array_map(fn (array $item) => $item['description'], $this->assignableItems()))
+                            ->bulkToggleable()
+                            ->required()
+                            ->validationMessages(['required' => 'Tick at least one.']),
+                ])))
+                ->modalSubmitActionLabel('Assign to lorry')
+                ->action(function (array $data): void {
+                    // only items still listed for this user (their subsheets / the CSNs waiting for a lorry)
+                    $keys = array_intersect(array_map('strval', (array) ($data['item_keys'] ?? [])), array_keys($this->assignableItems()));
+                    $subsheetIds = array_map(fn (string $key) => (int) substr($key, 9), array_filter($keys, fn (string $key) => str_starts_with($key, 'subsheet:')));
+                    $csnIds = array_map(fn (string $key) => (int) substr($key, 4), array_filter($keys, fn (string $key) => str_starts_with($key, 'csn:')));
+
+                    if ($subsheetIds === [] && $csnIds === []) {
+                        Notification::make()->title('Nothing ticked')->warning()->send();
+
+                        return;
+                    }
+
+                    ConsignmentNoteResource::assignSelection(
+                        $csnIds === [] ? collect() : ConsignmentNote::query()->whereIn('id', $csnIds)->get(),
+                        $this->mySubsheets()->whereIn('id', $subsheetIds)->values(),
+                        ['lorry_id' => $data['lorry_id']],
+                        $this,
+                    );
+                }),
             Actions\CreateAction::make()->label('New consignment note'),
         ];
+    }
+
+    /**
+     * What "Assign to lorry" lists for the signed-in user: a transfer code's staff their subsheets ("subsheet:12"),
+     * admin (no transfer code) the CSNs of this company not on a lorry yet ("csn:34").
+     *
+     * @return array<string, array{label: string, description: string}>
+     */
+    public function assignableItems(): array
+    {
+        if ($this->myTransferCodes() !== []) {
+            return $this->mySubsheets()->mapWithKeys(fn (Subsheet $subsheet) => ['subsheet:'.$subsheet->id => [
+                'label' => $subsheet->number.' · CSN '.$subsheet->consignmentNote?->number.' · '.$subsheet->transfer_code,
+                'description' => collect([
+                    $subsheet->consignmentNote?->customer?->company_name ?: $subsheet->consignmentNote?->customer_name,
+                    trim(($subsheet->consignmentNote?->fromLocation?->name ?? '').' → '.($subsheet->consignmentNote?->toLocation?->name ?? ''), ' →'),
+                    ucfirst(str_replace('_', ' ', (string) $subsheet->task_type)),
+                ])->filter()->implode(' · '),
+            ]])->all();
+        }
+
+        return ConsignmentNoteResource::getEloquentQuery()
+            ->whereDoesntHave('deliveryOrder')
+            ->where('status', '!=', CsnStatus::Cancelled->value)
+            ->with(['customer:id,company_name', 'fromLocation:id,name', 'toLocation:id,name'])
+            ->latest('id')
+            ->limit(300)
+            ->get()
+            ->filter(fn (ConsignmentNote $csn) => $csn->canAssignToLorry())
+            ->mapWithKeys(fn (ConsignmentNote $csn) => ['csn:'.$csn->id => [
+                'label' => $csn->number,
+                'description' => collect([
+                    $csn->customer?->company_name ?: $csn->customer_name,
+                    trim(($csn->fromLocation?->name ?? '').' → '.($csn->toLocation?->name ?? ''), ' →'),
+                    $csn->issued_at?->format('d/m/Y'),
+                ])->filter()->implode(' · '),
+            ]])
+            ->all();
+    }
+
+    /** The active transfer codes the signed-in user is staff of (Master Data → Transfer Codes). @return list<string> */
+    public function myTransferCodes(): array
+    {
+        $userId = (int) auth()->id();
+
+        return $this->myTransferCodes ??= $userId
+            ? TransferCode::query()->where('is_active', true)->whereHas('staff', fn (Builder $q) => $q->whereKey($userId))->orderBy('code')->pluck('code')->all()
+            : [];
+    }
+
+    /** The user's transfer codes, looked up once per request. @var list<string>|null */
+    protected ?array $myTransferCodes = null;
+
+    /**
+     * Subsheets with the user's transfer codes that are not on a lorry yet (CSN not cancelled), of any branch's CSN.
+     *
+     * @return Collection<int, Subsheet>
+     */
+    public function mySubsheets(): Collection
+    {
+        $codes = $this->myTransferCodes();
+
+        if ($codes === []) {
+            return collect();
+        }
+
+        return Subsheet::query()
+            ->whereIn('transfer_code', $codes)
+            ->whereNull('delivery_order_id')
+            ->whereHas('consignmentNote', fn (Builder $q) => $q->where('status', '!=', CsnStatus::Cancelled->value))
+            ->with(['consignmentNote.customer:id,company_name', 'consignmentNote.fromLocation:id,name', 'consignmentNote.toLocation:id,name'])
+            ->orderBy('id')
+            ->get();
     }
 
     /** A scanned / typed CSN number (or the CSN's QR token) is marked as returned. */

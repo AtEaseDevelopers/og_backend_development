@@ -104,6 +104,12 @@ class User extends Authenticatable implements FilamentUser, HasTenants
             ->withTimestamps();
     }
 
+    /** The transfer codes this staff member handles (Master Data → Transfer Codes). */
+    public function transferCodes(): BelongsToMany
+    {
+        return $this->belongsToMany(\App\Domains\MasterData\Models\TransferCode::class)->withTimestamps();
+    }
+
     public function companies(): BelongsToMany
     {
         return $this->belongsToMany(Company::class)

@@ -4,6 +4,9 @@
     $received = $this->receivedAmount;
     $outstanding = $this->outstandingAmount;
     $change = $this->changeAmount;
+    // received less than the total: the Paying column splits it over the list
+    $plan = $this->allocationPlan;
+    $splitting = $received > 0 && ! $plan['full'];
     $customerCsns = $this->customerCsns;
     $customerOrders = $this->customerOrders;
     $selectedOrders = $this->selectedOrders;
@@ -161,6 +164,7 @@
                         <th>CSN date</th>
                         <th>Source Branch</th>
                         <th class="cb-num">Amount due</th>
+                        @if ($splitting)<th class="cb-num">Paying (RM)</th>@endif
                         <th>Payment Status</th>
                         <th class="cb-check-col"></th>
                     </tr>
@@ -176,13 +180,16 @@
                                 {{ $money($this->dueFor($csn)) }}
                                 @if ((float) ($csn->paid_total ?? 0) > 0)<div class="cb-paid-note">of {{ $money((float) $csn->total_amount) }} · paid {{ $money((float) $csn->paid_total) }}</div>@endif
                             </td>
+                            @if ($splitting)
+                                @include('filament.pages.partials.cash-bill-paying', ['key' => 'csn_'.$csn->id, 'due' => $this->dueFor($csn)])
+                            @endif
                             <td><span class="cb-status-pill">{{ $this->paymentStatusLabel($csn) }}</span></td>
                             <td class="cb-check-col"><button type="button" wire:click="removeCsn({{ $csn->id }})" class="cb-row-remove" title="Remove from the payment list" aria-label="Remove {{ $csn->number }}">✕</button></td>
                         </tr>
                     @empty
                         @if ($selectedOrders->isEmpty())
                             <tr>
-                                <td colspan="7" class="cb-empty">
+                                <td colspan="8" class="cb-empty">
                                     Choose a customer, tick its CSNs or orders and click Add, or scan a CSN QR code. Different customers can be paid together.
                                 </td>
                             </tr>
@@ -195,6 +202,9 @@
                             <td>{{ $order->created_at?->format('d/m/Y') ?? '—' }}</td>
                             <td>{{ $order->branch?->name ?: '—' }}</td>
                             <td class="cb-num">{{ $money($this->dueForOrder($order)) }}</td>
+                            @if ($splitting)
+                                @include('filament.pages.partials.cash-bill-paying', ['key' => 'order_'.$order->id, 'due' => $this->dueForOrder($order)])
+                            @endif
                             <td><span class="cb-status-pill">PENDING PAYMENT</span></td>
                             <td class="cb-check-col"><button type="button" wire:click="removeOrderItem({{ $order->id }})" class="cb-row-remove" title="Remove from the payment list" aria-label="Remove {{ $order->number }}">✕</button></td>
                         </tr>
@@ -299,20 +309,20 @@
             @endif
         </div>
 
-        {{-- received less than due: the balance stays on one CSN of the list (Partial, paid next time) --}}
-        @if ($listCount > 0 && $received > 0 && $outstanding > 0.009)
-            @php $balanceOptions = $this->balanceOptions; $balanceItem = $this->balanceItem; @endphp
-            <div class="cb-balance">
-                @if ($balanceOptions->isEmpty())
-                    <span>Balance <strong>RM {{ $lcd($outstanding) }}</strong> is more than any one item's amount due: remove one from the payment list or collect more.</span>
-                @else
-                    <label for="cbBalanceCsn">Balance <strong>RM {{ $lcd($outstanding) }}</strong> stays on</label>
-                    <select id="cbBalanceCsn" wire:model.live="balanceKey" class="cb-select cb-balance-select">
-                        @foreach ($balanceOptions as $option)
-                            <option value="{{ $option['key'] }}" @selected(($balanceItem['key'] ?? null) === $option['key'])>{{ $option['number'] }} · {{ $option['customer'] }} · due {{ $money($option['due']) }}</option>
-                        @endforeach
-                    </select>
-                @endif
+        {{-- received less than due: the user splits it over the list (Paying column); less than an item's due = partial --}}
+        @if ($listCount > 0 && $splitting)
+            <div @class(['cb-balance', 'cb-balance-ok' => $plan['ok']])>
+                <span>
+                    Received <strong>RM {{ $lcd($received) }}</strong> of RM {{ $lcd($totalDue) }}: enter in <strong>Paying</strong> how much goes to each item (all to one, or split). An item paid less than its due is a partial payment.
+                </span>
+                <span class="cb-balance-sum">
+                    Given RM {{ $lcd($plan['allocated']) }}
+                    @if (abs($plan['left']) >= 0.005)
+                        · <strong>RM {{ $lcd(abs($plan['left'])) }} {{ $plan['left'] > 0 ? 'still to give' : 'too much' }}</strong>
+                    @else
+                        · all of it given
+                    @endif
+                </span>
             </div>
         @endif
 
@@ -351,7 +361,7 @@
                     type="button"
                     wire:click="process"
                     class="cb-btn cb-btn-primary"
-                    @disabled($listCount === 0 || $received <= 0 || ($outstanding > 0.009 && ! $this->balanceItem))
+                    @disabled($listCount === 0 || $received <= 0 || ! $plan['ok'])
                 >
                     Paid
                 </button>
@@ -387,6 +397,13 @@
         .dark .cb-order-tag { background: rgb(76 29 149 / .35); color: rgb(196 181 253); }
         .cb-balance { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; margin: 0 18px 14px; padding: .7rem .9rem; border-radius: .6rem; background: rgb(255 251 235); border: 1px solid rgb(253 230 138); color: rgb(146 64 14); font-size: .88rem; }
         .cb-balance-select { width: auto; min-width: 18rem; }
+        .cb-balance-ok { background: rgb(240 253 244); border-color: rgb(187 247 208); color: rgb(22 101 52); }
+        .dark .cb-balance-ok { background: rgb(34 197 94 / .12); border-color: rgb(34 197 94 / .35); color: rgb(134 239 172); }
+        .cb-balance-sum { margin-left: auto; white-space: nowrap; }
+        .cb-pay-input { width: 7.5rem; height: 2.3rem; padding: 0 .6rem; border: 1px solid rgb(209 213 219); border-radius: .5rem; background: #fff; font-size: .9rem; text-align: right; color: inherit; }
+        .dark .cb-pay-input { background: rgb(17 24 39); border-color: rgb(55 65 81); }
+        .cb-pay-error { font-size: .72rem; color: rgb(185 28 28); margin-top: .2rem; }
+        .dark .cb-pay-error { color: rgb(252 165 165); }
         .dark .cb-balance { background: rgb(245 158 11 / .12); border-color: rgb(245 158 11 / .35); color: rgb(252 211 77); }
         .cb-row-remove { width: 1.6rem; height: 1.6rem; border-radius: 999px; color: rgb(185 28 28); font-weight: 700; }
         .cb-row-remove:hover { background: rgb(254 226 226); }

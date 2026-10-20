@@ -6,6 +6,7 @@ use App\Domains\MasterData\Models\Company;
 use App\Domains\MasterData\Models\Location;
 use App\Domains\Quotation\Models\Quote;
 use App\Models\User;
+use App\Enums\ServiceType;
 use App\Support\CurrentCompany;
 use App\Support\OrderMinimumCharge;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -83,19 +84,21 @@ class QuotePdfController
             }
 
             $location = $locations[$pair['to_location_id'] ?? 0] ?? null;
-            // the top-up to the price list's minimum charge, as on Create quotation (default prices)
+            // the price list's minimum charge (as on Create quotation): with a pickup location the pick-up minimum applies
             $minimum = $location && $lines !== [] ? app(OrderMinimumCharge::class)->forDestination(
                 null,
                 $location,
                 ($pair['drop_off_type'] ?? '') ?: null,
-                $pair['service_type'] ?? null,
+                filled($pair['from_location_id'] ?? null) ? ServiceType::Pickup->value : ServiceType::Store->value,
                 array_map(fn (array $line) => ['item_name' => $line['item'], 'quantity' => $line['qty'], 'line_total' => (float) ($line['amount'] ?? 0), 'priced' => $line['price'] !== null], $lines),
             ) : null;
             $minimum = $minimum && (float) ($minimum['top_up'] ?? 0) > 0 ? $minimum : null;
 
             $blocks[] = [
                 'destination' => $location ?? '—',
-                'consignee' => filled($pair['consignee_name'] ?? null) ? (string) $pair['consignee_name'] : null,
+                'consignee' => filled($pair['from_location_id'] ?? null) && ($from = Location::query()->whereKey($pair['from_location_id'])->value('name'))
+                    ? 'from '.$from
+                    : (filled($pair['consignee_name'] ?? null) ? (string) $pair['consignee_name'] : null),
                 'lines' => $lines,
                 'minimum' => $minimum,
                 'total' => round(collect($lines)->sum(fn (array $line) => (float) ($line['amount'] ?? 0)) + (float) ($minimum['top_up'] ?? 0), 2),

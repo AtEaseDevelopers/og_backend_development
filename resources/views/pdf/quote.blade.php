@@ -197,7 +197,7 @@
     </table>
 
     <div class="footnotes">
-        <div>*Prices are per unit to each destination. A destination's minimum charge applies when its amount is below it.</div>
+        <div>*Prices are per unit to each destination. A destination below its minimum charge (pick-up, construction site or drop-off) is topped up to it.</div>
     </div>
 
     {{-- Footer --}}

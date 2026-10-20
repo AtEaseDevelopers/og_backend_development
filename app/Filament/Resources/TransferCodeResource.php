@@ -9,6 +9,7 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class TransferCodeResource extends Resource
 {
@@ -41,6 +42,18 @@ class TransferCodeResource extends Resource
                 ])
                 ->required()
                 ->default('transfer'),
+            // the staff of this code: they assign its subsheets to a lorry (CSN page → Assign subsheets to lorry)
+            Forms\Components\Select::make('staff')
+                ->label('Staff')
+                ->relationship('staff', 'name', fn (Builder $query) => $query
+                    ->where('is_active', true)
+                    ->whereDoesntHave('roles', fn (Builder $roles) => $roles->whereIn('name', ['customer', 'driver']))
+                    ->orderBy('name'))
+                ->multiple()
+                ->searchable()
+                ->preload()
+                ->helperText('They assign the subsheets with this transfer code to a lorry from the CSN page (Assign subsheets to lorry).')
+                ->columnSpanFull(),
             Forms\Components\Toggle::make('is_active')->default(true),
         ]);
     }
@@ -53,6 +66,7 @@ class TransferCodeResource extends Resource
                 Tables\Columns\TextColumn::make('name')->searchable(),
                 Tables\Columns\TextColumn::make('destinationBranch.code')->label('Branch'),
                 Tables\Columns\TextColumn::make('type')->badge(),
+                Tables\Columns\TextColumn::make('staff.name')->label('Staff')->listWithLineBreaks()->limitList(3)->expandableLimitedList()->placeholder('—'),
                 Tables\Columns\IconColumn::make('is_active')->boolean(),
             ])
             ->actions([

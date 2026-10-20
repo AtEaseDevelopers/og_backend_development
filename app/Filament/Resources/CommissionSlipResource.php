@@ -27,7 +27,18 @@ class CommissionSlipResource extends Resource
 
     protected static ?string $navigationGroup = 'Commission';
 
-    protected static ?string $navigationLabel = 'Commission Slips';
+    // Purchase Order (PO) (user, 21 Oct 2026): one per lorry per batch, its drivers' commission inside
+    protected static ?string $navigationLabel = 'Purchase Order (PO)';
+
+    protected static ?string $modelLabel = 'Purchase Order (PO)';
+
+    protected static ?string $pluralModelLabel = 'Purchase Order (PO)';
+
+    /** A batch's draft lines become a PO when saved on its lorry / job sheet page (or the batch is confirmed). */
+    public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
+    {
+        return parent::getEloquentQuery()->where('status', '!=', 'draft');
+    }
 
     protected static ?int $navigationSort = 32;
 
@@ -43,8 +54,12 @@ class CommissionSlipResource extends Resource
                 Infolists\Components\TextEntry::make('number'),
                 Infolists\Components\TextEntry::make('batch.month')->label('Batch month'),
                 Infolists\Components\TextEntry::make('sourceBranch.code')->label('Branch'),
-                Infolists\Components\TextEntry::make('driver.name')->label('Driver'),
                 Infolists\Components\TextEntry::make('lorry.registration_no')->label('Lorry'),
+                Infolists\Components\TextEntry::make('drivers')
+                    ->label('Drivers')
+                    ->state(fn (CommissionSlip $record) => collect($record->driverBreakdown())->map(fn (float $amount, string $name) => $name.' · RM '.number_format($amount, 2))->values()->all())
+                    ->listWithLineBreaks()
+                    ->placeholder('—'),
                 Infolists\Components\TextEntry::make('system_amount')->money('MYR'),
                 Infolists\Components\TextEntry::make('final_amount')->money('MYR'),
                 Infolists\Components\TextEntry::make('psi_amount')->money('MYR'),
@@ -87,7 +102,12 @@ class CommissionSlipResource extends Resource
                 Tables\Columns\TextColumn::make('number')->searchable(),
                 Tables\Columns\TextColumn::make('batch.month')->label('Month'),
                 Tables\Columns\TextColumn::make('sourceBranch.code')->label('Branch'),
-                Tables\Columns\TextColumn::make('driver.name')->searchable(),
+                Tables\Columns\TextColumn::make('lorry.registration_no')->label('Lorry')->searchable()->placeholder('—'),
+                Tables\Columns\TextColumn::make('drivers')
+                    ->label('Drivers (earned)')
+                    ->state(fn (CommissionSlip $record) => collect($record->driverBreakdown())->map(fn (float $amount, string $name) => $name.' · RM '.number_format($amount, 2))->values()->all())
+                    ->listWithLineBreaks()
+                    ->placeholder('—'),
                 Tables\Columns\TextColumn::make('system_amount')->money('MYR'),
                 Tables\Columns\TextColumn::make('final_amount')->money('MYR'),
                 Tables\Columns\TextColumn::make('status')->badge(),

@@ -45,23 +45,24 @@ class CommissionBatchResource extends Resource
                 Infolists\Components\TextEntry::make('number'),
                 Infolists\Components\TextEntry::make('sourceBranch.name')->label('Source branch'),
                 Infolists\Components\TextEntry::make('month'),
-                Infolists\Components\TextEntry::make('cutoff_date')->date(),
+                Infolists\Components\TextEntry::make('cutoff_date')->label('CSN return cutoff')->date(),
                 Infolists\Components\TextEntry::make('status')->badge(),
                 Infolists\Components\TextEntry::make('confirmedBy.name')->label('Confirmed by'),
                 Infolists\Components\TextEntry::make('confirmed_at')->dateTime(),
                 Infolists\Components\TextEntry::make('notes')->columnSpanFull(),
             ])->columns(3),
-            Infolists\Components\RepeatableEntry::make('slips')
+            // the commission per lorry (user, 21 Oct 2026): a row opens the lorry's job sheets and CSNs
+            Infolists\Components\Section::make('Commission by lorry')
+                ->description('Each lorry\'s commission in this batch and what each of its drivers earned. Open a lorry to check and change the commission per CSN, then Save: its Purchase Order (PO) is generated.')
                 ->schema([
-                    Infolists\Components\TextEntry::make('number'),
-                    Infolists\Components\TextEntry::make('driver.name')->label('Driver'),
-                    Infolists\Components\TextEntry::make('system_amount')->money('MYR'),
-                    Infolists\Components\TextEntry::make('final_amount')->money('MYR'),
-                    Infolists\Components\TextEntry::make('psi_amount')->money('MYR'),
-                    Infolists\Components\TextEntry::make('pso_amount')->money('MYR'),
-                    Infolists\Components\TextEntry::make('status')->badge(),
-                ])
-                ->columns(4),
+                    Infolists\Components\ViewEntry::make('lorry_table')->hiddenLabel()->view('filament.infolists.commission-batch-lorries')->columnSpanFull(),
+                ]),
+            // the returned CSNs of the batch (returned on or before the cutoff, user 21 Oct 2026)
+            Infolists\Components\Section::make('Returned CSNs')
+                ->description(fn (CommissionBatch $record) => 'CSNs returned on or before '.$record->cutoff_date?->format('d/m/Y').' and not in another batch. Only a returned CSN earns commission.')
+                ->schema([
+                    Infolists\Components\ViewEntry::make('csn_table')->hiddenLabel()->view('filament.infolists.commission-batch-csns')->columnSpanFull(),
+                ]),
         ]);
     }
 
@@ -72,7 +73,8 @@ class CommissionBatchResource extends Resource
                 Tables\Columns\TextColumn::make('number')->searchable(),
                 Tables\Columns\TextColumn::make('sourceBranch.code')->label('Branch'),
                 Tables\Columns\TextColumn::make('month')->sortable(),
-                Tables\Columns\TextColumn::make('cutoff_date')->date(),
+                Tables\Columns\TextColumn::make('cutoff_date')->label('Return cutoff')->date(),
+                Tables\Columns\TextColumn::make('csns_count')->counts('csns')->label('CSNs'),
                 Tables\Columns\TextColumn::make('status')->badge()
                     ->color(fn (string $state) => match ($state) {
                         'draft' => 'warning',
@@ -97,10 +99,12 @@ class CommissionBatchResource extends Resource
                             ->default(now()->format('Y-m'))
                             ->required(),
                         Forms\Components\DatePicker::make('cutoff_date')
-                            ->label('Manual cutoff (carry-forward)')
-                            ->default(now()->endOfMonth()),
+                            ->label('CSN return cutoff')
+                            ->helperText('The batch takes every CSN returned on or before this date that is not in another batch. A CSN not returned yet earns no commission (it goes into a later batch once returned).')
+                            ->default(now()->endOfMonth())
+                            ->required(),
                     ])
-                    ->action(function (array $data) {
+                    ->action(function (array $data, $livewire) {
                         try {
                             $branch = \App\Support\CurrentBranch::get()
                                 ?? Branch::findOrFail(auth()->user()?->defaultBranch()?->id);
@@ -112,9 +116,11 @@ class CommissionBatchResource extends Resource
                             );
                             Notification::make()
                                 ->title('Commission batch ready')
-                                ->body($batch->number.' — '.$batch->slips()->count().' slip(s)')
+                                ->body($batch->number.' — '.$batch->csns()->count().' returned CSN(s), '.$batch->slips()->count().' slip(s)')
                                 ->success()
                                 ->send();
+                            // the batch with its returned CSNs
+                            $livewire->redirect(static::getUrl('view', ['record' => $batch]));
                         } catch (Throwable $e) {
                             Notification::make()->title($e->getMessage())->danger()->send();
                         }
@@ -165,6 +171,9 @@ class CommissionBatchResource extends Resource
         return [
             'index' => Pages\ListCommissionBatches::route('/'),
             'view' => Pages\ViewCommissionBatch::route('/{record}'),
+            // a lorry's / a job sheet's commission in the batch (user, 21 Oct 2026)
+            'lorry' => Pages\LorryCommission::route('/{record}/lorries/{lorry}'),
+            'job-sheet' => Pages\JobSheetCommission::route('/{record}/job-sheets/{jobSheet}'),
         ];
     }
 }

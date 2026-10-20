@@ -10,6 +10,11 @@ class EditDriver extends EditRecord
 {
     protected static string $resource = DriverResource::class;
 
+    protected function afterSave(): void
+    {
+        DriverResource::syncLorry($this->getRecord());
+    }
+
     protected function getHeaderActions(): array
     {
         return [Actions\DeleteAction::make()];

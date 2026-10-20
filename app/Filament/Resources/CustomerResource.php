@@ -43,7 +43,7 @@ class CustomerResource extends Resource
                 Infolists\Components\Tabs\Tab::make('Account')->schema([
                     Infolists\Components\TextEntry::make('code')->label('Debtor account'),
                     Infolists\Components\TextEntry::make('company_name'),
-                    Infolists\Components\TextEntry::make('brn')->label('Registration no.'),
+                    Infolists\Components\TextEntry::make('brn')->label('Business Registration No (BRN)'),
                     Infolists\Components\TextEntry::make('control_account'),
                     Infolists\Components\TextEntry::make('debtor_type')->formatStateUsing(
                         fn (?string $state) => CustomerForm::debtorTypeOptions()[$state] ?? $state
@@ -161,7 +161,7 @@ class CustomerResource extends Resource
                 ->wrap(),
             Tables\Columns\TextColumn::make('branch.name')->label('Branch'),
             Tables\Columns\TextColumn::make('area')->toggleable(isToggledHiddenByDefault: true),
-            Tables\Columns\TextColumn::make('brn')->label('Reg. no.')->toggleable(isToggledHiddenByDefault: true),
+            Tables\Columns\TextColumn::make('brn')->label('BRN')->toggleable(isToggledHiddenByDefault: true),
             Tables\Columns\TextColumn::make('salesperson.name')->label('Agent')->toggleable(isToggledHiddenByDefault: true),
             Tables\Columns\IconColumn::make('is_credit')->boolean()->label('Credit'),
             Tables\Columns\TextColumn::make('credit_term_days')

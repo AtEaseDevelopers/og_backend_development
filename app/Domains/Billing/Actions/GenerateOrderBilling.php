@@ -39,6 +39,47 @@ class GenerateOrderBilling
         private SendNotification $notify,
     ) {}
 
+    /**
+     * The billed order's CSN(s), with its billing documents and payments linked to the (first) CSN for the CSN views.
+     *
+     * @param  Collection<int, Invoice>|null  $invoices  the billing issued now (null: the order's invoices)
+     */
+    public function createCsns(Quotation $quotation, ?User $actor = null, ?Collection $invoices = null): Collection
+    {
+        $actor ??= User::query()->role('hq_admin')->first();
+        $quotation->loadMissing(['invoices', 'proformaInvoice']);
+        $invoices ??= $quotation->invoices;
+
+        $csns = $quotation->consignmentNotes()->exists()
+            ? $quotation->consignmentNotes()->get()
+            : $this->convert->execute(
+                $quotation->fresh(['customer', 'branch', 'lines', 'destinations', 'invoices', 'proformaInvoice']),
+                $actor,
+                $quotation->orderType()?->billingType()->value ?? 'cash_bill',
+            );
+
+        // Link the billing documents to the (first) CSN for the legacy CSN views
+        $firstCsn = $csns->first();
+
+        if ($firstCsn) {
+            foreach ($invoices as $invoice) {
+                if (! $invoice->consignment_note_id) {
+                    $invoice->update(['consignment_note_id' => $firstCsn->id]);
+                    $invoice->lines()->whereNull('consignment_note_id')->update(['consignment_note_id' => $firstCsn->id]);
+                }
+            }
+
+            if ($quotation->proformaInvoice && ! $quotation->proformaInvoice->consignment_note_id) {
+                $quotation->proformaInvoice->update(['consignment_note_id' => $firstCsn->id]);
+            }
+
+            Payment::query()->where('quotation_id', $quotation->id)->whereNull('consignment_note_id')
+                ->update(['consignment_note_id' => $firstCsn->id]);
+        }
+
+        return $csns;
+    }
+
     /** @return array{ok: bool, error: ?string, invoices: Collection<int, Invoice>, csns: Collection} */
     public function execute(Quotation $quotation, ?User $actor = null): array
     {
@@ -81,33 +122,9 @@ class GenerateOrderBilling
                             : 'Released for CSN · the COD invoice is issued once the order is fully paid'),
                 ]);
 
-                // Only after billing succeeded: create the CSN(s)
-                $csns = $quotation->consignmentNotes()->exists()
-                    ? $quotation->consignmentNotes()->get()
-                    : $this->convert->execute(
-                        $quotation->fresh(['customer', 'branch', 'lines', 'destinations', 'invoices', 'proformaInvoice']),
-                        $actor,
-                        $quotation->orderType()?->billingType()->value ?? 'cash_bill',
-                    );
-
-                // Link the billing documents to the (first) CSN for the legacy CSN views
-                $firstCsn = $csns->first();
-
-                if ($firstCsn) {
-                    foreach ($invoices as $invoice) {
-                        if (! $invoice->consignment_note_id) {
-                            $invoice->update(['consignment_note_id' => $firstCsn->id]);
-                            $invoice->lines()->whereNull('consignment_note_id')->update(['consignment_note_id' => $firstCsn->id]);
-                        }
-                    }
-
-                    if ($quotation->proformaInvoice && ! $quotation->proformaInvoice->consignment_note_id) {
-                        $quotation->proformaInvoice->update(['consignment_note_id' => $firstCsn->id]);
-                    }
-
-                    Payment::query()->where('quotation_id', $quotation->id)->whereNull('consignment_note_id')
-                        ->update(['consignment_note_id' => $firstCsn->id]);
-                }
+                // Only after billing succeeded: create the CSN(s); a Store order's CSN waits for its goods at the
+                // store ("Ready for CSN", MarkStoreItemReady)
+                $csns = $quotation->awaitsItem() ? collect() : $this->createCsns($quotation, $actor, $invoices);
 
                 return ['invoices' => $invoices, 'csns' => $csns];
             });

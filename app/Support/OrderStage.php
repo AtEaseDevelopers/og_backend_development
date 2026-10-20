@@ -21,7 +21,7 @@ use App\Enums\QuotationStatus;
  */
 class OrderStage
 {
-    public const STEPS = ['Enquiry', 'Quotation', 'Confirmation', 'Proforma', 'Payment / Release', 'CSN'];
+    public const STEPS = ['Enquiry', 'Quotation', 'Confirmation', 'Proforma', 'Payment verification / Pending item', 'CSN'];
 
     /**
      * Stage keys (as returned in forEnquiry / forOrder 'key') → tag label and colour, in flow order.
@@ -34,7 +34,7 @@ class OrderStage
         'quotation' => ['label' => 'Preparing quotation', 'color' => 'progress'],
         'awaiting_customer' => ['label' => 'Awaiting customer', 'color' => 'customer'],
         'confirmation' => ['label' => 'Confirmation', 'color' => 'action'],
-        'payment' => ['label' => 'Payment / release', 'color' => 'action'],
+        'payment' => ['label' => 'Payment verification / Pending item', 'color' => 'action'],
         'csn' => ['label' => 'CSN created', 'color' => 'done'],
         'closed' => ['label' => 'Rejected / closed', 'color' => 'issue'],
     ];
@@ -89,6 +89,8 @@ class OrderStage
 
         $stage = match (true) {
             $status === QuotationStatus::Converted || $hasCsn => ['csn', 6, 'CSN created', 'done', 'Released · Continue in CSN management', 'View CSN', false],
+            // a Store order paid / released: its CSN waits for the goods at the store (user, 21 Oct 2026)
+            $status === QuotationStatus::Confirmed && $billing === BillingStatus::Generated && $q->awaitsItem() => ['payment', 5, 'Pending item', 'action', 'Paid · Waiting for the goods at the store · Confirm when they are in', 'Ready for CSN', false],
             // billing issued but its CSN not created (a release creates both, so only after an error)
             $status === QuotationStatus::Confirmed && $billing === BillingStatus::Generated => ['csn', 6, 'CSN pending', 'action', 'Released · The CSN was not created · Create it to continue', 'Create CSN', false],
             $status === QuotationStatus::Confirmed && $billing === BillingStatus::Failed => ['payment', 5, 'Billing failed', 'issue', 'Billing generation failed · Retry', 'Retry billing', false],

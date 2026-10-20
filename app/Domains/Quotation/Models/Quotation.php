@@ -51,6 +51,8 @@ class Quotation extends Model
         'version', 'root_quotation_id', 'revision_of_id', 'accepted_version',
         'confirmation_channel', 'confirmed_by_name', 'consent_evidence',
         'order_type', 'service_type', 'payment_method', 'customer_do_number', 'sa_location_id', 'salesperson_locked',
+        // a Store order's goods confirmed at the store (Ready for CSN)
+        'item_received_at', 'item_received_by',
         'pricing_override_reason', 'price_overrides',
         // photos per product: {product name: [{path, name, mime, …}]}
         'attachments', 'item_attachments', 'destination_types', 'pricing_reconfirmation_required',
@@ -67,6 +69,7 @@ class Quotation extends Model
             'status' => QuotationStatus::class,
             'order_type' => OrderType::class,
             'service_type' => \App\Enums\ServiceType::class,
+            'item_received_at' => 'datetime',
             'price_overrides' => 'array',
             'billing_status' => BillingStatus::class,
             'attachments' => 'array',
@@ -365,5 +368,23 @@ class Quotation extends Model
             OrderType::Term => $this->isReleased() ? null : 'Credit / Term order requires an Admin release.',
             default => $this->isFullyPaid() || $this->isReleased() ? null : 'Order type is not set.',
         };
+    }
+
+    /**
+     * A Store order (the customer brings the goods to the store, user 21 Oct 2026) whose goods are not confirmed at
+     * the store yet: its CSN waits for "Ready for CSN".
+     */
+    public function awaitsItem(): bool
+    {
+        return $this->service_type === \App\Enums\ServiceType::Store && $this->item_received_at === null;
+    }
+
+    /** Paid / released and billed, but its CSN waits for the goods at the store (Pending item). */
+    public function isBilledAwaitingItem(): bool
+    {
+        return $this->awaitsItem()
+            && $this->status === \App\Enums\QuotationStatus::Confirmed
+            && $this->billingStatus() === \App\Enums\BillingStatus::Generated
+            && ! $this->consignmentNotes()->exists();
     }
 }

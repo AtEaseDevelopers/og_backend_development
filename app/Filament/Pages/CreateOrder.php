@@ -3,6 +3,7 @@
 namespace App\Filament\Pages;
 
 use App\Domains\MasterData\Models\Branch;
+use App\Domains\MasterData\Models\ConsignorConsignee;
 use App\Domains\MasterData\Models\Customer;
 use App\Domains\MasterData\Models\CustomerPricing;
 use App\Domains\MasterData\Models\CustomerAddress;
@@ -19,6 +20,7 @@ use App\Enums\ServiceType;
 use App\Filament\Resources\StoreResource;
 use App\Models\User;
 use App\Support\CurrentCompany;
+use App\Support\PaymentAllocation;
 use App\Support\CustomerQuotationPriceHistory;
 use App\Support\OrderFormOptions;
 use App\Support\OrderMinimumCharge;
@@ -162,7 +164,8 @@ class CreateOrder extends Page
     /** @return array{method: string, payment_date: string, reference: string} */
     protected function paymentTemplate(): array
     {
-        return ['method' => PaymentMethod::BankTransfer->value, 'payment_date' => now()->toDateString(), 'reference' => ''];
+        // amount_received: blank = the full amount; less = split over the orders paid now (allocations "o0" → RM)
+        return ['method' => PaymentMethod::BankTransfer->value, 'payment_date' => now()->toDateString(), 'reference' => '', 'amount_received' => '', 'allocations' => []];
     }
 
     /*
@@ -187,6 +190,11 @@ class CreateOrder extends Page
     {
         $this->stashActive();
         $this->fillItemKinds();
+
+        // the Paying boxes of a short payment: the amounts entered, the missing ones filled in order
+        if ($this->paysAny() && is_numeric($this->payment['amount_received'] ?? null)) {
+            $this->payment['allocations'] = PaymentAllocation::amounts($this->payDues(), (float) $this->payment['amount_received'], (array) ($this->payment['allocations'] ?? []));
+        }
     }
 
     /** Rows of a saved order or quotation: their type (and a measurement product's sub-category) from the product. */
@@ -208,6 +216,31 @@ class CreateOrder extends Page
                 }
             }
         }
+    }
+
+    /**
+     * Saved consignors or consignees (Master Data → Consignor / Consignee) for a block: those tagged to the selected
+     * customer first, then the others.
+     *
+     * @return array{tagged: array<int, string>, others: array<int, string>}
+     */
+    public function savedParties(string $role): array
+    {
+        $customerId = filled($this->form['customer_id'] ?? null) ? (int) $this->form['customer_id'] : null;
+        $parties = ConsignorConsignee::query()
+            ->usedAs($role)
+            ->where('is_active', true)
+            ->when(CurrentCompany::id(), fn ($q, $id) => $q->where('company_id', $id))
+            ->with(['customers:id', 'location:id,name'])
+            ->orderBy('name')
+            ->get();
+        $label = fn (ConsignorConsignee $party) => $party->name.collect([$party->pic_name, $party->location?->name])->filter()->map(fn ($part) => ' · '.$part)->implode('');
+        $tagged = $customerId ? $parties->filter(fn (ConsignorConsignee $party) => $party->customers->contains('id', $customerId)) : collect();
+
+        return [
+            'tagged' => $tagged->mapWithKeys(fn (ConsignorConsignee $party) => [$party->id => $label($party)])->all(),
+            'others' => $parties->reject(fn (ConsignorConsignee $party) => $tagged->contains('id', $party->id))->mapWithKeys(fn (ConsignorConsignee $party) => [$party->id => $label($party)])->all(),
+        ];
     }
 
     /** The product types of the price list (Master Data → UOM, Items and Lorries). @return array<string, string> */
@@ -296,6 +329,21 @@ class CreateOrder extends Page
             ->first();
     }
 
+    /** "Bundle · 150 × 100 × 25 cm · 100 kg" once the product and its full size are entered. */
+    protected function measurementSize(array $item): ?string
+    {
+        $sub = trim((string) ($item['sub_category'] ?? ''));
+        $dims = array_map(fn (string $dim) => is_numeric($item[$dim] ?? null) ? rtrim(rtrim(number_format((float) $item[$dim], 2, '.', ''), '0'), '.') : null, ['length', 'width', 'height', 'weight']);
+
+        if ($sub === '' || in_array(null, $dims, true)) {
+            return null;
+        }
+
+        [$l, $w, $h, $kg] = $dims;
+
+        return "{$sub} · {$l} × {$w} × {$h} cm · {$kg} kg";
+    }
+
     /** The note under a Measurement row's size fields. */
     public function measurementNote(array $item): string
     {
@@ -307,13 +355,15 @@ class CreateOrder extends Page
 
         $filled = array_filter(['length', 'width', 'height', 'weight'], fn (string $dim) => is_numeric($item[$dim] ?? null));
 
+        $matched = filled($item['catalog_key'] ?? null);
+
         if (count($filled) < 4) {
-            return filled($item['item_name'] ?? null) ? 'Size band: '.$item['item_name'].' · enter L, W, H and weight to check it.' : 'Enter L, W, H and weight: the size band they fit sets the price.';
+            return $matched ? 'Size band: '.$item['item_name'].' · enter L, W, H and weight to check it.' : 'Enter L, W, H and weight: the size band they fit sets the price.';
         }
 
-        return filled($item['item_name'] ?? null)
+        return $matched
             ? 'Size band: '.$item['item_name']
-            : 'No '.$sub.' size band fits '.$item['length'].' × '.$item['width'].' × '.$item['height'].' cm, '.$item['weight'].' kg · check the size or choose another product.';
+            : 'No '.$sub.' size band fits '.$item['length'].' × '.$item['width'].' × '.$item['height'].' cm, '.$item['weight'].' kg · key in the unit price, or check the size / choose another product.';
     }
 
     /** @return array<string, mixed> the working order as it is now */
@@ -522,6 +572,40 @@ class CreateOrder extends Page
         $this->useOrder($working);
 
         return $orders;
+    }
+
+    /**
+     * The orders paid now and their Cash amounts ("o0" → RM), as the Payment card lists them.
+     *
+     * @return array<string, float>
+     */
+    public function payDues(): array
+    {
+        return collect($this->pageOrders())
+            ->filter(fn (array $order) => ($order['summary']['pay_now'] ?? false) && ($order['summary']['priced'] ?? false))
+            ->mapWithKeys(fn (array $order) => ['o'.$order['index'] => round((float) ($order['summary']['cash_total'] ?? 0), 2)])
+            ->all();
+    }
+
+    /**
+     * The amount received over the orders paid now (user, 21 Oct 2026, as Cash Bill Payment): blank = in full; less
+     * = split as entered (an order paid less stays Pending payment, partly paid); more = change to give back.
+     */
+    public function paymentPlan(?array $dues = null): array
+    {
+        $dues ??= $this->payDues();
+        $entered = $this->payment['amount_received'] ?? '';
+        $received = is_numeric($entered) ? (float) $entered : array_sum($dues);
+
+        return PaymentAllocation::plan($dues, $received, (array) ($this->payment['allocations'] ?? []));
+    }
+
+    /** Another amount received: its split over the orders starts again (in order). */
+    public function updatedPayment(mixed $value, ?string $key = null): void
+    {
+        if ($key === 'amount_received') {
+            $this->payment['allocations'] = [];
+        }
     }
 
     /** Cash records of the open order (the payment recorded now pays them). */
@@ -876,6 +960,9 @@ class CreateOrder extends Page
         $consignor = filled($this->form['customer_id'] ?? null) ? OrderFormOptions::consignorStateForCustomer((string) $this->form['customer_id']) : [];
 
         return [
+            // a saved consignor / consignee picked for the block (Master Data → Consignor / Consignee)
+            'consignor_party_id' => '',
+            'consignee_party_id' => '',
             // consignor: starts as the customer (optional: cleared, it is saved blank)
             'consignor_name' => $this->customerName() ?? '',
             // the block's own payment term (selector beside Remove), starting as the customer's type
@@ -913,6 +1000,8 @@ class CreateOrder extends Page
             // the product type first (Measurement / Item / Lorry, user 21 Oct 2026); a Measurement product is its
             // sub-category with the goods' size and weight: the size band they fit is the product priced
             'kind' => '', 'sub_category' => '', 'length' => '', 'width' => '', 'height' => '', 'weight' => '',
+            // a Measurement row whose size no band fits: named by its size, the price keyed in
+            'no_band' => false,
             'unit_price' => null, 'tier' => null, 'source' => null, 'available' => null,
             // the unit price box: the special / default price filled in, editable (price_edited once changed)
             'manual_price' => '', 'price_edited' => false,
@@ -1103,6 +1192,54 @@ class CreateOrder extends Page
             return;
         }
 
+        // a saved consignor / consignee (user, 21 Oct 2026): its name, address, PIC, telephone and area fill the block
+        if (preg_match('/^(\d+)\.(consignor_party_id|consignee_party_id)$/', $key, $m)) {
+            $index = (int) $m[1];
+            $party = filled($value)
+                ? ConsignorConsignee::query()->when(CurrentCompany::id(), fn ($q, $id) => $q->where('company_id', $id))->find($value)
+                : null;
+
+            if (! $party || ! isset($this->pairs[$index])) {
+                return;
+            }
+
+            $pair = &$this->pairs[$index];
+
+            if ($m[2] === 'consignor_party_id') {
+                $pair['consignor_name'] = $party->name;
+                $pair['consignor_pic_name'] = (string) ($party->pic_name ?? $pair['consignor_pic_name'] ?? '');
+                $pair['consignor_pic_phone'] = (string) ($party->phone ?? $pair['consignor_pic_phone'] ?? '');
+
+                if (filled($party->address)) {
+                    $pair['pickup_preset'] = OrderFormOptions::NEW_ADDRESS;
+                    $pair['pickup_location'] = (string) $party->address;
+                }
+
+                if ($party->location_id) {
+                    $pair['from_location_id'] = (string) $party->location_id;
+                }
+
+                return;
+            }
+
+            $pair['consignee_name'] = $party->name;
+            $pair['consignee_pic_name'] = (string) ($party->pic_name ?? $pair['consignee_pic_name'] ?? '');
+            $pair['consignee_pic_phone'] = (string) ($party->phone ?? $pair['consignee_pic_phone'] ?? '');
+
+            if (filled($party->address)) {
+                $pair['drop_off_preset'] = OrderFormOptions::NEW_ADDRESS;
+                $pair['drop_off_location'] = (string) $party->address;
+            }
+
+            if ($party->location_id) {
+                $pair['to_location_id'] = (string) $party->location_id;
+                unset($pair);
+                $this->refreshPairPrices($index);
+            }
+
+            return;
+        }
+
         if (preg_match('/^(\d+)\.(pickup_preset|drop_off_preset|to_location_id|drop_off_type)$/', $key, $m)) {
             $index = (int) $m[1];
             $pair = &$this->pairs[$index];
@@ -1164,11 +1301,16 @@ class CreateOrder extends Page
             $itemIndex = (int) $m[2];
             $item = &$this->pairs[$index]['items'][$itemIndex];
 
+            if ($m[3] !== 'kind' && $this->itemKind($item) !== Uom::MEASUREMENT) {
+                return;
+            }
+
             if ($m[3] === 'kind') {
                 // another type: the row starts again
                 $item = array_merge($item, [
                     'line_type' => 'uom', 'catalog_key' => '', 'item_name' => '', 'uom' => '', 'sub_category' => '',
                     'length' => '', 'width' => '', 'height' => '', 'weight' => '', 'manual_price' => '', 'price_edited' => false,
+                    'no_band' => false,
                 ]);
             } else {
                 // a Measurement row: the size band its size and weight fit is the product
@@ -1180,8 +1322,11 @@ class CreateOrder extends Page
                     $item['manual_price'] = '';
                 }
 
+                // no band fits the full size: the line is named by the product and its size, its price keyed in
+                $sized = $this->measurementSize($item);
+                $item['no_band'] = ! $product && $sized !== null;
                 $item['catalog_key'] = $catalogKey;
-                $item['item_name'] = $product?->name ?? '';
+                $item['item_name'] = $product?->name ?? ($sized ?? trim((string) ($item['sub_category'] ?? '')));
                 $item['uom'] = $product?->code ?? '';
                 $item['line_type'] = 'uom';
             }
@@ -1579,6 +1724,72 @@ class CreateOrder extends Page
     */
 
     /** History icon of a product row: the customer's special price, the price list and previous order lines of that product (information only). */
+    /** "+ New customer" (user, 21 Oct 2026): added to Master Data → Customers and picked for the order. */
+    public function createCustomerAction(): Action
+    {
+        return Action::make('createCustomer')
+            ->label('New customer')
+            ->modalHeading('New customer')
+            ->modalDescription('Added to Master Data → Customers and selected for this order. Credit limit, e-invoice details and portal login can be added on the customer page later.')
+            ->modalWidth(MaxWidth::ThreeExtraLarge)
+            ->form([
+                \Filament\Forms\Components\Grid::make(3)->schema([
+                    \Filament\Forms\Components\TextInput::make('company_name')->label('Company name')->required()->maxLength(255)->columnSpan(2),
+                    \Filament\Forms\Components\TextInput::make('code')->label('Debtor account')->maxLength(50)->unique('customers', 'code')->helperText('Leave blank to auto-generate.'),
+                    \Filament\Forms\Components\TextInput::make('brn')->label('Business Registration No (BRN)')->maxLength(50),
+                    \Filament\Forms\Components\Select::make('customer_type')
+                        ->label('Customer type')
+                        ->options([OrderType::Cash->value => 'Cash', OrderType::Cod->value => 'COD', OrderType::Term->value => 'Credit / Term'])
+                        ->default(OrderType::Cash->value)
+                        ->selectablePlaceholder(false)
+                        ->required()
+                        ->live(),
+                    \Filament\Forms\Components\Select::make('credit_term_days')
+                        ->label('Credit term')
+                        ->options(fn () => array_filter(\App\Filament\Resources\CustomerResource\Schemas\CustomerForm::creditTermOptions(), fn ($days) => (int) $days > 0, ARRAY_FILTER_USE_KEY))
+                        ->default(30)
+                        ->required()
+                        ->visible(fn (\Filament\Forms\Get $get) => $get('customer_type') === OrderType::Term->value),
+                    \Filament\Forms\Components\TextInput::make('attention')->label('PIC name')->maxLength(255),
+                    \Filament\Forms\Components\TextInput::make('phone')->label('Contact number')->tel()->maxLength(50),
+                    \Filament\Forms\Components\TextInput::make('email')->label('Email')->email()->maxLength(255),
+                    \Filament\Forms\Components\Textarea::make('address')->label('Billing address')->rows(2)->columnSpanFull(),
+                ]),
+            ])
+            ->modalSubmitActionLabel('Create customer')
+            ->action(function (array $data, array $arguments): void {
+                $this->switchToOrder((int) ($arguments['order'] ?? $this->activeOrder));
+                $type = OrderType::tryFrom((string) ($data['customer_type'] ?? '')) ?? OrderType::Cash;
+                $name = trim((string) $data['company_name']);
+                $text = fn (string $key) => filled($data[$key] ?? null) ? trim((string) $data[$key]) : null;
+
+                $customer = Customer::query()->create([
+                    'company_id' => CurrentCompany::id(),
+                    'branch_id' => CurrentCompany::branchId(),
+                    'code' => $text('code') ?? \App\Filament\Resources\CustomerResource\Schemas\CustomerForm::generateDebtorCode($name),
+                    'company_name' => $name,
+                    'brn' => $text('brn'),
+                    'attention' => $text('attention'),
+                    'phone' => $text('phone'),
+                    'email' => $text('email'),
+                    'address' => $text('address'),
+                    'einvoice_buyer_name' => $name,
+                    'default_order_type' => $type->value,
+                    'is_credit' => $type === OrderType::Term,
+                    'credit_term_days' => $type === OrderType::Term ? (int) ($data['credit_term_days'] ?? 30) : 0,
+                    'status' => 'active',
+                ]);
+
+                // picked as if chosen in the Customer field (billing address, PIC, payment terms follow)
+                $this->updatingForm((string) $customer->id, 'customer_id');
+                $this->form['customer_id'] = (string) $customer->id;
+                $this->updatedForm((string) $customer->id, 'customer_id');
+                $this->stashActive();
+
+                Notification::make()->title('Customer '.$customer->company_name.' ('.$customer->code.') created and selected')->success()->send();
+            });
+    }
+
     public function productHistoryAction(): Action
     {
         return Action::make('productHistory')
@@ -1891,8 +2102,17 @@ class CreateOrder extends Page
         $this->useOrder($open);
 
         // the payment of every order ticked "Pay now"
+        $payPlan = null;
+
         if (collect($this->orders)->contains(fn (array $order) => $order['pay_now'] ?? false)) {
             $this->validatePaymentDetails();
+            $payPlan = $this->paymentPlan();
+
+            if (! $payPlan['ok']) {
+                throw ValidationException::withMessages(['payment.amount_received' => $payPlan['received'] <= 0
+                    ? 'Enter the amount received (blank = the full amount).'
+                    : 'Split the RM '.number_format($payPlan['received'], 2).' received over the orders (Paying): together the amount received, each at most its total'.(abs($payPlan['left']) >= 0.005 ? ' · RM '.number_format(abs($payPlan['left']), 2).' '.($payPlan['left'] > 0 ? 'still to give' : 'too much') : '').'.']);
+            }
         }
 
         $receiptPaths = null;
@@ -1919,7 +2139,10 @@ class CreateOrder extends Page
             $enquiry = $result['enquiry'];
             $paid = [];
 
-            if ($this->orders[$index]['pay_now'] ?? false) {
+            // an order given nothing of a short payment is created without a payment
+            $payAmount = $payPlan && ! $payPlan['full'] ? round((float) ($payPlan['amounts']['o'.$index] ?? 0), 2) : null;
+
+            if (($this->orders[$index]['pay_now'] ?? false) && $payAmount !== 0.0) {
                 // the proof files are stored once and kept with every order paid now
                 $receiptPaths ??= collect($this->paymentProofs)
                     ->filter(fn ($file) => $file instanceof TemporaryUploadedFile)
@@ -1932,6 +2155,8 @@ class CreateOrder extends Page
                     'payment_date' => $this->payment['payment_date'],
                     'reference' => $this->payment['reference'] ?? null,
                     'receipt_paths' => $receiptPaths,
+                    // null = in full; else this order's part of a short payment
+                    'amount' => $payAmount,
                 ], auth()->user());
             }
 
@@ -1941,6 +2166,10 @@ class CreateOrder extends Page
                 .($paid !== [] ? ' · '.collect($paid)->map(fn (array $p) => $p['number'].' '.$p['message'])->implode('; ') : '')
                 .(! $enquiry->salesperson_id ? ' · assign a salesperson to continue' : '')
                 .($enquiry->salesperson_id && $unpriced->isNotEmpty() ? ' · no price yet for '.$unpriced->implode(', ') : '');
+        }
+
+        if ($payPlan && $payPlan['change'] > 0.004) {
+            $lines[] = 'Change to give back to the customer: RM '.number_format($payPlan['change'], 2);
         }
 
         $first = $created[0]['orders']->first();

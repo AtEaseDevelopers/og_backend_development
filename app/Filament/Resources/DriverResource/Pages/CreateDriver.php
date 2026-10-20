@@ -8,4 +8,9 @@ use Filament\Resources\Pages\CreateRecord;
 class CreateDriver extends CreateRecord
 {
     protected static string $resource = DriverResource::class;
+
+    protected function afterCreate(): void
+    {
+        DriverResource::syncLorry($this->getRecord());
+    }
 }

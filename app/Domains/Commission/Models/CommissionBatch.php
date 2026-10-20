@@ -42,6 +42,12 @@ class CommissionBatch extends Model
         return $this->hasMany(CommissionSlip::class);
     }
 
+    /** The returned CSNs taken into this batch (returned on or before its cutoff date). */
+    public function csns(): HasMany
+    {
+        return $this->hasMany(CommissionBatchCsn::class);
+    }
+
     public function isDraft(): bool
     {
         return $this->status === 'draft';

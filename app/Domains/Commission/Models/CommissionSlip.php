@@ -67,4 +67,27 @@ class CommissionSlip extends Model
     {
         return $this->hasOne(CommissionPurchaseOrder::class);
     }
+
+    /**
+     * What each driver earned on this (lorry's) PO: driver name → RM, from its visible lines.
+     *
+     * @return array<string, float>
+     */
+    public function driverBreakdown(): array
+    {
+        return $this->lines()
+            ->where('is_hidden', false)
+            ->with('driver:id,name')
+            ->get()
+            ->groupBy(fn ($line) => $line->driver?->name ?? 'Driver removed')
+            ->map(fn ($lines) => round((float) $lines->sum('amount'), 2))
+            ->sortKeys()
+            ->all();
+    }
+
+    /** "Ali RM 120.00 · Ahmad RM 80.00" */
+    public function driverBreakdownText(): string
+    {
+        return collect($this->driverBreakdown())->map(fn (float $amount, string $name) => $name.' RM '.number_format($amount, 2))->implode(' · ');
+    }
 }

@@ -6,6 +6,7 @@ use App\Domains\MasterData\Models\Customer;
 use App\Domains\MasterData\Models\Lead;
 use App\Domains\Quotation\Models\Quote;
 use App\Enums\OrderType;
+use App\Enums\ServiceType;
 use App\Filament\Resources\LeadResource;
 use App\Filament\Resources\QuoteResource;
 use App\Support\CurrentCompany;
@@ -47,9 +48,16 @@ class CreateQuotation extends CreateOrder
                 'party' => $quote->customer_id ? 'customer:'.$quote->customer_id : ($quote->lead_id ? 'lead:'.$quote->lead_id : ''),
                 'quote_date' => $quote->quote_date?->toDateString() ?? today()->toDateString(),
             ]);
-            $this->pairs = array_map(fn (array $pair) => array_merge($this->pairTemplate(), $pair, [
-                'items' => array_map(fn (array $item) => array_merge($this->itemTemplate(), $item), $pair['items'] ?? [$this->itemTemplate()]),
-            ]), (array) ($quote->pairs ?: [$this->pairTemplate()]));
+            // one product per row (an older quotation's block of several products becomes one row each)
+            $rows = [];
+
+            foreach ((array) ($quote->pairs ?: [$this->pairTemplate()]) as $pair) {
+                foreach (($pair['items'] ?? []) ?: [$this->itemTemplate()] as $item) {
+                    $rows[] = array_merge($this->pairTemplate(), $pair, ['items' => [array_merge($this->itemTemplate(), $item)]]);
+                }
+            }
+
+            $this->pairs = $rows;
             $this->orders = [$this->snapshotActive()];
         }
     }
@@ -98,6 +106,27 @@ class CreateQuotation extends CreateOrder
             'lead_id' => '',
             'quote_date' => today()->toDateString(),
         ];
+    }
+
+    /**
+     * The price list's minimum charge of a product row (user, 21 Oct 2026): with a pickup location the goods are
+     * collected, so the pick-up minimum applies (e.g. RM 250); without one only the drop-off / construction site
+     * minimums do. The highest applies; a row below it is topped up.
+     */
+    public function pairMinimum(int $index, array $lineTotals): ?array
+    {
+        if (! isset($this->pairs[$index])) {
+            return null;
+        }
+
+        $service = $this->pairs[$index]['service_type'] ?? null;
+        $this->pairs[$index]['service_type'] = filled($this->pairs[$index]['from_location_id'] ?? null) ? ServiceType::Pickup->value : ServiceType::Store->value;
+
+        try {
+            return parent::pairMinimum($index, $lineTotals);
+        } finally {
+            $this->pairs[$index]['service_type'] = $service;
+        }
     }
 
     /** One quotation per page. */
@@ -235,10 +264,11 @@ class CreateQuotation extends CreateOrder
         return array_merge($rules, [
             'form.party' => ['required', 'regex:/^(customer|lead):\d+$/'],
             'form.quote_date' => 'required|date',
-            // the order made from the quotation shows its prices only with a salesperson
-            'form.salesperson_id' => 'required|exists:users,id',
-            // the customer's DO number may not be known yet when quoting
+            // no salesperson and no DO number on a quotation (user, 21 Oct 2026)
+            'form.salesperson_id' => 'nullable|exists:users,id',
             'pairs.*.customer_do_number' => 'nullable|string|max:100',
+            // each product's drop-off location: its price list price, and its special price once accepted
+            'pairs.*.to_location_id' => 'required|exists:locations,id',
         ]);
     }
 
@@ -246,7 +276,8 @@ class CreateQuotation extends CreateOrder
     {
         return parent::orderValidationMessages() + [
             'form.party.required' => 'Select a customer or a lead (or create a new lead).',
-            'form.salesperson_id.required' => 'Select the salesperson of this quotation.',
+            'pairs.*.to_location_id.required' => 'Select the drop-off location.',
+            'pairs.*.items.*.item_name.required' => 'Select the product.',
         ];
     }
 

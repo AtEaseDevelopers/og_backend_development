@@ -438,7 +438,12 @@
                                 @endif
                                 @if ($show('next'))
                                 <td>
-                                    <a href="{{ $row['next_url'] }}" class="ow-next">{{ $row['next_step'] }} →</a>
+                                    @if ($row['ready_for_csn'] ?? false)
+                                        {{-- a Store order: the goods are at the store → its CSN is created --}}
+                                        <button type="button" wire:click="mountAction('readyForCsn', { order: {{ $row['id'] }} })" class="ow-next" style="background:none;border:0;padding:0;cursor:pointer">Ready for CSN →</button>
+                                    @else
+                                        <a href="{{ $row['next_url'] }}" class="ow-next">{{ $row['next_step'] }} →</a>
+                                    @endif
                                 </td>
                                 @endif
                                 <td class="ow-td-toggle"></td>

@@ -24,6 +24,12 @@ class Lorry extends Model
         ];
     }
 
+    /** Insurance, road tax, service, … (Fleet → Vehicle Maintenance). */
+    public function maintenanceRecords(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(VehicleMaintenanceRecord::class);
+    }
+
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);

@@ -58,6 +58,10 @@
         .ow-page .ow-icon-btn:hover, .ow-page .ow-icon-btn:focus-visible { color: var(--ow-link); border-color: var(--ow-link); outline: none; }
         .ow-page .ow-icon-btn svg { width: 1rem; height: 1rem; }
         /* product row: photos (small tiles, click to view) and the price keyed in when there is no rate */
+        .ow-page .ow-pay-split { margin-top: .75rem; padding: .75rem .9rem; border: 1px solid var(--ow-line); border-radius: .6rem; }
+        .ow-page .ow-pay-split-sum { margin-top: .5rem; text-align: right; font-size: .85rem; font-weight: 600; }
+        .ow-page .ow-pay-change { margin-top: .75rem; padding: .6rem .9rem; border-radius: .6rem; background: rgb(240 253 244); border: 1px solid rgb(187 247 208); color: rgb(22 101 52); }
+        .dark .ow-page .ow-pay-change { background: rgb(34 197 94 / .12); border-color: rgb(34 197 94 / .35); color: rgb(134 239 172); }
         .ow-page .ow-product-pick { display: grid; grid-template-columns: minmax(7.5rem, 9rem) minmax(0, 1fr); gap: .4rem; }
         .ow-page .ow-dims { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .4rem; margin-top: .45rem; }
         .ow-page .ow-dim { display: grid; gap: .15rem; font-size: .7rem; color: var(--ow-muted); }
@@ -145,6 +149,9 @@
             $productKinds = $this->productKinds();
             $measurementOptions = $this->measurementOptions();
             $kindOptions = ['item' => $this->kindProductOptions('item'), 'lorry' => $this->kindProductOptions('lorry')];
+            // saved consignors / consignees (Master Data → Consignor / Consignee): the customer's tagged ones first
+            $savedConsignors = $isQuote ? ['tagged' => [], 'others' => []] : $this->savedParties('consignor');
+            $savedConsignees = $isQuote ? ['tagged' => [], 'others' => []] : $this->savedParties('consignee');
             $addresses = $this->addressOptions();
             $customerName = $this->customerName();
         @endphp
@@ -185,7 +192,13 @@
                     </div>
                 @else
                     <div class="ow-field ow-field-lead">
-                        <label>Customer <span class="ow-req">*</span></label>
+                        <label class="ow-label-row">
+                            <span>Customer <span class="ow-req">*</span></span>
+                            @if ($headerEditable)
+                                {{-- a customer without a record yet: "+ New customer" adds one and picks it --}}
+                                <button type="button" wire:click="mountAction('createCustomer', { order: {{ $oi }} })" class="ow-btn-link">+ New customer</button>
+                            @endif
+                        </label>
                         <select wire:model.live="orders.{{ $oi }}.form.customer_id" class="ow-select" @disabled(! $headerEditable)>
                             <option value="">— Select customer —</option>
                             @foreach ($this->customerOptions() as $id => $label)
@@ -231,8 +244,9 @@
                         @error($ep.'form.quote_date')<div class="ow-field-error">{{ $message }}</div>@enderror
                     </div>
                 @endif
+                @unless ($isQuote)
                 <div class="ow-field">
-                    <label>Salesperson @if ($isQuote)<span class="ow-req">*</span>@endif</label>
+                    <label>Salesperson</label>
                     <select wire:model.live="orders.{{ $oi }}.form.salesperson_id" class="ow-select" @disabled(! $this->salespersonEditable())>
                         @if ($this->allowNoSalesperson())
                             <option value="">— No salesperson yet —</option>
@@ -243,10 +257,11 @@
                     </select>
                     @error($ep.'form.salesperson_id')<div class="ow-field-error">{{ $message }}</div>@enderror
                 </div>
+                @endunless
             </div>
             <p class="ow-note" style="margin-top:.75rem">
                 @if ($isQuote)
-                    The default price of each product is filled in and can be changed: the price quoted. When the customer agrees, tick this quotation on the quotation list and use <strong>Create order</strong>; the quoted prices become the customer's special prices. A lead becomes a customer then.
+                    The default price of each product is filled in and can be changed: the price quoted. When the customer agrees, use <strong>Accept by customer</strong> on the quotation list: the quoted prices become the customer's special prices (a lead becomes a customer then). The order is created afterwards with these prices.
                 @elseif ($editing)
                     @if (! $headerEditable)
                         Customer, billing address, received through and payment term are locked because a record of this order is already confirmed. Use <strong>Change payment term</strong> on the order page for the payment term.
@@ -267,6 +282,9 @@
             </p>
         </div>
 
+        @if ($isQuote)
+            @include('filament.pages.partials.quote-products')
+        @else
         {{-- 2. Consignor & consignee blocks --}}
         @foreach ($pairs as $i => $pair)
             @php $locked = $this->isPairLocked($i); @endphp
@@ -327,6 +345,7 @@
                                 @endforeach
                             </div>
                         </div>
+                        @include('filament.pages.partials.saved-party-select', ['role' => 'consignor', 'parties' => $savedConsignors, 'model' => "orders.{$oi}.pairs.{$i}.consignor_party_id"])
                         <div class="ow-field">
                             <div class="ow-label-row">
                                 <label for="{{ $fieldId }}-consignor">Consignor (optional)</label>
@@ -433,6 +452,7 @@
                         <div class="ow-party-head">
                             <div class="ow-party-title">Consignee (drop-off)</div>
                         </div>
+                        @include('filament.pages.partials.saved-party-select', ['role' => 'consignee', 'parties' => $savedConsignees, 'model' => "orders.{$oi}.pairs.{$i}.consignee_party_id"])
                         <div class="ow-field">
                             <label for="{{ $fieldId }}-consignee">Consignee (optional)</label>
                             <input id="{{ $fieldId }}-consignee" type="text" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.consignee_name" class="ow-input" autocomplete="off">
@@ -514,7 +534,7 @@
                         </thead>
                         <tbody>
                             @foreach ($pair['items'] as $j => $item)
-                                @php $fixedItem = ($item['line_type'] ?? 'uom') === 'item' || (filled($item['item_name'] ?? null) && ! array_key_exists((string) ($item['catalog_key'] ?? ''), $productOptions)); @endphp
+                                @php $fixedItem = blank($item['kind'] ?? null) && (($item['line_type'] ?? 'uom') === 'item' || (filled($item['item_name'] ?? null) && ! array_key_exists((string) ($item['catalog_key'] ?? ''), $productOptions))); @endphp
                                 <tr wire:key="ow-o{{ $oi }}-pair-{{ $i }}-item-{{ $j }}">
                                     <td style="min-width:22rem">
                                         @if ($fixedItem)
@@ -623,7 +643,11 @@
                                                 <span>RM</span>
                                                 <input type="text" inputmode="decimal" autocomplete="off" x-on:input="const v = $el.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'); if (v !== $el.value) $el.value = v" x-on:blur="const n = parseFloat($el.value); if ($el.value.trim() !== '' && ! isNaN(n) && $el.value !== n.toFixed(2)) { $el.value = n.toFixed(2); $el.dispatchEvent(new Event('input')) }" wire:model.live.debounce.500ms="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.manual_price" class="ow-input ow-price-input" placeholder="0.00" aria-label="Unit price for {{ $item['item_name'] }}" @disabled($locked)>
                                             </label>
-                                            <div class="ow-price-hint ow-price-diff">No rate for this location · key in the price</div>
+                                            <div class="ow-price-hint ow-price-diff">{{ match (true) {
+                                                ($item['no_band'] ?? false) => 'No size band fits · key in the price',
+                                                ($item['kind'] ?? '') === 'measurement' && blank($item['catalog_key'] ?? null) => 'Enter L, W, H and weight for the list price, or key in the price',
+                                                default => 'No rate for this location · key in the price',
+                                            } }}</div>
                                             @if ($item['available'] ?? null)<div class="ow-price-hint">Rated: {{ $item['available'] }}</div>@endif
                                             @error($ep.'pairs.'.$i.'.items.'.$j.'.manual_price')<div class="ow-field-error">{{ $message }}</div>@enderror
                                         @else
@@ -698,6 +722,7 @@
                 <button type="button" wire:click="inOrder({{ $oi }}, 'addPair')" class="ow-btn">+ Add another consignor &amp; consignee</button>
             </div>
         @endif
+        @endif
 
         </div>
         @endforeach
@@ -728,8 +753,16 @@
             </div>
         @endif
 
+        @if ($isQuote)
+            @php $quoteTotal = collect($pageOrders)->sum(fn ($o) => (float) ($o['summary']['total'] ?? 0)); @endphp
+            <div class="ow-card ow-card-pad" style="display:flex;align-items:center;justify-content:space-between;gap:1rem">
+                <div class="ow-card-title" style="margin:0">Quotation total</div>
+                <div style="font-size:1.25rem;font-weight:700">RM {{ number_format($quoteTotal, 2) }}</div>
+            </div>
+        @endif
+
         {{-- amount summary: every order of the page and the total of all --}}
-        @unless ($editing)
+        @unless ($editing || $isQuote)
             @php $grand = collect($pageOrders)->filter(fn ($o) => ($o['summary']['priced'] ?? false))->sum(fn ($o) => (float) ($o['summary']['total'] ?? 0)); @endphp
             <div class="ow-card ow-card-pad">
                 <div class="ow-card-title">{{ $isQuote ? 'Quotation amount' : 'Amount summary' }}</div>
@@ -793,7 +826,7 @@
             <div class="ow-card ow-card-pad">
                 <div class="ow-card-title">Payment</div>
                 @if ($paying->isEmpty())
-                    <p class="ow-note">Tick <strong>Pay now</strong> for each order paid now. Their Cash consignor &amp; consignee records are confirmed for the customer, paid in full, and their Cash Bill and CSN are created on save.</p>
+                    <p class="ow-note">Tick <strong>Pay now</strong> for each order paid now. Their Cash consignor &amp; consignee records are confirmed for the customer and paid; fully paid, their Cash Bill and CSN are created on save.</p>
                 @else
                     <div class="ow-pay-list">
                         @foreach ($paying as $order)
@@ -802,6 +835,48 @@
                         <strong class="ow-pay-total">Total RM {{ number_format((float) $paying->sum(fn ($o) => ($o['summary']['priced'] ?? false) ? (float) ($o['summary']['cash_total'] ?? 0) : 0), 2) }}</strong>
                     </div>
                     @error('payment.record')<div class="ow-field-error">{{ $message }}</div>@enderror
+                    @php $payPlan = $this->paymentPlan(); @endphp
+                    {{-- the amount received: blank = in full; less = split over the orders (partial); more = change --}}
+                    <div class="ow-fgrid" style="margin-top:.85rem">
+                        <div class="ow-field">
+                            <label>Amount received (RM)</label>
+                            <input type="text" inputmode="decimal" autocomplete="off" wire:model.live.debounce.500ms="payment.amount_received" x-on:input="const v = $el.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'); if (v !== $el.value) $el.value = v" class="ow-input" placeholder="{{ number_format($payPlan['total'], 2, '.', '') }}">
+                            <div class="ow-note">Blank = the full amount (RM {{ number_format($payPlan['total'], 2) }}).</div>
+                            @error('payment.amount_received')<div class="ow-field-error">{{ $message }}</div>@enderror
+                        </div>
+                    </div>
+                    @if (! $payPlan['full'] && $payPlan['received'] > 0)
+                        <div class="ow-pay-split">
+                            <div class="ow-note">Received <strong>RM {{ number_format($payPlan['received'], 2) }}</strong> of RM {{ number_format($payPlan['total'], 2) }}: enter how much goes to each order. An order paid less than its total is a partial payment: it stays <strong>Pending payment</strong> (no CSN yet).</div>
+                            <table class="ow-price-table" style="margin-top:.4rem">
+                                <thead><tr><th>Order</th><th class="ow-num">Cash total</th><th class="ow-num">Paying (RM)</th></tr></thead>
+                                <tbody>
+                                    @foreach ($paying as $order)
+                                        @php $payKey = 'o'.$order['index']; $payDue = (float) ($order['summary']['cash_total'] ?? 0); $payAmt = $payPlan['amounts'][$payKey] ?? 0; @endphp
+                                        <tr wire:key="ow-pay-split-{{ $order['index'] }}">
+                                            <td><span class="ow-order-dot" style="--ow-order-color: {{ $order['color'] }}" aria-hidden="true"></span> Order {{ $order['number'] }} · {{ $order['summary']['customer'] ?? '—' }}</td>
+                                            <td class="ow-num">RM {{ number_format($payDue, 2) }}</td>
+                                            <td class="ow-num" style="width:11rem">
+                                                <input type="text" inputmode="decimal" autocomplete="off" wire:model.live.debounce.500ms="payment.allocations.{{ $payKey }}" x-on:input="const v = $el.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'); if (v !== $el.value) $el.value = v" class="ow-input ow-price-input" aria-label="Paying for order {{ $order['number'] }}">
+                                                @if ($payPlan['errors'][$payKey] ?? null)
+                                                    <div class="ow-field-error">{{ $payPlan['errors'][$payKey] }}</div>
+                                                @elseif ($payAmt > 0 && $payAmt < $payDue - 0.004)
+                                                    <div class="ow-price-hint">partial · RM {{ number_format($payDue - $payAmt, 2) }} left</div>
+                                                @elseif ($payAmt <= 0)
+                                                    <div class="ow-price-hint">not paid now</div>
+                                                @endif
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                            <div @class(['ow-pay-split-sum', 'ow-price-diff' => abs($payPlan['left']) >= 0.005])>
+                                Given RM {{ number_format($payPlan['allocated'], 2) }}{{ abs($payPlan['left']) >= 0.005 ? ' · RM '.number_format(abs($payPlan['left']), 2).($payPlan['left'] > 0 ? ' still to give' : ' too much') : ' · all of it given' }}
+                            </div>
+                        </div>
+                    @elseif ($payPlan['change'] > 0.004)
+                        <div class="ow-pay-change">Change to give back to the customer: <strong>RM {{ number_format($payPlan['change'], 2) }}</strong></div>
+                    @endif
                     <div class="ow-fgrid" style="margin-top:.85rem">
                         <div class="ow-field">
                             <label>Payment method <span class="ow-req">*</span></label>
