@@ -7,7 +7,11 @@
     .csp-table th { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: rgb(100 116 139); background: rgb(248 250 252); font-weight: 600; white-space: nowrap; }
     .csp-table td.csp-num, .csp-table th.csp-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .csp-table td:first-child { min-width: 16rem; }
-    .csp-table td:nth-child(7) { white-space: nowrap; }
+    .csp-table td:nth-child(4), .csp-table td:nth-child(6) { white-space: nowrap; }
+    .csp-range { font-variant-numeric: tabular-nums; color: rgb(4 120 87); font-weight: 600; }
+    .csp-group { font-size: .85rem; font-weight: 600; margin: 1rem 0 .5rem; color: rgb(15 23 42); }
+    .dark .csp-range { color: rgb(110 231 183); }
+    .dark .csp-group { color: rgb(241 245 249); }
     .csp-table tbody tr:last-child td { border-bottom: 0; }
     .csp-table tbody tr:hover td { background: rgb(248 250 252); }
     .csp-product { font-weight: 600; color: rgb(15 23 42); }
@@ -27,50 +31,50 @@
 @if ($rows === [])
     <p class="text-sm text-gray-500 dark:text-gray-400">No special price for this customer. The default price applies.</p>
 @else
-    <div class="csp-wrap">
-        <table class="csp-table">
-            <thead>
-                <tr>
-                    <th>Product</th>
-                    <th>Destination</th>
-                    <th>Drop-off type</th>
-                    <th class="csp-num">Quantity</th>
-                    <th class="csp-num">Price</th>
-                    <th>Minimum charge</th>
-                    <th>Effective</th>
-                    <th>From</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach ($rows as $row)
+    @foreach (collect($rows)->groupBy('category_label') as $label => $group)
+        <div class="csp-group">{{ $label }} · {{ $group->count() }} {{ \Illuminate\Support\Str::plural('price row', $group->count()) }}</div>
+        <div class="csp-wrap">
+            <table class="csp-table">
+                <thead>
                     <tr>
-                        <td>
-                            <div class="csp-product">{{ $row['product'] }}</div>
-                            @if ($row['kind'] !== 'Product')
-                                <div class="csp-sub">{{ $row['kind'] }}</div>
-                            @endif
-                        </td>
-                        <td>
-                            {{ $row['destination'] }}
-                            @if ($row['pickup'])
-                                <div class="csp-sub">Pick-up: {{ $row['pickup'] }}</div>
-                            @endif
-                        </td>
-                        <td>{{ $row['drop_off'] }}</td>
-                        <td class="csp-num">{{ $row['quantity'] }}</td>
-                        <td class="csp-num"><span class="csp-price">RM {{ number_format($row['price'], 2) }}</span></td>
-                        <td>
-                            @forelse ($row['minimums'] as $minimum)
-                                <div class="csp-sub" style="margin-top:0">{{ $minimum }}</div>
-                            @empty
-                                <span class="csp-sub">—</span>
-                            @endforelse
-                        </td>
-                        <td>{{ $row['effective'] ?? '—' }}</td>
-                        <td>{{ $row['source'] }}</td>
+                        <th>Product</th>
+                        <th>Drop-off location</th>
+                        <th>Drop-off type</th>
+                        <th>Quantity → price per unit</th>
+                        <th>Minimum charge</th>
+                        <th>Effective</th>
+                        <th>From</th>
                     </tr>
-                @endforeach
-            </tbody>
-        </table>
-    </div>
+                </thead>
+                <tbody>
+                    @foreach ($group as $row)
+                        <tr>
+                            <td><div class="csp-product">{{ $row['product'] ?? '—' }}</div></td>
+                            <td>
+                                {{ $row['location'] ?? '—' }}
+                                @if ($row['pickup_location'])
+                                    <div class="csp-sub">Pick-up: {{ $row['pickup_location'] }}</div>
+                                @endif
+                            </td>
+                            <td>{{ $row['drop_off'] }}</td>
+                            <td>
+                                @foreach ($row['ranges'] as $range)
+                                    <div class="csp-range">{{ $range }}</div>
+                                @endforeach
+                            </td>
+                            <td>
+                                @forelse ($row['minimums'] as $minimum)
+                                    <div class="csp-sub" style="margin-top:0">{{ $minimum }}</div>
+                                @empty
+                                    <span class="csp-sub">—</span>
+                                @endforelse
+                            </td>
+                            <td>{{ $row['effective'] ?? '—' }}</td>
+                            <td>{{ $row['from'] }}</td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+    @endforeach
 @endif

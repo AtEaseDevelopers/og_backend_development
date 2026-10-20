@@ -7,7 +7,16 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Uom extends Model
 {
-    /** A product of the client's price list is one size / weight band of an item (category measurement | item). */
+    public const MEASUREMENT = 'measurement';
+
+    public const ITEM = 'item';
+
+    /** A chartered lorry trip (user, 21 Oct 2026: lorries are products too, priced per destination like the others). */
+    public const LORRY = 'lorry';
+
+    public const CATEGORIES = [self::MEASUREMENT => 'Measurement', self::ITEM => 'Item', self::LORRY => 'Chartered Lorry'];
+
+    /** A product of the client's price list is one size / weight band of an item (category measurement | item | lorry). */
     protected $fillable = [
         'code', 'name', 'is_active', 'category', 'sub_category', 'base_item',
         'min_lwh', 'max_lwh', 'min_length', 'max_length', 'max_width', 'max_height', 'min_weight', 'max_weight',

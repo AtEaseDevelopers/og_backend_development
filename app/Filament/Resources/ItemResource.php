@@ -21,6 +21,9 @@ class ItemResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-cube';
 
+    // Master Data → Items lists the Item category products now (ItemProductResource, user 21 Oct 2026)
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?string $navigationGroup = 'Master Data';
 
     protected static ?int $navigationSort = 5;

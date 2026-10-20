@@ -2,10 +2,12 @@
 
 namespace App\Filament\Resources;
 
-use App\Domains\MasterData\Models\CharteredLorryRate;
 use App\Domains\MasterData\Models\Customer;
+use App\Domains\MasterData\Models\Uom;
 use App\Domains\MasterData\Models\UomRateTier;
 use App\Enums\DropOffType;
+use App\Support\UomPriceRows;
+use Illuminate\Support\Carbon;
 use App\Filament\Resources\CustomerResource\Pages;
 use App\Filament\Resources\CustomerResource\Schemas\CustomerForm;
 use Filament\Forms\Form;
@@ -86,76 +88,61 @@ class CustomerResource extends Resource
         ]);
     }
 
+    /** The customer's special price rows (one per product and condition, as the price list template's rows). */
     public static function specialPriceCount(Customer $customer): int
     {
-        $code = trim((string) $customer->code);
-
-        return $code === '' ? 0 : UomRateTier::query()->where('customer_code', $code)->count()
-            + CharteredLorryRate::query()->where('customer_code', $code)->count();
+        return count(static::specialPrices($customer));
     }
 
     /**
-     * The customer's special prices (by debtor code): products per destination and quantity range, and chartered
-     * lorries per destination.
+     * The customer's special prices (by debtor code), as the price list template lays them out: per product, one row
+     * per condition (drop-off location and type, pickup location, minimum charges, dates) with its quantity ranges.
+     * Same products and conditions as the default price; only the price is the customer's.
      *
-     * @return list<array{product: string, kind: string, destination: string, pickup: ?string, drop_off: string, quantity: string, price: float, minimums: list<string>, effective: ?string, source: string}>
+     * @return list<array<string, mixed>>
      */
     public static function specialPrices(Customer $customer): array
     {
+        static $cache = [];
         $code = trim((string) $customer->code);
 
         if ($code === '') {
             return [];
         }
 
-        $money = fn ($value) => 'RM '.number_format((float) $value, 2);
-        $effective = fn ($row) => match (true) {
-            $row->effective_from && $row->expires_on => $row->effective_from->format('d/m/Y').' – '.$row->expires_on->format('d/m/Y'),
-            (bool) $row->effective_from => 'From '.$row->effective_from->format('d/m/Y'),
-            (bool) $row->expires_on => 'Until '.$row->expires_on->format('d/m/Y'),
-            default => null,
-        };
-        // "<file> · <debtor code> row N" = the price-list import; "Quotation Q00003" = an accepted quotation
-        $source = fn (?string $value) => str_starts_with((string) $value, 'Quotation') ? (string) $value : 'Special price list';
-        $dropOff = fn (?string $value) => DropOffType::tryFrom((string) $value)?->getLabel() ?? DropOffType::Default->getLabel();
+        return $cache[$code] ??= collect(UomPriceRows::fromTiers(
+            UomRateTier::query()->where('customer_code', $code)->with(['uom:id,name,category', 'location:id,name'])->get()
+        ))->map(function (array $row): array {
+            $uom = Uom::query()->find($row['uom_id'], ['id', 'category']);
+            $category = $uom?->category ?: Uom::MEASUREMENT;
+            $money = fn ($value) => 'RM '.number_format((float) $value, 2);
 
-        $products = UomRateTier::query()->where('customer_code', $code)->with(['uom:id,name', 'location:id,name'])->get()
-            ->map(fn (UomRateTier $tier) => [
-                'product' => (string) ($tier->uom?->name ?? '—'),
-                'kind' => 'Product',
-                'destination' => (string) ($tier->location?->name ?? '—'),
-                'pickup' => filled($tier->pickup_location) ? (string) $tier->pickup_location : null,
-                'drop_off' => $dropOff($tier->drop_off_type),
-                'quantity' => $tier->rangeLabel(),
-                'price' => (float) $tier->price,
+            return $row + [
+                'category' => $category,
+                'category_label' => Uom::CATEGORIES[$category] ?? 'Measurement',
+                'drop_off' => DropOffType::tryFrom((string) $row['drop_off_type'])?->getLabel() ?? DropOffType::Default->getLabel(),
+                'ranges' => UomPriceRows::rangeLines($row),
                 'minimums' => array_values(array_filter([
-                    $tier->pickup_min_charge !== null ? 'Pick-up '.$money($tier->pickup_min_charge) : null,
-                    $tier->construction_min_charge !== null ? 'Construction site '.$money($tier->construction_min_charge) : null,
-                    $tier->drop_off_min_charge !== null ? 'Drop-off '.$money($tier->drop_off_min_charge) : null,
+                    $row['pickup_min_charge'] !== null ? 'Pick-up '.$money($row['pickup_min_charge']) : null,
+                    $row['construction_min_charge'] !== null ? 'Construction site '.$money($row['construction_min_charge']) : null,
+                    $row['drop_off_min_charge'] !== null ? 'Drop-off '.$money($row['drop_off_min_charge']) : null,
                 ])),
-                'effective' => $effective($tier),
-                'source' => $source($tier->source),
-                'sort' => [(string) $tier->location?->name, (string) $tier->uom?->name, (float) $tier->min_qty],
-            ]);
-
-        $lorries = CharteredLorryRate::query()->where('customer_code', $code)->with(['charteredLorry:id,name', 'location:id,name'])->get()
-            ->map(fn (CharteredLorryRate $rate) => [
-                'product' => (string) ($rate->charteredLorry?->name ?? '—'),
-                'kind' => 'Chartered lorry',
-                'destination' => (string) ($rate->location?->name ?? '—'),
-                'pickup' => filled($rate->pickup_location) ? (string) $rate->pickup_location : null,
-                'drop_off' => $dropOff($rate->drop_off_type),
-                'quantity' => 'Per trip',
-                'price' => (float) $rate->price,
-                'minimums' => [],
-                'effective' => $effective($rate),
-                'source' => $source($rate->source),
-                'sort' => [(string) $rate->location?->name, 'zz'.$rate->charteredLorry?->name, 0.0],
-            ]);
-
-        return $products->concat($lorries)
-            ->sortBy([fn ($a, $b) => $a['sort'] <=> $b['sort']])
-            ->map(fn (array $row) => array_diff_key($row, ['sort' => true]))
+                'effective' => match (true) {
+                    filled($row['effective_from']) && filled($row['expires_on']) => Carbon::parse($row['effective_from'])->format('d/m/Y').' – '.Carbon::parse($row['expires_on'])->format('d/m/Y'),
+                    filled($row['effective_from']) => 'From '.Carbon::parse($row['effective_from'])->format('d/m/Y'),
+                    filled($row['expires_on']) => 'Until '.Carbon::parse($row['expires_on'])->format('d/m/Y'),
+                    default => null,
+                },
+                // "<file> · <debtor code> row N" = the price list import; "Quotation Q…" = an accepted quotation
+                'from' => str_starts_with((string) $row['source'], 'Quotation') ? (string) $row['source'] : 'Special price list',
+            ];
+        })
+            ->sortBy([
+                fn (array $a, array $b) => array_search($a['category'], array_keys(Uom::CATEGORIES)) <=> array_search($b['category'], array_keys(Uom::CATEGORIES)),
+                fn (array $a, array $b) => strcmp((string) $a['product'], (string) $b['product']),
+                fn (array $a, array $b) => strcmp((string) $a['location'], (string) $b['location']),
+                fn (array $a, array $b) => strcmp((string) $a['drop_off_type'], (string) $b['drop_off_type']),
+            ])
             ->values()
             ->all();
     }

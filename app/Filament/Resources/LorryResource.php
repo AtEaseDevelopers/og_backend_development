@@ -19,6 +19,10 @@ class LorryResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-truck';
 
+    // Master Data → Lorries lists the Chartered Lorry products now (LorryProductResource, user 21 Oct 2026); this
+    // list stays as the fleet vehicles' lorry sizes (kept in step when a lorry product is saved)
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?string $navigationGroup = 'Master Data';
 
     protected static ?string $navigationLabel = 'Lorries';
@@ -34,7 +38,11 @@ class LorryResource extends Resource
     public static function form(Form $form): Form
     {
         return $form->schema([
-            Forms\Components\Section::make('Chartered lorry details')->schema([
+            // the lorry sizes the fleet vehicles use; a chartered lorry trip's price is set on its UOM product
+            // (Master Data → UOM, category Chartered Lorry, user 21 Oct 2026)
+            Forms\Components\Section::make('Chartered lorry details')
+                ->description('Lorry sizes used by the fleet vehicles. The price of a chartered lorry trip is set in Master Data → UOM (category Chartered Lorry).')
+                ->schema([
                 Forms\Components\TextInput::make('code')
                     ->maxLength(50)
                     ->unique(ignoreRecord: true)
@@ -52,24 +60,6 @@ class LorryResource extends Resource
                     }),
                 Forms\Components\Toggle::make('is_active')->default(true),
             ])->columns(2),
-            Forms\Components\Section::make('Location rates')->schema([
-                Forms\Components\Repeater::make('rates')
-                    ->relationship()
-                    ->schema([
-                        Forms\Components\Select::make('location_id')
-                            ->relationship('location', 'name')
-                            ->searchable()
-                            ->preload()
-                            ->required(),
-                        Forms\Components\TextInput::make('price')
-                            ->numeric()
-                            ->prefix('RM')
-                            ->required(),
-                    ])
-                    ->columns(2)
-                    ->defaultItems(0)
-                    ->columnSpanFull(),
-            ]),
         ]);
     }
 
@@ -79,9 +69,6 @@ class LorryResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('code')->searchable()->sortable(),
                 Tables\Columns\TextColumn::make('name')->searchable()->sortable(),
-                Tables\Columns\TextColumn::make('rates_count')
-                    ->counts('rates')
-                    ->label('Location rates'),
                 Tables\Columns\IconColumn::make('is_active')->boolean(),
             ])
             ->defaultSort('name')

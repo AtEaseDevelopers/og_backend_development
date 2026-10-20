@@ -128,16 +128,10 @@ class PriceListRates
         $branchId ??= CurrentCompany::branchId();
 
         foreach ($code !== null ? [$code, null] : [null] as $customerCode) {
-            // a customer with a special price for the product keeps it whatever drop-off type it is listed for
-            // (the order's type first, then Default); a default price is only used for the type or Default
-            $candidates = $customerCode === null
-                ? $types
-                : array_values(array_unique(array_merge($types, $rows
-                    ->filter(fn ($row) => strcasecmp(trim((string) $row->customer_code), $customerCode) === 0)
-                    ->map(fn ($row) => $row->drop_off_type ?: DropOffType::Default->value)
-                    ->unique()->sort()->values()->all())));
-
-            foreach ($candidates as $candidate) {
+            // the order's drop-off type, then Default: the customer's special price first, else the default price.
+            // A special price listed only for another drop-off type does not apply (user, 21 Oct 2026: e.g. a
+            // customer with Own Company and Others prices gets the default price list for a Default drop-off)
+            foreach ($types as $candidate) {
                 $set = $rows->filter(fn ($row) => ($customerCode === null
                         ? blank($row->customer_code)
                         : strcasecmp(trim((string) $row->customer_code), $customerCode) === 0)

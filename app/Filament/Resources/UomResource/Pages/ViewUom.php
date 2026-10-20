@@ -27,13 +27,30 @@ class ViewUom extends ViewRecord
     {
         return $infolist->schema([
             Infolists\Components\Section::make('UOM details')->schema([
-                Infolists\Components\TextEntry::make('code')->extraAttributes(['style' => 'overflow-wrap:anywhere;word-break:break-all']),
                 Infolists\Components\TextEntry::make('name'),
                 Infolists\Components\IconEntry::make('is_active')->boolean(),
-                Infolists\Components\TextEntry::make('category')->formatStateUsing(fn (?string $state) => $state ? ucfirst($state) : null)->placeholder('—'),
+                Infolists\Components\TextEntry::make('category')->formatStateUsing(fn (?string $state) => $state ? (Uom::CATEGORIES[$state] ?? ucfirst($state)) : null)->placeholder('—'),
                 Infolists\Components\TextEntry::make('sub_category')->placeholder('—'),
                 Infolists\Components\TextEntry::make('base_item')->label('Item')->placeholder('—'),
             ])->columns(3),
+            // the product's limits, as the price list template's columns (Measurement: size and weight; Item: weight)
+            Infolists\Components\Section::make('Size and weight limits')
+                ->visible(fn (Uom $record) => filled($record->category))
+                ->schema([
+                    ...collect([
+                        'min_lwh' => 'Min L+W+H (CM)', 'max_lwh' => 'Max L+W+H (CM)',
+                        'min_length' => 'Min Length, L (CM)', 'max_length' => 'Max Length, L (CM)',
+                        'max_width' => 'Max Width, W (CM)', 'max_height' => 'Max Height, H (CM)',
+                    ])->map(fn (string $label, string $column) => Infolists\Components\TextEntry::make($column)
+                        ->label(fn (Uom $record) => $record->category === Uom::LORRY
+                            ? (['min_length' => 'Min Length (CM)', 'max_length' => 'Max Length (CM)', 'max_width' => 'Max Sides 1 (CM)', 'max_height' => 'Max Sides 2 (CM)'][$column] ?? $label)
+                            : $label)
+                        ->placeholder('—')
+                        ->formatStateUsing(fn ($state) => static::number($state))
+                        ->visible(fn (Uom $record) => in_array($record->category, [Uom::MEASUREMENT, Uom::LORRY], true)))->values()->all(),
+                    Infolists\Components\TextEntry::make('min_weight')->label('Min Weight (KG)')->placeholder('—')->formatStateUsing(fn ($state) => static::number($state)),
+                    Infolists\Components\TextEntry::make('max_weight')->label('Max Weight (KG)')->placeholder('—')->formatStateUsing(fn ($state) => static::number($state)),
+                ])->columns(4),
             Infolists\Components\Section::make('Location rate tiers')
                 ->description('Unit price (RM) by quantity range and location. The default price is used unless the selected customer has a special price; the range that matches the order quantity is applied.')
                 ->schema([
@@ -44,6 +61,11 @@ class ViewUom extends ViewRecord
                         ->columnSpanFull(),
                 ]),
         ]);
+    }
+
+    private static function number(mixed $value): string
+    {
+        return rtrim(rtrim(number_format((float) $value, 2, '.', ''), '0'), '.');
     }
 
     /**

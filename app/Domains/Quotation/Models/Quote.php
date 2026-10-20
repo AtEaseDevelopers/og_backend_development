@@ -14,7 +14,8 @@ use Illuminate\Support\Facades\DB;
 /**
  * A quotation of Operations → Quotation (user, 20 Oct 2026), on its own table: for a customer or a lead, with the
  * order's section 1 (form) and consignor & consignee blocks (pairs, the Create order shape) and the quoted prices.
- * Pending confirmation until "Create order" makes the order from it (Opened as order).
+ * Pending confirmation until the customer accepts it: then its prices are the customer's special prices
+ * (Accepted, user 21 Oct 2026; the order is created afterwards).
  */
 class Quote extends Model
 {
@@ -22,19 +23,20 @@ class Quote extends Model
 
     public const PENDING = 'pending';
 
-    public const ORDERED = 'ordered';
+    /** The customer accepted it: its prices are the customer's special prices (user, 21 Oct 2026). */
+    public const ACCEPTED = 'accepted';
 
     /** Quotation numbers: Q00001, Q00002, … */
     public const PREFIX = 'Q';
 
     public const STATUSES = [
         self::PENDING => 'Pending confirmation',
-        self::ORDERED => 'Opened as order',
+        self::ACCEPTED => 'Accepted',
     ];
 
     protected $fillable = [
         'company_id', 'branch_id', 'number', 'customer_id', 'lead_id', 'quote_date', 'status', 'accepted_by', 'form', 'pairs',
-        'total_amount', 'order_enquiry_id', 'ordered_at', 'created_by',
+        'total_amount', 'order_enquiry_id', 'ordered_at', 'accepted_at', 'created_by',
     ];
 
     protected function casts(): array
@@ -45,6 +47,7 @@ class Quote extends Model
             'pairs' => 'array',
             'total_amount' => 'decimal:2',
             'ordered_at' => 'datetime',
+            'accepted_at' => 'datetime',
         ];
     }
 
@@ -107,7 +110,7 @@ class Quote extends Model
     public function duplicate(?int $userId = null): self
     {
         return DB::transaction(function () use ($userId) {
-            $copy = $this->replicate(['number', 'status', 'accepted_by', 'order_enquiry_id', 'ordered_at', 'created_by']);
+            $copy = $this->replicate(['number', 'status', 'accepted_by', 'accepted_at', 'order_enquiry_id', 'ordered_at', 'created_by']);
             $copy->fill([
                 'number' => self::nextNumber(),
                 'status' => self::PENDING,

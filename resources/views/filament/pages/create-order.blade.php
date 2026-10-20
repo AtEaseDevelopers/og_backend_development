@@ -58,6 +58,13 @@
         .ow-page .ow-icon-btn:hover, .ow-page .ow-icon-btn:focus-visible { color: var(--ow-link); border-color: var(--ow-link); outline: none; }
         .ow-page .ow-icon-btn svg { width: 1rem; height: 1rem; }
         /* product row: photos (small tiles, click to view) and the price keyed in when there is no rate */
+        .ow-page .ow-product-pick { display: grid; grid-template-columns: minmax(7.5rem, 9rem) minmax(0, 1fr); gap: .4rem; }
+        .ow-page .ow-dims { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .4rem; margin-top: .45rem; }
+        .ow-page .ow-dim { display: grid; gap: .15rem; font-size: .7rem; color: var(--ow-muted); }
+        @media (max-width: 639px) {
+            .ow-page .ow-product-pick { grid-template-columns: minmax(0, 1fr); }
+            .ow-page .ow-dims { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
         .ow-page .ow-item-photos { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
         .ow-page .ow-item-photo { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 2.4rem; height: 2.4rem; border: 1px solid var(--ow-line); border-radius: .4rem; overflow: hidden; background: var(--ow-soft-2); color: var(--ow-muted); font-size: .58rem; font-weight: 700; text-decoration: none; cursor: zoom-in; }
         .ow-page .ow-item-photo:hover, .ow-page .ow-item-photo:focus-visible { border-color: var(--ow-link); outline: none; }
@@ -134,6 +141,10 @@
             // chartered lorries are picked from the same list (one trip each)
             $lorryOptions = $this->catalogOptions('lorry');
             $productOptions = $uomOptions + $lorryOptions;
+            // the product row: type first, then that type's products (a Measurement product with its size and weight)
+            $productKinds = $this->productKinds();
+            $measurementOptions = $this->measurementOptions();
+            $kindOptions = ['item' => $this->kindProductOptions('item'), 'lorry' => $this->kindProductOptions('lorry')];
             $addresses = $this->addressOptions();
             $customerName = $this->customerName();
         @endphp
@@ -511,21 +522,43 @@
                                             <input type="text" class="ow-input" value="{{ $item['item_name'] }}" readonly>
                                             <div class="ow-price-hint">{{ ($item['line_type'] ?? '') === 'lorry' ? 'Lorry type' : (($item['line_type'] ?? '') === 'item' && filled($item['catalog_key'] ?? null) ? 'Transport item' : 'Not in the product list · remove it and pick a product to change it') }}</div>
                                         @else
-                                            <select wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.catalog_key" class="ow-select">
-                                                <option value="">— Select product —</option>
-                                                <optgroup label="Products">
-                                                    @foreach ($uomOptions as $key => $label)
-                                                        <option value="{{ $key }}">{{ $label }}</option>
+                                            @php $kind = $this->itemKind($item); @endphp
+                                            <div class="ow-product-pick">
+                                                <select wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.kind" class="ow-select" aria-label="Product type">
+                                                    <option value="">— Type —</option>
+                                                    @foreach ($productKinds as $value => $label)
+                                                        <option value="{{ $value }}">{{ $label }}</option>
                                                     @endforeach
-                                                </optgroup>
-                                                @if ($lorryOptions !== [])
-                                                    <optgroup label="Chartered lorry (per trip)">
-                                                        @foreach ($lorryOptions as $key => $label)
+                                                </select>
+                                                @if ($kind === 'measurement')
+                                                    <select wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.sub_category" class="ow-select" aria-label="Product">
+                                                        <option value="">— Select product —</option>
+                                                        @foreach ($measurementOptions as $value => $label)
+                                                            <option value="{{ $value }}">{{ $label }}</option>
+                                                        @endforeach
+                                                    </select>
+                                                @elseif ($kind !== '')
+                                                    <select wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.catalog_key" class="ow-select" aria-label="Product">
+                                                        <option value="">— Select {{ $kind === 'lorry' ? 'lorry' : 'item' }} —</option>
+                                                        @foreach ($kindOptions[$kind] ?? [] as $key => $label)
                                                             <option value="{{ $key }}">{{ $label }}</option>
                                                         @endforeach
-                                                    </optgroup>
+                                                    </select>
+                                                @else
+                                                    <select class="ow-select" disabled aria-label="Product"><option>Choose the type first</option></select>
                                                 @endif
-                                            </select>
+                                            </div>
+                                            @if ($kind === 'measurement')
+                                                <div class="ow-dims">
+                                                    @foreach (['length' => 'L (cm)', 'width' => 'W (cm)', 'height' => 'H (cm)', 'weight' => 'Weight (kg)'] as $dim => $dimLabel)
+                                                        <label class="ow-dim">
+                                                            <span>{{ $dimLabel }} <span class="ow-req">*</span></span>
+                                                            <input type="text" inputmode="decimal" autocomplete="off" wire:model.live.debounce.600ms="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.{{ $dim }}" class="ow-input" x-on:input="$el.value = $el.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1')">
+                                                        </label>
+                                                    @endforeach
+                                                </div>
+                                                <div class="ow-price-hint">{{ $this->measurementNote($item) }}</div>
+                                            @endif
                                         @endif
                                         @error($ep.'pairs.'.$i.'.items.'.$j.'.item_name')<div class="ow-field-error">{{ $message }}</div>@enderror
                                     </td>

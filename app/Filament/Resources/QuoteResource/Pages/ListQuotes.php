@@ -12,12 +12,11 @@ use Filament\Actions;
 use Filament\Resources\Pages\ListRecords;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Carbon;
 use Livewire\Attributes\Url;
 
 /**
- * The quotation list with the filter card and day strip of the CSN list (user, 20 Oct 2026): search, quotation
- * date, customer / lead and status; a day of the strip shows only that day's quotations.
+ * The quotation list with the filter card of the CSN list (user, 20 Oct 2026): search, quotation date, customer /
+ * lead and status (the day strip was removed, user 21 Oct 2026).
  */
 class ListQuotes extends ListRecords
 {
@@ -40,9 +39,6 @@ class ListQuotes extends ListRecords
 
     #[Url(as: 'status', except: '')]
     public string $status = '';
-
-    /** First day of the 7-day strip (Y-m-d); blank = today in the middle. */
-    public string $stripStart = '';
 
     public function getTitle(): string
     {
@@ -107,96 +103,6 @@ class ListQuotes extends ListRecords
     public function statusOptions(): array
     {
         return ['' => 'All'] + Quote::STATUSES;
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Quotation date strip (as the CSN list's)
-    |--------------------------------------------------------------------------
-    */
-
-    /** @return list<array{date: string, label: string, count: int, selected: bool, today: bool}> */
-    public function stripDays(): array
-    {
-        $start = $this->stripStartDate();
-        $end = $start->copy()->addDays(6);
-        $counts = $this->applyFilterBar(QuoteResource::getEloquentQuery(), withDate: false)
-            ->whereBetween('quote_date', [$start->toDateString(), $end->toDateString()])
-            ->toBase()
-            ->selectRaw('DATE(quote_date) as day, COUNT(*) as total')
-            ->groupByRaw('DATE(quote_date)')
-            ->pluck('total', 'day');
-        $from = $this->date($this->dateFrom);
-        $to = $this->date($this->dateTo);
-        $today = today()->toDateString();
-
-        return collect(range(0, 6))->map(function (int $offset) use ($start, $counts, $from, $to, $today): array {
-            $day = $start->copy()->addDays($offset);
-            $date = $day->toDateString();
-
-            return [
-                'date' => $date,
-                'label' => $day->format('D j M'),
-                'count' => (int) ($counts[$date] ?? 0),
-                'selected' => ($from !== null || $to !== null) && ($from === null || $date >= $from) && ($to === null || $date <= $to),
-                'today' => $date === $today,
-            ];
-        })->all();
-    }
-
-    /** A day shows only that day; the selected day again clears the date. */
-    public function selectStripDay(string $day): void
-    {
-        if (($day = $this->date($day)) === null) {
-            return;
-        }
-
-        $selected = $this->dateFrom === $day && $this->dateTo === $day;
-        $this->dateFrom = $this->dateTo = $selected ? '' : $day;
-        $this->resetPage();
-    }
-
-    public function shiftStrip(int $days): void
-    {
-        $this->stripStart = $this->stripStartDate()->addDays(max(-31, min(31, $days)))->toDateString();
-    }
-
-    public function stripToday(): void
-    {
-        $this->stripStart = today()->subDays(3)->toDateString();
-    }
-
-    public function clearDate(): void
-    {
-        $this->dateFrom = $this->dateTo = '';
-        $this->resetPage();
-    }
-
-    public function stripRangeLabel(): string
-    {
-        $start = $this->stripStartDate();
-        $end = $start->copy()->addDays(6);
-
-        return match (true) {
-            $start->month === $end->month => $start->format('j').' – '.$end->format('j M Y'),
-            $start->year === $end->year => $start->format('j M').' – '.$end->format('j M Y'),
-            default => $start->format('j M Y').' – '.$end->format('j M Y'),
-        };
-    }
-
-    public function stripShowsToday(): bool
-    {
-        $today = today()->toDateString();
-        $start = $this->stripStartDate();
-
-        return $today >= $start->toDateString() && $today <= $start->copy()->addDays(6)->toDateString();
-    }
-
-    protected function stripStartDate(): Carbon
-    {
-        $start = $this->date($this->stripStart);
-
-        return $start !== null ? Carbon::createFromFormat('!Y-m-d', $start) : today()->subDays(3);
     }
 
     protected function date(?string $value): ?string

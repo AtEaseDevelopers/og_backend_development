@@ -3,8 +3,6 @@
 namespace App\Services\Imports;
 
 use App\Domains\MasterData\Models\Branch;
-use App\Domains\MasterData\Models\CharteredLorry;
-use App\Domains\MasterData\Models\CharteredLorryRate;
 use App\Domains\MasterData\Models\Customer;
 use App\Domains\MasterData\Models\Location;
 use App\Domains\MasterData\Models\Uom;
@@ -22,7 +20,8 @@ use RuntimeException;
  * "Record No."; each row below it is one item to one drop-off location with up to five quantity ranges (A–E).
  *
  *  - Measurement / Item rows → a UOM product per size / weight band ("Carton · L+W+H ≤ 149 cm · L ≤ 60 cm · up to
- *    30 kg") with its rate tiers; Chartered Lorry rows → a chartered lorry with its rate per destination.
+ *    30 kg") with its rate tiers; Chartered Lorry rows → a UOM product of the Chartered Lorry category ("10 FT
+ *    Lorry", user 21 Oct 2026) with its rate tiers, like the others.
  *  - A row with a Customer Code is that customer's special price; without one it is the default price.
  *
  * Re-runnable: the default prices of the file's branches (and the old price list, which had no branch) are replaced
@@ -168,38 +167,41 @@ class ClientPriceListImporter
                 $uomIds[$key] = $uom->id;
             }
 
-            $lorryIds = [];
-
-            foreach ($data['lorries'] as $key => $lorry) {
-                $model = CharteredLorry::query()->whereRaw('lower(name) = ?', [strtolower($lorry['name'])])->first()
-                    ?? new CharteredLorry(['name' => $lorry['name'], 'code' => Str::upper(Str::slug($lorry['name'], '_'))]);
-                $model->fill(['max_weight' => $lorry['max_weight'] ?? $model->max_weight, 'is_active' => true])->save();
-                $lorryIds[$key] = $model->id;
-            }
-
             // replace the prices this file holds: the default prices of its branches (plus those for every branch,
             // i.e. the old price list) and the special prices of its customers
             $hasDefault = collect($data['rates'])->contains(fn ($rate) => $rate['customer_code'] === null);
             $customerCodes = collect($data['rates'])->pluck('customer_code')->filter()->unique()->values()->all();
             $scope = fn ($query) => $query->where(fn ($q) => $q->whereNull('branch_id')->when($branchIds !== [], fn ($q) => $q->orWhereIn('branch_id', $branchIds)));
 
-            foreach ([UomRateTier::class, CharteredLorryRate::class] as $model) {
-                if ($hasDefault) {
-                    $model::query()->whereNull('customer_code')->where($scope)->delete();
+            if ($hasDefault) {
+                UomRateTier::query()->whereNull('customer_code')->where($scope)->delete();
+            }
+
+            // a customer's price agreed in an accepted quotation stays: the file does not replace it
+            $quoted = [];
+
+            if ($customerCodes !== []) {
+                $fromQuotation = fn ($query) => $query->where('source', 'like', 'Quotation %');
+
+                foreach (UomRateTier::query()->whereIn('customer_code', $customerCodes)->where($fromQuotation)->get(['uom_id', 'location_id', 'customer_code']) as $row) {
+                    $quoted[$row->uom_id.'|'.$row->location_id.'|'.strtoupper((string) $row->customer_code)] = true;
                 }
 
-                if ($customerCodes !== []) {
-                    $model::query()->whereIn('customer_code', $customerCodes)->where($scope)->delete();
-                }
+                UomRateTier::query()->whereIn('customer_code', $customerCodes)->where($scope)
+                    ->where(fn ($q) => $q->whereNull('source')->orWhereNot($fromQuotation))
+                    ->delete();
             }
 
             $defaultRates = 0;
             $specialRates = [];
             $now = now();
             $tierRows = [];
-            $lorryRows = [];
 
             foreach ($data['rates'] as $rate) {
+                if ($rate['customer_code'] !== null && isset($quoted[$uomIds[$rate['product']].'|'.$locations[$rate['location']]['id'].'|'.strtoupper($rate['customer_code'])])) {
+                    continue;
+                }
+
                 $common = [
                     'location_id' => $locations[$rate['location']]['id'],
                     'customer_code' => $rate['customer_code'],
@@ -213,20 +215,16 @@ class ClientPriceListImporter
                     'updated_at' => $now,
                 ];
 
-                if ($rate['kind'] === 'lorry') {
-                    $lorryRows[] = $common + ['chartered_lorry_id' => $lorryIds[$rate['product']], 'price' => $rate['tiers'][0]['price']];
-                } else {
-                    foreach ($rate['tiers'] as $tier) {
-                        $tierRows[] = $common + [
-                            'uom_id' => $uomIds[$rate['product']],
-                            'min_qty' => $tier['min'],
-                            'max_qty' => $tier['max'],
-                            'price' => $tier['price'],
-                            'pickup_min_charge' => $rate['pickup_min_charge'],
-                            'construction_min_charge' => $rate['construction_min_charge'],
-                            'drop_off_min_charge' => $rate['drop_off_min_charge'],
-                        ];
-                    }
+                foreach ($rate['tiers'] as $tier) {
+                    $tierRows[] = $common + [
+                        'uom_id' => $uomIds[$rate['product']],
+                        'min_qty' => $tier['min'],
+                        'max_qty' => $tier['max'],
+                        'price' => $tier['price'],
+                        'pickup_min_charge' => $rate['pickup_min_charge'],
+                        'construction_min_charge' => $rate['construction_min_charge'],
+                        'drop_off_min_charge' => $rate['drop_off_min_charge'],
+                    ];
                 }
 
                 if ($rate['customer_code'] === null) {
@@ -240,10 +238,6 @@ class ClientPriceListImporter
                 UomRateTier::query()->insert($chunk);
             }
 
-            foreach (array_chunk($lorryRows, 500) as $chunk) {
-                CharteredLorryRate::query()->insert($chunk);
-            }
-
             // the old price list: products left without any price are no longer offered
             $deactivated = $hasDefault
                 ? Uom::query()->where('is_active', true)->whereNotIn('id', array_values($uomIds))->whereDoesntHave('rateTiers')->update(['is_active' => false])
@@ -255,7 +249,7 @@ class ClientPriceListImporter
             return [
                 'products' => count($uomIds),
                 'products_new' => $productsNew,
-                'lorries' => count($lorryIds),
+                'lorries' => collect($data['products'])->where('category', Uom::LORRY)->count(),
                 'locations_new' => $locationsNew,
                 'default_rates' => $defaultRates,
                 'special_rates' => $specialRates,
@@ -354,15 +348,19 @@ class ClientPriceListImporter
             return;
         }
 
-        if ($kind === 'lorry') {
-            $key = strtolower($item);
-            $result['lorries'][$key] = ['name' => $item, 'max_weight' => $this->number($row['max_weight'] ?? null)];
+        $bands = $this->bands($row);
 
-            if (count($tiers) > 1) {
-                $result['warnings'][] = "{$where}: {$item} has more than one quantity range · only the first is used (one price per trip)";
-            }
+        if ($kind === 'lorry') {
+            // a chartered lorry is a UOM product of the Chartered Lorry category, named as the sheet names it
+            $name = $item;
+            $key = strtolower($name);
+            $result['products'][$key] ??= [
+                'name' => $name,
+                'category' => Uom::LORRY,
+                'sub_category' => 'Chartered Lorry',
+                'base_item' => $item,
+            ] + $bands;
         } else {
-            $bands = $this->bands($row);
             // "Weight * 0.14": priced per kg, the quantity is the weight in kg
             $name = $this->productName($item, $bands).($perKg ? ' (per kg)' : '');
             $key = strtolower($name);
@@ -483,8 +481,8 @@ class ClientPriceListImporter
         return $bands;
     }
 
-    /** "Carton · L+W+H ≤ 149 cm · L ≤ 60 cm · up to 30 kg" */
-    private function productName(string $item, array $bands): string
+    /** "Carton · L+W+H ≤ 149 cm · L ≤ 60 cm · up to 30 kg" (also the UOM form's name for a product left unnamed) */
+    public function productName(string $item, array $bands): string
     {
         $parts = [$item];
         $range = function (?float $min, ?float $max, string $prefix, string $unit): ?string {

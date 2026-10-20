@@ -186,6 +186,134 @@ class CreateOrder extends Page
     public function dehydrate(): void
     {
         $this->stashActive();
+        $this->fillItemKinds();
+    }
+
+    /** Rows of a saved order or quotation: their type (and a measurement product's sub-category) from the product. */
+    protected function fillItemKinds(): void
+    {
+        foreach ($this->orders as $o => $order) {
+            foreach ($order['pairs'] ?? [] as $p => $pair) {
+                foreach ($pair['items'] ?? [] as $i => $item) {
+                    if (filled($item['kind'] ?? null) || blank($item['catalog_key'] ?? null)) {
+                        continue;
+                    }
+
+                    $kind = $this->itemKind($item);
+                    $this->orders[$o]['pairs'][$p]['items'][$i]['kind'] = $kind;
+
+                    if ($kind === Uom::MEASUREMENT && blank($item['sub_category'] ?? null)) {
+                        $this->orders[$o]['pairs'][$p]['items'][$i]['sub_category'] = (string) Uom::query()->whereKey(explode(':', (string) $item['catalog_key'], 2)[1] ?? 0)->value('sub_category');
+                    }
+                }
+            }
+        }
+    }
+
+    /** The product types of the price list (Master Data → UOM, Items and Lorries). @return array<string, string> */
+    public function productKinds(): array
+    {
+        return [Uom::MEASUREMENT => 'Measurement', Uom::ITEM => 'Item', Uom::LORRY => 'Lorry'];
+    }
+
+    /** A row's type: the one chosen, else its product's category. */
+    public function itemKind(array $item): string
+    {
+        if (filled($item['kind'] ?? null)) {
+            return (string) $item['kind'];
+        }
+
+        [$type, $id] = array_pad(explode(':', (string) ($item['catalog_key'] ?? ''), 2), 2, null);
+
+        return match ($type) {
+            'uom' => (string) (Uom::query()->whereKey($id)->value('category') ?: Uom::MEASUREMENT),
+            'chartered' => Uom::LORRY,
+            default => '',
+        };
+    }
+
+    /** Measurement products to choose (their sub-categories: Carton, Pallet, …). @return array<string, string> */
+    public function measurementOptions(): array
+    {
+        return Uom::query()
+            ->whereIn('id', $this->offeredProductIds())
+            ->where('category', Uom::MEASUREMENT)
+            ->whereNotNull('sub_category')
+            ->distinct()
+            ->orderBy('sub_category')
+            ->pluck('sub_category')
+            ->mapWithKeys(fn (string $sub) => [$sub => $sub])
+            ->all();
+    }
+
+    /** Item or Lorry products to choose. @return array<string, string> */
+    public function kindProductOptions(string $kind): array
+    {
+        $options = $kind === Uom::LORRY ? $this->catalogOptions('lorry') : $this->catalogOptions('uom');
+        $ids = Uom::query()->whereIn('id', $this->offeredProductIds())->where('category', $kind)->pluck('id')->all();
+
+        return array_filter($options, fn (string $label, string $key) => in_array((int) (explode(':', $key, 2)[1] ?? 0), $ids, true), ARRAY_FILTER_USE_BOTH);
+    }
+
+    /** The products offered on this page (priced by default, or specially for this customer). @return list<int> */
+    protected function offeredProductIds(): array
+    {
+        return array_map(fn (string $key) => (int) (explode(':', $key, 2)[1] ?? 0), array_keys($this->catalogOptions('uom') + $this->catalogOptions('lorry')));
+    }
+
+    /**
+     * The size band of a Measurement row: the product of its sub-category whose limits the goods' L, W, H and weight
+     * fit (L+W+H, length, width, height and weight ranges of the price list); the tightest band when several fit.
+     */
+    public function measurementProduct(array $item): ?Uom
+    {
+        $sub = trim((string) ($item['sub_category'] ?? ''));
+        $size = array_map(fn (string $dim) => is_numeric($item[$dim] ?? null) ? (float) $item[$dim] : null, ['l' => 'length', 'w' => 'width', 'h' => 'height', 'kg' => 'weight']);
+
+        if ($sub === '' || in_array(null, $size, true)) {
+            return null;
+        }
+
+        $within = fn (float $value, $min, $max) => ($min === null || $value >= (float) $min - 0.0001) && ($max === null || $value <= (float) $max + 0.0001);
+        $lwh = $size['l'] + $size['w'] + $size['h'];
+
+        return Uom::query()
+            ->whereIn('id', $this->offeredProductIds())
+            ->where('category', Uom::MEASUREMENT)
+            ->where('sub_category', $sub)
+            ->get()
+            ->filter(fn (Uom $uom) => $within($lwh, $uom->min_lwh, $uom->max_lwh)
+                && $within($size['l'], $uom->min_length, $uom->max_length)
+                && $within($size['w'], null, $uom->max_width)
+                && $within($size['h'], null, $uom->max_height)
+                && $within($size['kg'], $uom->min_weight, $uom->max_weight))
+            // a per-kg product only when no per-piece band fits; then the tightest size, then weight
+            ->sortBy([
+                fn (Uom $a, Uom $b) => str_ends_with($a->name, '(per kg)') <=> str_ends_with($b->name, '(per kg)'),
+                fn (Uom $a, Uom $b) => ($a->max_lwh === null ? INF : (float) $a->max_lwh) <=> ($b->max_lwh === null ? INF : (float) $b->max_lwh),
+                fn (Uom $a, Uom $b) => ($a->max_weight === null ? INF : (float) $a->max_weight) <=> ($b->max_weight === null ? INF : (float) $b->max_weight),
+            ])
+            ->first();
+    }
+
+    /** The note under a Measurement row's size fields. */
+    public function measurementNote(array $item): string
+    {
+        $sub = trim((string) ($item['sub_category'] ?? ''));
+
+        if ($sub === '') {
+            return 'Choose the product, then enter its size and weight.';
+        }
+
+        $filled = array_filter(['length', 'width', 'height', 'weight'], fn (string $dim) => is_numeric($item[$dim] ?? null));
+
+        if (count($filled) < 4) {
+            return filled($item['item_name'] ?? null) ? 'Size band: '.$item['item_name'].' · enter L, W, H and weight to check it.' : 'Enter L, W, H and weight: the size band they fit sets the price.';
+        }
+
+        return filled($item['item_name'] ?? null)
+            ? 'Size band: '.$item['item_name']
+            : 'No '.$sub.' size band fits '.$item['length'].' × '.$item['width'].' × '.$item['height'].' cm, '.$item['weight'].' kg · check the size or choose another product.';
     }
 
     /** @return array<string, mixed> the working order as it is now */
@@ -782,6 +910,9 @@ class CreateOrder extends Page
     {
         return [
             'line_type' => 'uom', 'catalog_key' => '', 'item_name' => '', 'uom' => '', 'quantity' => 1,
+            // the product type first (Measurement / Item / Lorry, user 21 Oct 2026); a Measurement product is its
+            // sub-category with the goods' size and weight: the size band they fit is the product priced
+            'kind' => '', 'sub_category' => '', 'length' => '', 'width' => '', 'height' => '', 'weight' => '',
             'unit_price' => null, 'tier' => null, 'source' => null, 'available' => null,
             // the unit price box: the special / default price filled in, editable (price_edited once changed)
             'manual_price' => '', 'price_edited' => false,
@@ -1024,6 +1155,38 @@ class CreateOrder extends Page
             } else {
                 $item['price_edited'] = $entered !== null && ($listed === null || abs($entered - (float) $listed) >= 0.005);
             }
+
+            return;
+        }
+
+        if (preg_match('/^(\d+)\.items\.(\d+)\.(kind|sub_category|length|width|height|weight)$/', $key, $m)) {
+            $index = (int) $m[1];
+            $itemIndex = (int) $m[2];
+            $item = &$this->pairs[$index]['items'][$itemIndex];
+
+            if ($m[3] === 'kind') {
+                // another type: the row starts again
+                $item = array_merge($item, [
+                    'line_type' => 'uom', 'catalog_key' => '', 'item_name' => '', 'uom' => '', 'sub_category' => '',
+                    'length' => '', 'width' => '', 'height' => '', 'weight' => '', 'manual_price' => '', 'price_edited' => false,
+                ]);
+            } else {
+                // a Measurement row: the size band its size and weight fit is the product
+                $product = $this->measurementProduct($item);
+                $catalogKey = $product ? 'uom:'.$product->id : '';
+
+                if ($catalogKey !== (string) ($item['catalog_key'] ?? '')) {
+                    $item['price_edited'] = false;
+                    $item['manual_price'] = '';
+                }
+
+                $item['catalog_key'] = $catalogKey;
+                $item['item_name'] = $product?->name ?? '';
+                $item['uom'] = $product?->code ?? '';
+                $item['line_type'] = 'uom';
+            }
+
+            $this->refreshItemPrice($index, $itemIndex);
 
             return;
         }

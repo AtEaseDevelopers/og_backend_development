@@ -44,16 +44,6 @@ class QuotationPricingLookup
                 : ['price' => null, 'source' => null];
         }
 
-        $chartered = CharteredLorry::query()->where('name', $itemName)->first();
-
-        if ($chartered) {
-            $picked = $locationId ? $this->rates->lorryRate($chartered, $locationId, $customerId, $dropOffType) : ['rate' => null, 'special' => false];
-
-            return $picked['rate']
-                ? ['price' => (float) $picked['rate']->price, 'source' => $picked['special'] ? 'special' : 'master']
-                : ['price' => null, 'source' => null];
-        }
-
         // a transport item: its customer special price, else its default rate
         $specialPrice = app(CustomerQuotationPriceHistory::class)->resolveSpecialPrice($customerId, $itemName, $locationName);
 
@@ -84,14 +74,6 @@ class QuotationPricingLookup
             $price = $item->rates()->where('location_id', $locationId)->value('price');
 
             return $price !== null ? (float) $price : null;
-        }
-
-        $chartered = CharteredLorry::query()->where('name', $itemName)->first();
-
-        if ($chartered) {
-            $rate = $this->rates->lorryRate($chartered, $locationId, null, $dropOffType)['rate'];
-
-            return $rate ? (float) $rate->price : null;
         }
 
         $uom = Uom::query()->where('name', $itemName)->first();
@@ -137,10 +119,6 @@ class QuotationPricingLookup
             $options['uom:'.$uom->id] = '[UOM] '.$uom->name;
         });
 
-        CharteredLorry::query()->orderBy('name')->each(function (CharteredLorry $lorry) use (&$options) {
-            $options['chartered:'.$lorry->id] = '[Lorry] '.$lorry->name;
-        });
-
         return $options;
     }
 
@@ -155,18 +133,21 @@ class QuotationPricingLookup
         $code = $this->rates->customerCode($customerId);
         $offered = fn ($query) => $query->where(fn ($q) => $q->whereNull('customer_code')->when($code, fn ($q) => $q->orWhere('customer_code', $code)));
 
+        // chartered lorries are UOM products of the Chartered Lorry category (user, 21 Oct 2026)
         return match ($type) {
-            'lorry' => CharteredLorry::query()
+            'lorry' => Uom::query()
                 ->where('is_active', true)
-                ->where(fn ($q) => $q->whereDoesntHave('rates')->orWhereHas('rates', $offered))
+                ->where('category', Uom::LORRY)
+                ->where(fn ($q) => $q->whereDoesntHave('rateTiers')->orWhereHas('rateTiers', $offered))
                 ->orderBy('name')
                 ->get()
-                ->mapWithKeys(fn (CharteredLorry $lorry) => [
-                    'chartered:'.$lorry->id => $lorry->name,
+                ->mapWithKeys(fn (Uom $uom) => [
+                    'uom:'.$uom->id => $uom->name,
                 ])
                 ->all(),
             'uom' => Uom::query()
                 ->where('is_active', true)
+                ->where(fn ($q) => $q->whereNull('category')->orWhere('category', '!=', Uom::LORRY))
                 ->where(fn ($q) => $q->whereDoesntHave('rateTiers')->orWhereHas('rateTiers', $offered))
                 ->orderBy('name')
                 ->get()
@@ -195,10 +176,6 @@ class QuotationPricingLookup
             };
         }
 
-        if ($itemName && CharteredLorry::query()->where('name', $itemName)->exists()) {
-            return 'lorry';
-        }
-
         if ($itemName && Uom::query()->where('name', $itemName)->exists()) {
             return 'uom';
         }
@@ -210,12 +187,6 @@ class QuotationPricingLookup
     {
         if (! $itemName) {
             return null;
-        }
-
-        $chartered = CharteredLorry::query()->where('name', $itemName)->first();
-
-        if ($chartered) {
-            return 'chartered:'.$chartered->id;
         }
 
         $uom = Uom::query()->where('name', $itemName)->first();
@@ -244,6 +215,7 @@ class QuotationPricingLookup
         return match ($type) {
             'item' => Item::query()->find($id)?->name,
             'uom' => Uom::query()->find($id)?->name,
+            // an older order's chartered lorry (before lorries were UOM products)
             'chartered' => CharteredLorry::query()->find($id)?->name,
             default => null,
         };
