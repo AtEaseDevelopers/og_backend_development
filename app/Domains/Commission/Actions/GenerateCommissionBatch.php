@@ -127,8 +127,9 @@ class GenerateCommissionBatch
                     ->get();
 
                 foreach ($orders as $do) {
-                    // an order with no driver pays the lorry's default driver (the one it would have got when assigned)
-                    $do->driver_id ??= $do->lorry?->default_driver_id;
+                    // the lorry's driver is whoever is its default driver now (user, 21 Oct 2026): drivers change lorries,
+                    // so the batch follows Master Data → Lorries at the time it is generated, not the order's driver
+                    $do->driver_id = $do->lorry?->default_driver_id ?? $do->driver_id;
 
                     foreach ($this->shares->execute($do) as $share) {
                         $slip = $ensureSlip($share['driver_id'], $share['lorry_id']);

@@ -26,12 +26,13 @@ class CommissionBatchReturnedCsnTest extends TestCase
         $admin = User::query()->firstOrFail();
         $branch = Branch::query()->where('code', 'KL')->firstOrFail();
 
-        // a KL order still "assigned", with no driver of its own; its lorry has a default driver
+        // a KL order still "assigned", whose own driver is not the lorry's default driver (drivers change lorries)
         $do = DeliveryOrder::query()->where('status', 'assigned')
             ->whereHas('consignmentNote', fn ($q) => $q->where('source_branch_id', $branch->id))
             ->whereHas('lorry', fn ($q) => $q->whereNotNull('default_driver_id'))
             ->firstOrFail();
-        $do->update(['driver_id' => null]);
+        $other = \App\Domains\MasterData\Models\Driver::query()->whereKeyNot($do->lorry->default_driver_id)->firstOrFail();
+        $do->update(['driver_id' => $other->id]);
         $csn = ConsignmentNote::query()->findOrFail($do->consignment_note_id);
 
         app(RecordReturnedCsn::class)->execute($csn, ['returned_at' => now()], $admin);
