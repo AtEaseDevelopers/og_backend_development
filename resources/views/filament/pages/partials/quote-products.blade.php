@@ -186,17 +186,18 @@
                                                 <input type="text" inputmode="decimal" autocomplete="off" wire:model.live.debounce.600ms="{{ $field }}.special.{{ $minimum }}" class="ow-input" x-on:input="{{ $decimalOnly }}">
                                             </label>
                                         @endforeach
-                                        <label class="ow-dim">
-                                            <span>Effective date</span>
-                                            <input type="date" wire:model.live="{{ $field }}.special.effective_from" class="ow-input">
-                                        </label>
-                                        @if ($columns['expiry'])
-                                            <label class="ow-dim">
-                                                <span>Expiry date</span>
-                                                <input type="date" wire:model.live="{{ $field }}.special.expires_on" class="ow-input">
-                                            </label>
-                                        @endif
                                     </div>
+                                    @php
+                                        // range A always; the others once filled (e.g. the default price's) or added with "+ Add range"
+                                        $special = $item['special'] ?? [];
+                                        $lastFilled = 0;
+                                        foreach (\App\Support\UomPriceRows::RANGES as $n => $letter) {
+                                            if (filled($special["range_{$letter}_from"] ?? null) || filled($special["range_{$letter}_to"] ?? null) || filled($special["range_{$letter}_price"] ?? null)) {
+                                                $lastFilled = $n + 1;
+                                            }
+                                        }
+                                        $shown = min($columns['ranges'], max(1, $lastFilled, (int) ($item['ranges_shown'] ?? 1)));
+                                    @endphp
                                     <table class="ow-ranges">
                                         <thead>
                                             <tr>
@@ -207,7 +208,7 @@
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            @foreach (array_slice(\App\Support\UomPriceRows::RANGES, 0, $columns['ranges']) as $letter)
+                                            @foreach (array_slice(\App\Support\UomPriceRows::RANGES, 0, $shown) as $letter)
                                                 <tr>
                                                     <td>{{ $columns['ranges'] > 1 ? strtoupper($letter) : '' }}</td>
                                                     <td><input type="text" inputmode="decimal" autocomplete="off" wire:model.live.debounce.600ms="{{ $field }}.special.range_{{ $letter }}_from" class="ow-input" x-on:input="{{ $decimalOnly }}"></td>
@@ -219,6 +220,9 @@
                                             @endforeach
                                         </tbody>
                                     </table>
+                                    @if ($shown < $columns['ranges'])
+                                        <div><button type="button" wire:click="inOrder({{ $oi }}, 'showRange', {{ $i }})" class="ow-btn-link">+ Add range {{ strtoupper(\App\Support\UomPriceRows::RANGES[$shown]) }}</button></div>
+                                    @endif
                                     @foreach (collect($errors->keys())->filter(fn ($k) => str_starts_with($k, $ep.'pairs.'.$i.'.items.0.special.') || str_starts_with($k, $ep.'pairs.'.$i.'.items.0.product.')) as $errorKey)
                                         <div class="ow-field-error">{{ $errors->first($errorKey) }}</div>
                                     @endforeach

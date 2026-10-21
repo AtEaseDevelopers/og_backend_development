@@ -95,7 +95,10 @@ class AcceptQuote
             throw new InvalidArgumentException('the customer has no debtor code (special prices are kept by debtor code)');
         }
 
+        // the default price row in force on the quotation date starts an older quotation's special price; every
+        // special price is effective from the day the customer accepts
         $date = $quote->quote_date?->toDateString() ?? today()->toDateString();
+        $accepted = today()->toDateString();
         $rows = [];
 
         foreach ((array) $quote->pairs as $pair) {
@@ -115,12 +118,14 @@ class AcceptQuote
                 // the row's special price block (user, 21 Oct 2026): its ranges, minimum charges, pickup location and
                 // dates are saved as they stand once its ranges are filled
                 if (UomPriceRows::ranges($special) !== []) {
+                    // effective from the day the customer accepts, no expiry (user, 21 Oct 2026)
                     $rows[$key] = array_merge(UomPriceRows::blankRow(), $special, [
                         'uom_id' => $uomId,
                         'branch_id' => $branch->id,
                         'location_id' => $locationId,
                         'drop_off_type' => $dropOffType,
-                        'effective_from' => filled($special['effective_from'] ?? null) ? $special['effective_from'] : $date,
+                        'effective_from' => $accepted,
+                        'expires_on' => null,
                     ]);
 
                     continue;
@@ -133,7 +138,7 @@ class AcceptQuote
                     continue;
                 }
 
-                $rows[$key] ??= $this->startRow($uomId, $locationId, $dropOffType, $branch, $date);
+                $rows[$key] ??= $this->startRow($uomId, $locationId, $dropOffType, $branch, $date, $accepted);
                 $rows[$key] = UomPriceRows::withPrice($rows[$key], max(1.0, (float) ($item['quantity'] ?? 1)), $price);
             }
         }
@@ -157,7 +162,7 @@ class AcceptQuote
      * The default price row in force on the quotation date for the product, destination and drop-off type (else the
      * Default type's), as the start of the special price; none = one empty range.
      */
-    private function startRow(int $uomId, int $locationId, string $dropOffType, Branch $branch, string $date): array
+    private function startRow(int $uomId, int $locationId, string $dropOffType, Branch $branch, string $date, string $accepted): array
     {
         $row = UomPriceRows::defaultRow($uomId, $locationId, $dropOffType, $branch->id, $date) ?? UomPriceRows::blankRow();
 
@@ -166,7 +171,7 @@ class AcceptQuote
             'branch_id' => $row['branch_id'] ?? $branch->id,
             'location_id' => $locationId,
             'drop_off_type' => $dropOffType,
-            'effective_from' => $date,
+            'effective_from' => $accepted,
             'expires_on' => null,
         ]);
     }

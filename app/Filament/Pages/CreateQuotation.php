@@ -279,8 +279,6 @@ class CreateQuotation extends CreateOrder
             'pairs.*.items.*.product.sub_category' => 'nullable|string|max:100',
             'pairs.*.items.*.product.base_item' => 'nullable|string|max:150',
             'pairs.*.items.*.special.pickup_location' => 'nullable|string|max:150',
-            'pairs.*.items.*.special.effective_from' => 'nullable|date',
-            'pairs.*.items.*.special.expires_on' => 'nullable|date',
             ...array_fill_keys(array_map(fn (string $column) => 'pairs.*.items.*.product.'.$column, array_keys(UomResource::LIMITS)), 'nullable|numeric|min:0'),
             ...array_fill_keys(array_map(fn (string $column) => 'pairs.*.items.*.special.'.$column, ['pickup_min_charge', 'construction_min_charge', 'drop_off_min_charge']), 'nullable|numeric|min:0'),
             ...array_fill_keys(array_merge(...array_map(fn (string $l) => ["pairs.*.items.*.special.range_{$l}_from", "pairs.*.items.*.special.range_{$l}_to", "pairs.*.items.*.special.range_{$l}_price"], UomPriceRows::RANGES)), 'nullable|numeric|min:0'),
@@ -319,6 +317,26 @@ class CreateQuotation extends CreateOrder
     public function specialColumns(array $item): array
     {
         return UomResource::columnsFor($this->itemKind($item) ?: Uom::MEASUREMENT);
+    }
+
+    /** "+ Add range": the next quantity range of a row's special price block is shown (range A always is). */
+    public function showRange(int $index, int $itemIndex = 0): void
+    {
+        $item = &$this->pairs[$index]['items'][$itemIndex];
+        $item['ranges_shown'] = min(count(UomPriceRows::RANGES), (int) ($item['ranges_shown'] ?? 1) + 1);
+    }
+
+    public function inOrder(int $index, string $method, mixed ...$arguments): void
+    {
+        if ($method === 'showRange' && isset($this->orders[$index])) {
+            $this->switchToOrder($index);
+            $this->showRange(...array_map('intval', $arguments));
+            $this->stashActive();
+
+            return;
+        }
+
+        parent::inOrder($index, $method, ...$arguments);
     }
 
     /** "+ New …" chosen: a product not in the price list yet. */
@@ -392,6 +410,7 @@ class CreateQuotation extends CreateOrder
                 'sub_category' => $m[3] === 'sub_category' ? '__new__' : ($item['sub_category'] ?? ''),
                 'special' => UomPriceRows::blankRow(),
                 'special_for' => 'new',
+                'ranges_shown' => 1,
             ]);
             $item['item_name'] = $this->newProductName($item);
             $this->refreshItemPrice((int) $m[1], (int) $m[2]);
@@ -463,8 +482,10 @@ class CreateQuotation extends CreateOrder
             $date,
         );
 
-        $item['special'] = array_merge(UomPriceRows::blankRow(), array_intersect_key($row ?? [], UomPriceRows::blankRow()), ['effective_from' => $date, 'expires_on' => null]);
+        // no dates on the page: the special price is effective from the day the customer accepts (AcceptQuote)
+        $item['special'] = array_merge(UomPriceRows::blankRow(), array_intersect_key($row ?? [], UomPriceRows::blankRow()), ['effective_from' => null, 'expires_on' => null]);
         $item['special_for'] = $this->specialKey($index, $itemIndex);
+        $item['ranges_shown'] = 1;
         $item['price_edited'] = false;
         $this->refreshItemPrice($index, $itemIndex);
     }

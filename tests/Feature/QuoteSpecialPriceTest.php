@@ -49,7 +49,6 @@ class QuoteSpecialPriceTest extends TestCase
                     'product' => ['sub_category' => 'Drum', 'base_item' => 'Steel Drum', 'max_weight' => '200'],
                     'special' => [
                         'pickup_location' => 'Johor', 'pickup_min_charge' => '250', 'construction_min_charge' => null, 'drop_off_min_charge' => '30',
-                        'effective_from' => '2026-10-21', 'expires_on' => null,
                         'range_a_from' => '1', 'range_a_to' => '9', 'range_a_price' => '45',
                         'range_b_from' => '10', 'range_b_to' => null, 'range_b_price' => '40',
                     ],
@@ -72,5 +71,8 @@ class QuoteSpecialPriceTest extends TestCase
         $this->assertEquals(250, (float) $tiers[0]->pickup_min_charge);
         $this->assertSame('Johor', $tiers[0]->pickup_location);
         $this->assertSame('Quotation '.$quote->number, $tiers[0]->source);
+        // effective from the day the customer accepted, no expiry
+        $this->assertSame(today()->toDateString(), $tiers[0]->effective_from?->toDateString());
+        $this->assertNull($tiers[0]->expires_on);
     }
 }
