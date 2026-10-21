@@ -336,7 +336,7 @@ Legend: [x] done · [~] done in code, not yet browser-checked · [ ] not started
 - [x] **Accept by customer** saves the block as the customer's special price (its ranges, minimums and pickup location) and adds the new product to the price list's products of its category (a product of that name already there is used). A quotation saved before this keeps the old rule (default row, quoted price in the quantity's range).
 
 ### 58. Assign to lorry: scan or search the CSNs — done
-- [x] The Assign to lorry modal has a **Scan or type a CSN number** box (Enter ticks that CSN / subsheet in the list and clears the box; an unknown number shows a warning) and the list has a **search** box; ticking by hand and Select all stay (user, 21 Oct 2026).
+- [x] The Assign to lorry modal has a **Scan or type a CSN number** box (the number or the QR code's token; Enter ticks that CSN / subsheet in the list, clears the box and shows a notice as the Cash Bill Calculator does: Ticked, Already ticked, or CSN not found) and the list has a **search** box; ticking by hand and Select all stay (user, 21 Oct 2026).
 
 ## Open questions for the user
 - Should the L, W, H and weight entered on Create order be saved on the order (CSN / DO)?

@@ -295,23 +295,36 @@ class ListConsignmentNotes extends ListRecords
                         ->live(onBlur: true)
                         ->extraInputAttributes(['x-on:keydown.enter.prevent' => '$el.blur(); setTimeout(() => $el.focus(), 300)'])
                         ->afterStateUpdated(function (?string $state, Forms\Set $set, Forms\Get $get): void {
-                            $needle = strtoupper(trim((string) $state));
+                            // as the Cash Bill Calculator's scan: the number or the QR code's token, a notice for each outcome
+                            $term = trim((string) $state);
+                            $set('scan', '');
 
-                            if ($needle === '') {
+                            if ($term === '') {
                                 return;
                             }
 
                             $items = $this->assignableItems();
-                            $key = collect($items)->search(fn (array $item) => strtoupper($item['label']) === $needle)
-                                ?: collect($items)->search(fn (array $item) => str_contains(strtoupper($item['label']), $needle));
+                            $csnId = ConsignmentNote::query()->where('number', $term)->orWhere('qr_token', $term)->value('id');
+                            $key = $csnId && isset($items['csn:'.$csnId])
+                                ? 'csn:'.$csnId
+                                : (collect($items)->search(fn (array $item) => str_contains(strtoupper($item['label']), strtoupper($term))) ?: null);
 
-                            if ($key === false) {
-                                Notification::make()->title('No '.$needle.' waiting for a lorry')->warning()->send();
-                            } else {
-                                $set('item_keys', array_values(array_unique(array_merge(array_map('strval', (array) $get('item_keys')), [(string) $key]))));
+                            if ($key === null) {
+                                Notification::make()->title('CSN not found')->body('No "'.$term.'" is waiting for a lorry.')->warning()->send();
+
+                                return;
                             }
 
-                            $set('scan', '');
+                            $picked = array_map('strval', (array) $get('item_keys'));
+
+                            if (in_array($key, $picked, true)) {
+                                Notification::make()->title('Already ticked')->body($items[$key]['label'])->info()->send();
+
+                                return;
+                            }
+
+                            $set('item_keys', [...$picked, $key]);
+                            Notification::make()->title('Ticked')->body($items[$key]['label'].' · '.$items[$key]['description'])->success()->send();
                         }),
                     $this->assignableItems() === []
                         ? Forms\Components\Placeholder::make('none')->hiddenLabel()->content($this->myTransferCodes() !== [] ? 'No subsheet with your transfer code is waiting for a lorry.' : 'No CSN is waiting for a lorry.')
