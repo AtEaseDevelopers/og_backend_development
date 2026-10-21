@@ -104,6 +104,37 @@ class UomPriceRows
         return $ranges;
     }
 
+    /** A row with every template column empty: the condition fields and the five ranges. */
+    public static function blankRow(): array
+    {
+        return array_fill_keys(array_merge(
+            ['pickup_location', 'pickup_min_charge', 'construction_min_charge', 'drop_off_min_charge', 'effective_from', 'expires_on'],
+            ...array_map(fn (string $l) => ["range_{$l}_from", "range_{$l}_to", "range_{$l}_price"], self::RANGES),
+        ), null);
+    }
+
+    /**
+     * The default price row in force on a date for the product, destination and drop-off type (else the Default
+     * type's), the branch's own first and the latest effective date first: the start of a customer's special price.
+     */
+    public static function defaultRow(int $uomId, int $locationId, string $dropOffType, ?int $branchId, string $date): ?array
+    {
+        return collect(self::fromTiers(
+            UomRateTier::query()
+                ->whereNull('customer_code')
+                ->where('uom_id', $uomId)
+                ->where('location_id', $locationId)
+                ->where(fn ($q) => $q->whereNull('effective_from')->orWhereDate('effective_from', '<=', $date))
+                ->where(fn ($q) => $q->whereNull('expires_on')->orWhereDate('expires_on', '>=', $date))
+                ->get()
+        ))
+            ->sortBy([
+                fn (array $a, array $b) => [$a['drop_off_type'] !== $dropOffType, $a['branch_id'] !== $branchId] <=> [$b['drop_off_type'] !== $dropOffType, $b['branch_id'] !== $branchId],
+                fn (array $a, array $b) => strcmp((string) $b['effective_from'], (string) $a['effective_from']),
+            ])
+            ->first(fn (array $row) => in_array($row['drop_off_type'], [$dropOffType, DropOffType::Default->value], true));
+    }
+
     /** Replaces the product's default price rows (customer special prices stay as they are). */
     public static function sync(Uom $uom, array $rows): void
     {

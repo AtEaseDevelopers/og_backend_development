@@ -322,6 +322,11 @@ Legend: [x] done · [~] done in code, not yet browser-checked · [ ] not started
 ### 56. Commission: a returned CSN pays its driver — done
 - [x] Until the driver app exists an order stays "assigned" (nobody marks it delivered), so the batch now pays every order of a returned CSN but a cancelled one: the returned CSN is the proof of delivery. An order with no driver pays its lorry's default driver. The batch's Returned CSNs table says why a CSN has no line (not assigned, no driver on the lorry, batch not rebuilt) instead of always "no driver". Rebuild the October batch on the live site after this deploys.
 
+### 57. Create quotation: the special price fields per category, new products — done
+- [x] Under each product row a **special price block** with the price list template's columns for the product's category (as the product pages): pickup location, minimum charges (Measurement / Item: pick-up, construction site, drop-off; Lorry: pick-up, construction site), effective and expiry date, quantity ranges A–E (Lorry: one quantity and price). It starts as the product's default price row for the drop-off location and type; the unit price box shows the price of the range that holds the quantity and a price typed there goes into that range.
+- [x] **+ New product**: the product select ends with "+ New item…" / "+ New lorry…" / "+ New product / size band…": sub-category (existing ones offered), item (lorry size) and the category's size and weight limits; the row is named as the product pages name a product ("Steel Drum · up to 200 kg").
+- [x] **Accept by customer** saves the block as the customer's special price (its ranges, minimums, pickup location and dates) and adds the new product to the price list's products of its category (a product of that name already there is used). A quotation saved before this keeps the old rule (default row, quoted price in the quantity's range).
+
 ## Open questions for the user
 - Should the L, W, H and weight entered on Create order be saved on the order (CSN / DO)?
 - The GitHub repo is still public and holds the client's customer list and price lists: make it private.

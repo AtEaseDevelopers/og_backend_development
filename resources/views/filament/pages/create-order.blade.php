@@ -65,6 +65,15 @@
         .ow-page .ow-product-pick { display: grid; grid-template-columns: minmax(7.5rem, 9rem) minmax(0, 1fr); gap: .4rem; }
         .ow-page .ow-dims { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .4rem; margin-top: .45rem; }
         .ow-page .ow-dim { display: grid; gap: .15rem; font-size: .7rem; color: var(--ow-muted); }
+        /* Create quotation: the special price block under a product row (new product fields, conditions, ranges) */
+        .ow-page .ow-special-row td { background: rgb(248 250 252); padding-top: .5rem; padding-bottom: .65rem; }
+        .dark .ow-page .ow-special-row td { background: rgb(17 24 39 / .45); }
+        .ow-page .ow-special { display: grid; gap: .5rem; }
+        .ow-page .ow-special-title { font-size: .72rem; font-weight: 600; color: var(--ow-muted); }
+        .ow-page .ow-special-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: .4rem; }
+        .ow-page .ow-ranges { width: auto; border-collapse: collapse; font-size: .7rem; color: var(--ow-muted); }
+        .ow-page .ow-ranges th, .ow-page .ow-ranges td { padding: .15rem .35rem; text-align: left; font-weight: 500; }
+        .ow-page .ow-ranges .ow-input { width: 7rem; }
         @media (max-width: 639px) {
             .ow-page .ow-product-pick { grid-template-columns: minmax(0, 1fr); }
             .ow-page .ow-dims { grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -84,7 +84,13 @@ class UomResource extends Resource
      */
     public static function columns(): array
     {
-        return static::category() === Uom::LORRY
+        return static::columnsFor(static::category());
+    }
+
+    /** The same for a category (the Create quotation page's special price fields follow it). */
+    public static function columnsFor(string $category): array
+    {
+        return $category === Uom::LORRY
             ? ['limits' => ['max_weight'], 'minimums' => ['pickup_min_charge', 'construction_min_charge'], 'expiry' => false, 'ranges' => 1, 'quantity_to' => false, 'sub_category' => false]
             : ['limits' => array_keys(self::LIMITS), 'minimums' => ['pickup_min_charge', 'construction_min_charge', 'drop_off_min_charge'], 'expiry' => true, 'ranges' => 5, 'quantity_to' => true, 'sub_category' => true];
     }

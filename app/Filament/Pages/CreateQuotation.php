@@ -4,12 +4,18 @@ namespace App\Filament\Pages;
 
 use App\Domains\MasterData\Models\Customer;
 use App\Domains\MasterData\Models\Lead;
+use App\Domains\MasterData\Models\Uom;
+use App\Domains\MasterData\Models\UomRateTier;
 use App\Domains\Quotation\Models\Quote;
+use App\Enums\DropOffType;
 use App\Enums\OrderType;
 use App\Enums\ServiceType;
 use App\Filament\Resources\LeadResource;
 use App\Filament\Resources\QuoteResource;
+use App\Filament\Resources\UomResource;
+use App\Services\Imports\ClientPriceListImporter;
 use App\Support\CurrentCompany;
+use App\Support\UomPriceRows;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Filament\Support\Enums\MaxWidth;
@@ -269,6 +275,15 @@ class CreateQuotation extends CreateOrder
             'pairs.*.customer_do_number' => 'nullable|string|max:100',
             // each product's drop-off location: its price list price, and its special price once accepted
             'pairs.*.to_location_id' => 'required|exists:locations,id',
+            // the new product and the special price block of each row
+            'pairs.*.items.*.product.sub_category' => 'nullable|string|max:100',
+            'pairs.*.items.*.product.base_item' => 'nullable|string|max:150',
+            'pairs.*.items.*.special.pickup_location' => 'nullable|string|max:150',
+            'pairs.*.items.*.special.effective_from' => 'nullable|date',
+            'pairs.*.items.*.special.expires_on' => 'nullable|date',
+            ...array_fill_keys(array_map(fn (string $column) => 'pairs.*.items.*.product.'.$column, array_keys(UomResource::LIMITS)), 'nullable|numeric|min:0'),
+            ...array_fill_keys(array_map(fn (string $column) => 'pairs.*.items.*.special.'.$column, ['pickup_min_charge', 'construction_min_charge', 'drop_off_min_charge']), 'nullable|numeric|min:0'),
+            ...array_fill_keys(array_merge(...array_map(fn (string $l) => ["pairs.*.items.*.special.range_{$l}_from", "pairs.*.items.*.special.range_{$l}_to", "pairs.*.items.*.special.range_{$l}_price"], UomPriceRows::RANGES)), 'nullable|numeric|min:0'),
         ]);
     }
 
@@ -277,8 +292,201 @@ class CreateQuotation extends CreateOrder
         return parent::orderValidationMessages() + [
             'form.party.required' => 'Select a customer or a lead (or create a new lead).',
             'pairs.*.to_location_id.required' => 'Select the drop-off location.',
-            'pairs.*.items.*.item_name.required' => 'Select the product.',
+            'pairs.*.items.*.item_name.required' => 'Select the product, or type the new product\'s name.',
         ];
+    }
+
+    /*
+     * The special price block of a product row (user, 21 Oct 2026): a quotation is the customer's special price in
+     * the making, so each row carries the price list template's columns for its category (the conditions, minimum
+     * charges and quantity ranges A–E), filled from the product's default price row and changed here; "+ New …"
+     * describes a product not in the price list yet (sub-category, item, size and weight limits). Accept by
+     * customer saves the block as the customer's special price and adds the new product.
+     */
+
+    /** @return array<string, mixed> */
+    protected function itemTemplate(): array
+    {
+        return parent::itemTemplate() + [
+            'product' => array_fill_keys(array_merge(['sub_category', 'base_item'], array_keys(UomResource::LIMITS)), ''),
+            'special' => UomPriceRows::blankRow(),
+            // what the block was filled for ("uom:12|34|default", or "new"): it starts again when that changes
+            'special_for' => null,
+        ];
+    }
+
+    /** The price list columns a row's category uses, as on the product pages. */
+    public function specialColumns(array $item): array
+    {
+        return UomResource::columnsFor($this->itemKind($item) ?: Uom::MEASUREMENT);
+    }
+
+    /** "+ New …" chosen: a product not in the price list yet. */
+    public function isNewProduct(array $item): bool
+    {
+        return ($item['catalog_key'] ?? '') === 'new';
+    }
+
+    /** The sub-categories of a category, offered when a new product is typed. @return list<string> */
+    public function subCategoryOptions(string $kind): array
+    {
+        return Uom::query()->where('category', $kind)->whereNotNull('sub_category')->distinct()->orderBy('sub_category')->pluck('sub_category')->all();
+    }
+
+    /** The pickup locations of the price list, offered in the special price block. @return list<string> */
+    public function pickupLocationOptions(): array
+    {
+        return UomRateTier::query()->whereNotNull('pickup_location')->distinct()->orderBy('pickup_location')->pluck('pickup_location')->all();
+    }
+
+    /** A new product's name, built as on the product pages: the item and its limits ("Carton · L+W+H ≤ 149 cm"). */
+    protected function newProductName(array $item): string
+    {
+        $product = (array) ($item['product'] ?? []);
+        $base = trim((string) ($product['base_item'] ?? '')) ?: trim((string) ($product['sub_category'] ?? ''));
+
+        if ($base === '') {
+            return '';
+        }
+
+        if ($this->itemKind($item) === Uom::LORRY) {
+            return $base;
+        }
+
+        $bands = [];
+
+        foreach (array_keys(UomResource::LIMITS) as $column) {
+            $bands[$column] = is_numeric($product[$column] ?? null) ? (float) $product[$column] : null;
+        }
+
+        return app(ClientPriceListImporter::class)->productName($base, $bands);
+    }
+
+    public function updatedPairs($value, string $key): void
+    {
+        // the new product's fields name the row
+        if (preg_match('/^(\d+)\.items\.(\d+)\.product\./', $key, $m)) {
+            $item = &$this->pairs[(int) $m[1]]['items'][(int) $m[2]];
+
+            if ($this->isNewProduct($item)) {
+                $item['item_name'] = $this->newProductName($item);
+                $this->refreshItemPrice((int) $m[1], (int) $m[2]);
+            }
+
+            return;
+        }
+
+        // the special price block changed: its ranges set the unit price
+        if (preg_match('/^(\d+)\.items\.(\d+)\.special\./', $key, $m)) {
+            $this->pairs[(int) $m[1]]['items'][(int) $m[2]]['price_edited'] = false;
+            $this->refreshItemPrice((int) $m[1], (int) $m[2]);
+
+            return;
+        }
+
+        // "+ New …": the row describes a product not in the price list yet
+        if (preg_match('/^(\d+)\.items\.(\d+)\.(catalog_key|sub_category)$/', $key, $m) && in_array($value, ['new', '__new__'], true)) {
+            $item = &$this->pairs[(int) $m[1]]['items'][(int) $m[2]];
+            $item = array_merge($item, [
+                'line_type' => 'uom', 'catalog_key' => 'new', 'uom' => '', 'no_band' => false, 'manual_price' => '', 'price_edited' => false,
+                'sub_category' => $m[3] === 'sub_category' ? '__new__' : ($item['sub_category'] ?? ''),
+                'special' => UomPriceRows::blankRow(),
+                'special_for' => 'new',
+            ]);
+            $item['item_name'] = $this->newProductName($item);
+            $this->refreshItemPrice((int) $m[1], (int) $m[2]);
+
+            return;
+        }
+
+        // the rows whose product, destination or drop-off type this change may alter
+        $index = (int) explode('.', $key, 2)[0];
+        $itemIndexes = preg_match('/^\d+\.items\.(\d+)\./', $key, $m) ? [(int) $m[1]] : array_keys($this->pairs[$index]['items'] ?? []);
+
+        parent::updatedPairs($value, $key);
+
+        if (preg_match('/^(\d+)\.items\.(\d+)\.kind$/', $key, $m)) {
+            // another type: the row starts again, its new product and special price too
+            $item = &$this->pairs[(int) $m[1]]['items'][(int) $m[2]];
+            $item['product'] = $this->itemTemplate()['product'];
+            $item['special'] = UomPriceRows::blankRow();
+            $item['special_for'] = null;
+
+            return;
+        }
+
+        if (preg_match('/^(\d+)\.items\.(\d+)\.manual_price$/', $key, $m)) {
+            // the unit price typed goes into the range that holds the quantity (what Accept would save)
+            $item = &$this->pairs[(int) $m[1]]['items'][(int) $m[2]];
+
+            if (is_numeric($item['manual_price'] ?? null)) {
+                $item['special'] = UomPriceRows::withPrice($item['special'] ?? UomPriceRows::blankRow(), max(1.0, (float) ($item['quantity'] ?: 1)), round((float) $item['manual_price'], 2));
+            }
+
+            return;
+        }
+
+        // a block filled for another product, destination or drop-off type (special_for) starts again
+        foreach ($itemIndexes as $i) {
+            $now = $this->specialKey($index, $i);
+
+            if ($now !== null && $now !== ($this->pairs[$index]['items'][$i]['special_for'] ?? null)) {
+                $this->prefillSpecial($index, $i);
+            }
+        }
+    }
+
+    /** "uom:12|34|default": the product, destination and drop-off type a row's special price is for (null until all are set). */
+    private function specialKey(int $index, int $itemIndex): ?string
+    {
+        $pair = $this->pairs[$index] ?? null;
+        $item = $pair['items'][$itemIndex] ?? null;
+
+        if (! $item || ! str_starts_with((string) ($item['catalog_key'] ?? ''), 'uom:') || blank($pair['to_location_id'] ?? null)) {
+            return null;
+        }
+
+        return $item['catalog_key'].'|'.$pair['to_location_id'].'|'.(($pair['drop_off_type'] ?? '') ?: DropOffType::Default->value);
+    }
+
+    /** The special price block starts as the product's default price row for the destination and drop-off type. */
+    protected function prefillSpecial(int $index, int $itemIndex): void
+    {
+        $pair = &$this->pairs[$index];
+        $item = &$pair['items'][$itemIndex];
+        $date = (string) (($this->form['quote_date'] ?? '') ?: today()->toDateString());
+        $row = UomPriceRows::defaultRow(
+            (int) (explode(':', (string) $item['catalog_key'], 2)[1] ?? 0),
+            (int) $pair['to_location_id'],
+            ($pair['drop_off_type'] ?? '') ?: DropOffType::Default->value,
+            CurrentCompany::branch()?->id,
+            $date,
+        );
+
+        $item['special'] = array_merge(UomPriceRows::blankRow(), array_intersect_key($row ?? [], UomPriceRows::blankRow()), ['effective_from' => $date, 'expires_on' => null]);
+        $item['special_for'] = $this->specialKey($index, $itemIndex);
+        $item['price_edited'] = false;
+        $this->refreshItemPrice($index, $itemIndex);
+    }
+
+    /** The unit price of a row with quantity ranges is the price of the range that holds its quantity. */
+    protected function refreshItemPrice(int $index, int $itemIndex): void
+    {
+        parent::refreshItemPrice($index, $itemIndex);
+
+        $item = &$this->pairs[$index]['items'][$itemIndex];
+        $quantity = max(1.0, (float) ($item['quantity'] ?: 1));
+
+        foreach (UomPriceRows::ranges($item['special'] ?? []) as [$from, $to, $price]) {
+            if ($from <= $quantity + 0.0001 && ($to === null || $quantity <= $to + 0.0001)) {
+                $item['unit_price'] = $price;
+                $item['source'] = 'quote_range';
+                $item['tier'] = 'Qty '.rtrim(rtrim(number_format($from, 2, '.', ''), '0'), '.').($to === null ? '+' : '–'.rtrim(rtrim(number_format($to, 2, '.', ''), '0'), '.'));
+                $this->fillPriceBox($item);
+
+                return;
+            }
+        }
     }
 
     /** Saves the quotation (Pending confirmation) and goes back to the quotation list. */

@@ -9,6 +9,9 @@ use App\Domains\MasterData\Models\Uom;
 use App\Domains\MasterData\Models\UomRateTier;
 use App\Domains\Quotation\Models\Quote;
 use App\Enums\DropOffType;
+use App\Filament\Resources\ItemProductResource;
+use App\Filament\Resources\LorryProductResource;
+use App\Filament\Resources\UomResource;
 use App\Support\UomPriceRows;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -100,15 +103,37 @@ class AcceptQuote
             $dropOffType = ($pair['drop_off_type'] ?? '') ?: DropOffType::Default->value;
 
             foreach ($pair['items'] ?? [] as $item) {
-                [$type, $id] = array_pad(explode(':', (string) ($item['catalog_key'] ?? ''), 2), 2, null);
-                $price = $this->price($item);
+                $uomId = $locationId ? $this->productId($item) : null;
 
-                if (! $locationId || $type !== 'uom' || $price === null || ! Uom::query()->whereKey($id)->exists()) {
+                if (! $uomId) {
                     continue;
                 }
 
-                $key = $id.'|'.$locationId.'|'.$dropOffType;
-                $rows[$key] ??= $this->startRow((int) $id, $locationId, $dropOffType, $branch, $date);
+                $key = $uomId.'|'.$locationId.'|'.$dropOffType;
+                $special = (array) ($item['special'] ?? []);
+
+                // the row's special price block (user, 21 Oct 2026): its ranges, minimum charges, pickup location and
+                // dates are saved as they stand once its ranges are filled
+                if (UomPriceRows::ranges($special) !== []) {
+                    $rows[$key] = array_merge(UomPriceRows::blankRow(), $special, [
+                        'uom_id' => $uomId,
+                        'branch_id' => $branch->id,
+                        'location_id' => $locationId,
+                        'drop_off_type' => $dropOffType,
+                        'effective_from' => filled($special['effective_from'] ?? null) ? $special['effective_from'] : $date,
+                    ]);
+
+                    continue;
+                }
+
+                // no ranges (an older quotation): the default price row with the quoted price in the quantity's range
+                $price = $this->price($item);
+
+                if ($price === null) {
+                    continue;
+                }
+
+                $rows[$key] ??= $this->startRow($uomId, $locationId, $dropOffType, $branch, $date);
                 $rows[$key] = UomPriceRows::withPrice($rows[$key], max(1.0, (float) ($item['quantity'] ?? 1)), $price);
             }
         }
@@ -134,41 +159,54 @@ class AcceptQuote
      */
     private function startRow(int $uomId, int $locationId, string $dropOffType, Branch $branch, string $date): array
     {
-        $defaults = collect(UomPriceRows::fromTiers(
-            UomRateTier::query()
-                ->whereNull('customer_code')
-                ->where('uom_id', $uomId)
-                ->where('location_id', $locationId)
-                ->where(fn ($q) => $q->whereNull('effective_from')->orWhereDate('effective_from', '<=', $date))
-                ->where(fn ($q) => $q->whereNull('expires_on')->orWhereDate('expires_on', '>=', $date))
-                ->get()
-        ));
-
-        $default = $defaults
-            ->sortBy([
-                // the drop-off type first, then Default; the quotation's branch first; the latest effective date first
-                fn (array $a, array $b) => [$a['drop_off_type'] !== $dropOffType, $a['branch_id'] !== $branch->id] <=> [$b['drop_off_type'] !== $dropOffType, $b['branch_id'] !== $branch->id],
-                fn (array $a, array $b) => strcmp((string) $b['effective_from'], (string) $a['effective_from']),
-            ])
-            ->first(fn (array $row) => in_array($row['drop_off_type'], [$dropOffType, DropOffType::Default->value], true));
-
-        $row = $default ?? [
-            'uom_id' => $uomId,
-            'branch_id' => $branch->id,
-            'pickup_location' => null,
-            'location_id' => $locationId,
-            'pickup_min_charge' => null,
-            'construction_min_charge' => null,
-            'drop_off_min_charge' => null,
-        ] + array_fill_keys(array_merge(...array_map(fn ($l) => ["range_{$l}_from", "range_{$l}_to", "range_{$l}_price"], UomPriceRows::RANGES)), null);
+        $row = UomPriceRows::defaultRow($uomId, $locationId, $dropOffType, $branch->id, $date) ?? UomPriceRows::blankRow();
 
         return array_merge($row, [
             'uom_id' => $uomId,
+            'branch_id' => $row['branch_id'] ?? $branch->id,
             'location_id' => $locationId,
             'drop_off_type' => $dropOffType,
             'effective_from' => $date,
             'expires_on' => null,
         ]);
+    }
+
+    /**
+     * The product quoted: a price list product, or the new one the row describes ("+ New …" on Create quotation,
+     * user 21 Oct 2026), added to the price list's products of its category as the product pages would; a product
+     * of that name already there is used instead.
+     */
+    private function productId(array $item): ?int
+    {
+        [$type, $id] = array_pad(explode(':', (string) ($item['catalog_key'] ?? ''), 2), 2, null);
+
+        if ($type === 'uom') {
+            return Uom::query()->whereKey($id)->exists() ? (int) $id : null;
+        }
+
+        $name = trim((string) ($item['item_name'] ?? ''));
+
+        if ($type !== 'new' || $name === '') {
+            return null;
+        }
+
+        $existing = Uom::query()->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])->value('id');
+
+        if ($existing) {
+            return (int) $existing;
+        }
+
+        $category = in_array($item['kind'] ?? null, [Uom::ITEM, Uom::LORRY], true) ? $item['kind'] : Uom::MEASUREMENT;
+        $resource = match ($category) {
+            Uom::ITEM => ItemProductResource::class,
+            Uom::LORRY => LorryProductResource::class,
+            default => UomResource::class,
+        };
+        $data = $resource::productData(array_merge((array) ($item['product'] ?? []), ['category' => $category, 'name' => $name, 'is_active' => true]));
+        $uom = Uom::query()->create($data + ['code' => UomResource::uniqueCode($data['name'])]);
+        UomResource::productSaved($uom);
+
+        return $uom->id;
     }
 
     /** The quoted price: the price box (the default price, maybe changed), else the default price. */
