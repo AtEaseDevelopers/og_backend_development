@@ -11,7 +11,6 @@
                 <th class="cml-num">Sales amount</th>
                 <th class="cml-num">System</th>
                 <th class="cml-num">Commission (RM)</th>
-                <th class="cml-num">Gross profit</th>
             </tr>
         </thead>
         <tbody>
@@ -44,7 +43,6 @@
                             RM {{ number_format((float) $line->amount, 2) }}
                         @endif
                     </td>
-                    <td class="cml-num">RM {{ number_format((float) ($csn?->total_amount ?? 0) - $this->enteredAmount($line), 2) }}</td>
                 </tr>
             @endforeach
         </tbody>
@@ -55,7 +53,6 @@
                 <td class="cml-num"><strong>RM {{ number_format($salesTotal, 2) }}</strong></td>
                 <td></td>
                 <td class="cml-num"><strong>RM {{ number_format($commissionTotal, 2) }}</strong></td>
-                <td class="cml-num"><strong>RM {{ number_format($salesTotal - $commissionTotal, 2) }}</strong></td>
             </tr>
         </tfoot>
     </table>

@@ -63,7 +63,6 @@
                         <th class="cbl-num">CSNs</th>
                         <th class="cbl-num">Sales amount</th>
                         <th class="cbl-num">Commission</th>
-                        <th class="cbl-num">Gross profit</th>
                         <th>PO</th>
                     </tr>
                 </thead>
@@ -74,7 +73,7 @@
                             $url = $lorryId ? \App\Filament\Resources\CommissionBatchResource::getUrl('lorry', ['record' => $batch, 'lorry' => $lorryId]) : null;
                             $drivers = $group->groupBy(fn ($line) => $line->driver?->name ?? 'Driver removed')->map(fn ($l) => (float) $l->sum('amount'));
                             $poStatus = $group->pluck('slip.status')->unique()->implode(', ');
-                            // the lorry's sales: its CSNs' totals; gross profit: what O&G keeps after the commission
+                            // the lorry's sales: its CSNs' totals
                             $sales = (float) $group->unique('consignment_note_id')->sum(fn ($line) => (float) ($line->consignmentNote?->total_amount ?? 0));
                             $commission = (float) $group->sum('amount');
                             $company = $companyOf($group);
@@ -99,7 +98,6 @@
                             <td class="cbl-num">{{ $group->pluck('consignment_note_id')->filter()->unique()->count() }}</td>
                             <td class="cbl-num">RM {{ number_format($sales, 2) }}</td>
                             <td class="cbl-num"><strong>RM {{ number_format($commission, 2) }}</strong></td>
-                            <td class="cbl-num">RM {{ number_format($sales - $commission, 2) }}</td>
                             <td><span class="cbl-sub">{{ $poStatus === 'draft' ? 'Not saved yet' : ucfirst(str_replace('_', ' ', $poStatus)) }}</span></td>
                         </tr>
                     @endforeach
@@ -109,7 +107,6 @@
                         <td colspan="6"><strong>{{ $byLorry->count() }} lorr{{ $byLorry->count() === 1 ? 'y' : 'ies' }}</strong></td>
                         <td class="cbl-num"><strong>RM {{ number_format($totals['sales'] ?? 0, 2) }}</strong></td>
                         <td class="cbl-num"><strong>RM {{ number_format($totals['commission'] ?? 0, 2) }}</strong></td>
-                        <td class="cbl-num"><strong>RM {{ number_format(($totals['sales'] ?? 0) - ($totals['commission'] ?? 0), 2) }}</strong></td>
                         <td></td>
                     </tr>
                 </tfoot>
