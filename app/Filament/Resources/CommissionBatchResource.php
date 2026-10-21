@@ -57,12 +57,6 @@ class CommissionBatchResource extends Resource
                 ->schema([
                     Infolists\Components\ViewEntry::make('lorry_table')->hiddenLabel()->view('filament.infolists.commission-batch-lorries')->columnSpanFull(),
                 ]),
-            // the returned CSNs of the batch (returned on or before the cutoff, user 21 Oct 2026)
-            Infolists\Components\Section::make('Returned CSNs')
-                ->description(fn (CommissionBatch $record) => 'CSNs returned on or before '.$record->cutoff_date?->format('d/m/Y').' and not in another batch. Only a returned CSN earns commission.')
-                ->schema([
-                    Infolists\Components\ViewEntry::make('csn_table')->hiddenLabel()->view('filament.infolists.commission-batch-csns')->columnSpanFull(),
-                ]),
         ]);
     }
 
