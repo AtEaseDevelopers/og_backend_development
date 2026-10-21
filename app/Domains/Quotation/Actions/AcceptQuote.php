@@ -5,6 +5,7 @@ namespace App\Domains\Quotation\Actions;
 use App\Domains\MasterData\Models\Branch;
 use App\Domains\MasterData\Models\Company;
 use App\Domains\MasterData\Models\Customer;
+use App\Domains\MasterData\Models\Location;
 use App\Domains\MasterData\Models\Uom;
 use App\Domains\MasterData\Models\UomRateTier;
 use App\Domains\Quotation\Models\Quote;
@@ -104,6 +105,8 @@ class AcceptQuote
         foreach ((array) $quote->pairs as $pair) {
             $locationId = filled($pair['to_location_id'] ?? null) ? (int) $pair['to_location_id'] : null;
             $dropOffType = ($pair['drop_off_type'] ?? '') ?: DropOffType::Default->value;
+            // the row's pickup location is the special price's (the template's Pickup Location column)
+            $pickup = filled($pair['from_location_id'] ?? null) ? Location::query()->whereKey($pair['from_location_id'])->value('name') : null;
 
             foreach ($pair['items'] ?? [] as $item) {
                 $uomId = $locationId ? $this->productId($item) : null;
@@ -122,6 +125,7 @@ class AcceptQuote
                     $rows[$key] = array_merge(UomPriceRows::blankRow(), $special, [
                         'uom_id' => $uomId,
                         'branch_id' => $branch->id,
+                        'pickup_location' => $pickup ?? ($special['pickup_location'] ?? null),
                         'location_id' => $locationId,
                         'drop_off_type' => $dropOffType,
                         'effective_from' => $accepted,

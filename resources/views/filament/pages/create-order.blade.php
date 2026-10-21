@@ -270,7 +270,7 @@
             </div>
             <p class="ow-note" style="margin-top:.75rem">
                 @if ($isQuote)
-                    The default price of each product is filled in and can be changed: the price quoted. When the customer agrees, use <strong>Accept by customer</strong> on the quotation list: the quoted prices become the customer's special prices (a lead becomes a customer then). The order is created afterwards with these prices.
+                    Each product's quantity ranges start as its default price and can be changed: the special price offered. When the customer agrees, use <strong>Accept by customer</strong> on the quotation list: the ranges become the customer's special prices (a lead becomes a customer then). The order is created afterwards with these prices.
                 @elseif ($editing)
                     @if (! $headerEditable)
                         Customer, billing address, received through and payment term are locked because a record of this order is already confirmed. Use <strong>Change payment term</strong> on the order page for the payment term.
@@ -762,13 +762,7 @@
             </div>
         @endif
 
-        @if ($isQuote)
-            @php $quoteTotal = collect($pageOrders)->sum(fn ($o) => (float) ($o['summary']['total'] ?? 0)); @endphp
-            <div class="ow-card ow-card-pad" style="display:flex;align-items:center;justify-content:space-between;gap:1rem">
-                <div class="ow-card-title" style="margin:0">Quotation total</div>
-                <div style="font-size:1.25rem;font-weight:700">RM {{ number_format($quoteTotal, 2) }}</div>
-            </div>
-        @endif
+        {{-- a quotation has no total (user, 21 Oct 2026): its products' quantity ranges are the prices offered --}}
 
         {{-- amount summary: every order of the page and the total of all --}}
         @unless ($editing || $isQuote)
@@ -930,7 +924,9 @@
         <div class="ow-footer-bar">
             <div class="ow-footer-meta">
                 @php $footerTotal = collect($pageOrders)->filter(fn ($o) => ($o['summary']['priced'] ?? false))->sum(fn ($o) => (float) ($o['summary']['total'] ?? 0)); @endphp
-                Price: {{ $footerTotal > 0 ? 'RM '.number_format($footerTotal, 2).($multiOrder ? ' ('.count($pageOrders).' orders)' : '') : 'Not priced' }}
+                @unless ($isQuote)
+                    Price: {{ $footerTotal > 0 ? 'RM '.number_format($footerTotal, 2).($multiOrder ? ' ('.count($pageOrders).' orders)' : '') : 'Not priced' }}
+                @endunless
                 @if ($editing)
                     · {{ count($pairs) }} {{ $this->enquiryOnly ? 'consignor & consignee '.\Illuminate\Support\Str::plural('block', count($pairs)) : \Illuminate\Support\Str::plural('record', count($pairs)) }} under {{ $this->orderNumber }}
                     @if ($lockedCount > 0) · {{ $lockedCount }} locked @endif

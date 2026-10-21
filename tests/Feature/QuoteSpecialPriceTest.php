@@ -38,6 +38,7 @@ class QuoteSpecialPriceTest extends TestCase
             'form' => [],
             'total_amount' => 90,
             'pairs' => [[
+                'from_location_id' => $location->id,
                 'to_location_id' => $location->id,
                 'drop_off_type' => 'default',
                 'items' => [[
@@ -48,7 +49,7 @@ class QuoteSpecialPriceTest extends TestCase
                     'manual_price' => '45.00',
                     'product' => ['sub_category' => 'Drum', 'base_item' => 'Steel Drum', 'max_weight' => '200'],
                     'special' => [
-                        'pickup_location' => 'Johor', 'pickup_min_charge' => '250', 'construction_min_charge' => null, 'drop_off_min_charge' => '30',
+                        'pickup_min_charge' => '250', 'construction_min_charge' => null, 'drop_off_min_charge' => '30',
                         'range_a_from' => '1', 'range_a_to' => '9', 'range_a_price' => '45',
                         'range_b_from' => '10', 'range_b_to' => null, 'range_b_price' => '40',
                     ],

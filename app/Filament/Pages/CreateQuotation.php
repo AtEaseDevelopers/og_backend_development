@@ -5,7 +5,6 @@ namespace App\Filament\Pages;
 use App\Domains\MasterData\Models\Customer;
 use App\Domains\MasterData\Models\Lead;
 use App\Domains\MasterData\Models\Uom;
-use App\Domains\MasterData\Models\UomRateTier;
 use App\Domains\Quotation\Models\Quote;
 use App\Enums\DropOffType;
 use App\Enums\OrderType;
@@ -282,6 +281,10 @@ class CreateQuotation extends CreateOrder
             ...array_fill_keys(array_map(fn (string $column) => 'pairs.*.items.*.product.'.$column, array_keys(UomResource::LIMITS)), 'nullable|numeric|min:0'),
             ...array_fill_keys(array_map(fn (string $column) => 'pairs.*.items.*.special.'.$column, ['pickup_min_charge', 'construction_min_charge', 'drop_off_min_charge']), 'nullable|numeric|min:0'),
             ...array_fill_keys(array_merge(...array_map(fn (string $l) => ["pairs.*.items.*.special.range_{$l}_from", "pairs.*.items.*.special.range_{$l}_to", "pairs.*.items.*.special.range_{$l}_price"], UomPriceRows::RANGES)), 'nullable|numeric|min:0'),
+            // range A is the price offered: every row needs it (no unit price box on a quotation); after the
+            // nullable rules above, which it replaces
+            'pairs.*.items.*.special.range_a_from' => 'required|numeric|min:0',
+            'pairs.*.items.*.special.range_a_price' => 'required|numeric|min:0',
         ]);
     }
 
@@ -291,6 +294,8 @@ class CreateQuotation extends CreateOrder
             'form.party.required' => 'Select a customer or a lead (or create a new lead).',
             'pairs.*.to_location_id.required' => 'Select the drop-off location.',
             'pairs.*.items.*.item_name.required' => 'Select the product, or type the new product\'s name.',
+            'pairs.*.items.*.special.range_a_from.required' => 'Enter range A: the quantity from and its price.',
+            'pairs.*.items.*.special.range_a_price.required' => 'Enter range A\'s price.',
         ];
     }
 
@@ -349,12 +354,6 @@ class CreateQuotation extends CreateOrder
     public function subCategoryOptions(string $kind): array
     {
         return Uom::query()->where('category', $kind)->whereNotNull('sub_category')->distinct()->orderBy('sub_category')->pluck('sub_category')->all();
-    }
-
-    /** The pickup locations of the price list, offered in the special price block. @return list<string> */
-    public function pickupLocationOptions(): array
-    {
-        return UomRateTier::query()->whereNotNull('pickup_location')->distinct()->orderBy('pickup_location')->pluck('pickup_location')->all();
     }
 
     /** A new product's name, built as on the product pages: the item and its limits ("Carton · L+W+H ≤ 149 cm"). */
