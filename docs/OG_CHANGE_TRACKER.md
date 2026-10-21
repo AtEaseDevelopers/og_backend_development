@@ -335,6 +335,9 @@ Legend: [x] done · [~] done in code, not yet browser-checked · [ ] not started
 - [x] Range A only at first; **+ Add range** shows B–E one at a time (a range already filled, e.g. the default price's, stays). No effective / expiry date on the page: the special price is **effective from the day the customer accepts**, no expiry (user, 21 Oct 2026).
 - [x] **Accept by customer** saves the block as the customer's special price (its ranges, minimums and pickup location) and adds the new product to the price list's products of its category (a product of that name already there is used). A quotation saved before this keeps the old rule (default row, quoted price in the quantity's range).
 
+### 58. Assign to lorry: scan or search the CSNs — done
+- [x] The Assign to lorry modal has a **Scan or type a CSN number** box (Enter ticks that CSN / subsheet in the list and clears the box; an unknown number shows a warning) and the list has a **search** box; ticking by hand and Select all stay (user, 21 Oct 2026).
+
 ## Open questions for the user
 - Should the L, W, H and weight entered on Create order be saved on the order (CSN / DO)?
 - The GitHub repo is still public and holds the client's customer list and price lists: make it private.

@@ -286,12 +286,40 @@ class ListConsignmentNotes extends ListRecords
                         ->options(fn () => ConsignmentNoteResource::lorryOptions())
                         ->required()
                         ->searchable(),
+                    // scan or type a number (user, 21 Oct 2026): Enter ticks that CSN / subsheet below and clears the box
+                    $this->assignableItems() === [] ? null : Forms\Components\TextInput::make('scan')
+                        ->label('Scan or type a CSN number')
+                        ->placeholder('Scan the barcode, or type the number and press Enter')
+                        ->helperText('Ticks it in the list below; the list can be searched and ticked by hand too.')
+                        ->autocomplete(false)
+                        ->live(onBlur: true)
+                        ->extraInputAttributes(['x-on:keydown.enter.prevent' => '$el.blur(); setTimeout(() => $el.focus(), 300)'])
+                        ->afterStateUpdated(function (?string $state, Forms\Set $set, Forms\Get $get): void {
+                            $needle = strtoupper(trim((string) $state));
+
+                            if ($needle === '') {
+                                return;
+                            }
+
+                            $items = $this->assignableItems();
+                            $key = collect($items)->search(fn (array $item) => strtoupper($item['label']) === $needle)
+                                ?: collect($items)->search(fn (array $item) => str_contains(strtoupper($item['label']), $needle));
+
+                            if ($key === false) {
+                                Notification::make()->title('No '.$needle.' waiting for a lorry')->warning()->send();
+                            } else {
+                                $set('item_keys', array_values(array_unique(array_merge(array_map('strval', (array) $get('item_keys')), [(string) $key]))));
+                            }
+
+                            $set('scan', '');
+                        }),
                     $this->assignableItems() === []
                         ? Forms\Components\Placeholder::make('none')->hiddenLabel()->content($this->myTransferCodes() !== [] ? 'No subsheet with your transfer code is waiting for a lorry.' : 'No CSN is waiting for a lorry.')
                         : Forms\Components\CheckboxList::make('item_keys')
                             ->label($this->myTransferCodes() !== [] ? 'Subsheets' : 'CSNs')
                             ->options(fn () => array_map(fn (array $item) => $item['label'], $this->assignableItems()))
                             ->descriptions(fn () => array_map(fn (array $item) => $item['description'], $this->assignableItems()))
+                            ->searchable()
                             ->bulkToggleable()
                             ->required()
                             ->validationMessages(['required' => 'Tick at least one.']),
