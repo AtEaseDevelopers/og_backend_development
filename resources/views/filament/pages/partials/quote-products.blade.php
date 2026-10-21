@@ -171,7 +171,6 @@
                                             @endforeach
                                         </div>
                                     @endif
-                                    <div class="ow-special-title">Special price for this customer{{ $new ? '' : ' · starts as the default price row; change what differs' }}</div>
                                     <div class="ow-special-grid">
                                         <label class="ow-dim">
                                             <span>Pickup location</span>
