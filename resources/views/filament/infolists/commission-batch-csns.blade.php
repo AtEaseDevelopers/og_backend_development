@@ -1,7 +1,7 @@
 {{-- Commission batch: the returned CSNs it takes (returned on or before its cutoff), with each CSN's commission --}}
 @php
     $batch = $getRecord();
-    $rows = $batch->csns()->with(['consignmentNote.customer:id,company_name', 'consignmentNote.fromLocation:id,name', 'consignmentNote.toLocation:id,name'])->orderBy('returned_at')->get();
+    $rows = $batch->csns()->with(['consignmentNote.customer:id,company_name', 'consignmentNote.fromLocation:id,name', 'consignmentNote.toLocation:id,name', 'consignmentNote.deliveryOrders:id,consignment_note_id,driver_id,lorry_id,status', 'consignmentNote.deliveryOrders.lorry:id,default_driver_id'])->orderBy('returned_at')->get();
     $lines = \App\Domains\Commission\Models\CommissionLineItem::query()
         ->whereIn('commission_slip_id', $batch->slips()->select('id'))
         ->with('driver:id,name')
@@ -37,7 +37,15 @@
             </thead>
             <tbody>
                 @foreach ($rows as $row)
-                    @php $csn = $row->consignmentNote; $csnLines = $lines->get($row->consignment_note_id, collect()); @endphp
+                    @php $csn = $row->consignmentNote; $csnLines = $lines->get($row->consignment_note_id, collect());
+                        // why a returned CSN has no line: nothing assigned, nobody to pay, or the batch predates the fix
+                        $orders = $csn?->deliveryOrders->reject(fn ($o) => $o->status === \App\Enums\DeliveryOrderStatus::Cancelled) ?? collect();
+                        $reason = match (true) {
+                            $orders->isEmpty() => 'Not assigned to a lorry yet (no commission line)',
+                            $orders->every(fn ($o) => ! $o->driver_id && ! $o->lorry?->default_driver_id) => "No driver: set the lorry's default driver, then rebuild the batch (no commission line)",
+                            default => 'No commission line yet: rebuild the batch',
+                        };
+                    @endphp
                     <tr>
                         <td>
                             <strong>{{ $csn?->number ?? '—' }}</strong>
@@ -50,7 +58,7 @@
                             @forelse ($csnLines as $line)
                                 <div>{{ $line->driver?->name ?? 'Driver removed' }} <span class="cbc-sub">· RM {{ number_format((float) $line->amount, 2) }}{{ $line->line_type !== 'delivery' ? ' · '.str_replace('_', ' ', $line->line_type) : '' }}</span></div>
                             @empty
-                                <span class="cbc-sub">No driver on its delivery (no commission line)</span>
+                                <span class="cbc-sub">{{ $reason }}</span>
                             @endforelse
                         </td>
                         <td class="cbc-num"><strong>RM {{ number_format((float) $row->amount, 2) }}</strong></td>

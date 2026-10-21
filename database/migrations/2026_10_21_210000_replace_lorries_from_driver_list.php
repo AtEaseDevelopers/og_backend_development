@@ -27,6 +27,13 @@ return new class extends Migration
         $deactivated = $withTrips === [] ? 0 : DB::table('lorries')->whereIn('id', $withTrips)->update(['is_active' => false, 'updated_at' => now()]);
 
         $branch = DB::table('branches')->where('code', 'KL')->first() ?? DB::table('branches')->orderBy('id')->first();
+
+        if (! $branch) {
+            echo "  No branches yet: lorries not replaced (run this migration again after seeding).\n";
+
+            return;
+        }
+
         $companyId = $branch
             ? DB::table('companies')->where('branch_id', $branch->id)->orderByDesc('is_active')->orderBy('id')->value('id')
             : null;

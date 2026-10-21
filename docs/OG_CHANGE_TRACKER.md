@@ -319,6 +319,9 @@ Legend: [x] done · [~] done in code, not yet browser-checked · [ ] not started
 ### 55. Master Data: one menu item, a card per page — done
 - [x] The Master Data menu group is one **Master Data** item (under Dashboard); its page shows a card per master data page (icon, description) by group: Customers (Customers, Leads, Consignor / Consignee), Products & pricing (UOM, Items, Lorries, Drop-off Min Charges, SA Locations), Fleet & dispatch (Drivers, Transfer Codes, Stores), Organisation (Branches, Staff accounts, System Settings). Only the pages the user may open are shown.
 
+### 56. Commission: a returned CSN pays its driver — done
+- [x] Until the driver app exists an order stays "assigned" (nobody marks it delivered), so the batch now pays every order of a returned CSN but a cancelled one: the returned CSN is the proof of delivery. An order with no driver pays its lorry's default driver. The batch's Returned CSNs table says why a CSN has no line (not assigned, no driver on the lorry, batch not rebuilt) instead of always "no driver". Rebuild the October batch on the live site after this deploys.
+
 ## Open questions for the user
 - Should the L, W, H and weight entered on Create order be saved on the order (CSN / DO)?
 - The GitHub repo is still public and holds the client's customer list and price lists: make it private.

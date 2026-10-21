@@ -28,7 +28,8 @@ class GenerateCommissionBatch
      * The month's batch of the branch (user, 21 Oct 2026): only returned CSNs earn commission. It takes every CSN of
      * the branch returned on or before the cutoff date (default the month's last day) that is not in another batch;
      * a CSN not returned yet is left for a later batch. Each CSN's delivery legs are shared as ResolveCommissionShares
-     * says (80% pool, pickup fixed amount, the rest split). A draft batch is rebuilt each time.
+     * says (80% pool, pickup fixed amount, the rest split); the order need not be marked delivered, the returned CSN is the
+     * proof. A draft batch is rebuilt each time.
      */
     public function execute(Branch $branch, string $month, User $actor, ?Carbon $cutoff = null): CommissionBatch
     {
@@ -119,15 +120,16 @@ class GenerateCommissionBatch
                 $orders = DeliveryOrder::query()
                     ->with(['consignmentNote.returnedCsn', 'lorry', 'driver', 'failedDelivery', 'subsheets'])
                     ->where('consignment_note_id', $csn->id)
-                    ->whereIn('status', [
-                        DeliveryOrderStatus::Delivered->value,
-                        DeliveryOrderStatus::Failed->value,
-                        DeliveryOrderStatus::Reassigned->value,
-                    ])
+                    // a returned CSN is proof of delivery (user, 21 Oct 2026): until the driver app marks orders
+                    // delivered they stay "assigned", so every order but a cancelled one pays
+                    ->where('status', '!=', DeliveryOrderStatus::Cancelled->value)
                     ->orderBy('id')
                     ->get();
 
                 foreach ($orders as $do) {
+                    // an order with no driver pays the lorry's default driver (the one it would have got when assigned)
+                    $do->driver_id ??= $do->lorry?->default_driver_id;
+
                     foreach ($this->shares->execute($do) as $share) {
                         $slip = $ensureSlip($share['driver_id'], $share['lorry_id']);
                         if (! $slip) {
