@@ -4,7 +4,7 @@
 > what is done, what is left, and the rules the user has set. Update it whenever an item changes status,
 > and refresh "Last updated" with the output of plain `date` (local Malaysia time).
 
-**Last updated:** Sun Oct 25 19:40:55 MPST 2026 · Round 6: company/branch rename, consignors from customers, Master Data page, customer form and import; not committed
+**Last updated:** Mon Oct 26 02:40:00 MPST 2026 · Round 6 committed and pushed (8eec124)
 
 **Previous round:** finished and pushed as commit `a29b179` on `main` (8 Oct 2026: orders, order details,
 billing / COD / Term, CSN bulk actions, QR codes, returned-CSN scanning, cash bill calculator). Its details are
@@ -338,7 +338,7 @@ Legend: [x] done · [~] done in code, not yet browser-checked · [ ] not started
 ### 58. Assign to lorry: scan or search the CSNs — done
 - [x] The Assign to lorry modal has a **Scan or type a CSN number** box (the number or the QR code's token; Enter ticks that CSN / subsheet in the list, clears the box and shows a notice as the Cash Bill Calculator does: Ticked, Already ticked, or CSN not found) and the list has a **search** box; ticking by hand and Select all stay (user, 21 Oct 2026).
 
-## Round 6 (user, 25 Oct) — not committed
+## Round 6 (user, 25–26 Oct) — committed and pushed 26 Oct (`8eec124`)
 
 | # | Change | Status |
 |---|---|---|
