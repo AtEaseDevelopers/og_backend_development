@@ -39,7 +39,7 @@
         </div>
         <div class="dtv-overview-grid">
             <div class="dtv-overview-item">
-                <span class="dtv-label">Branch</span>
+                <span class="dtv-label">Company</span>
                 <span class="dtv-value">{{ $display($overview['branch'] ?? null) }}</span>
             </div>
             <div class="dtv-overview-item">

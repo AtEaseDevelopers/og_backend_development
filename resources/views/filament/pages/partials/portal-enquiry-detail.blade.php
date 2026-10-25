@@ -8,7 +8,7 @@
             </span>
         </div>
         <p class="cor-order-meta">
-            <span class="cor-branch-tag">Branch: {{ $detail['branch_name'] }}</span>
+            <span class="cor-branch-tag">Company: {{ $detail['branch_name'] }}</span>
             · {{ $detail['customer'] }}
             · Submitted {{ $detail['submitted_at'] }}
         </p>
@@ -56,7 +56,7 @@
                 <button type="button" wire:click="assignSalesperson({{ $detail['id'] }})" class="cor-btn cor-btn-secondary-solid">Assign</button>
             </div>
         @endif
-        <div class="cor-info-block"><div class="cor-info-label">SA location / CSN prefix</div><div class="cor-info-value">{{ $detail['sa_location'] ?? '—' }}</div></div>
+        <div class="cor-info-block"><div class="cor-info-label">Branch / CSN prefix</div><div class="cor-info-value">{{ $detail['sa_location'] ?? '—' }}</div></div>
         <div class="cor-info-block"><div class="cor-info-label">Source</div><div class="cor-info-value">{{ $detail['source'] }}@if($detail['attended_by']) · attended by {{ $detail['attended_by'] }}@endif</div></div>
     </section>
 

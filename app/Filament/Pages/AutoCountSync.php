@@ -59,7 +59,7 @@ class AutoCountSync extends Page implements HasForms, HasTable
                     ->live()
                     ->required(),
                 Forms\Components\Placeholder::make('branch_label')
-                    ->label('Company / branch')
+                    ->label('Company')
                     ->content(fn () => \App\Support\CurrentBranch::get()?->getFilamentName() ?? '—'),
                 Forms\Components\Select::make('document_type')
                     ->options([
@@ -149,7 +149,7 @@ class AutoCountSync extends Page implements HasForms, HasTable
                 ->latest('id'))
             ->columns([
                 Tables\Columns\TextColumn::make('created_at')->dateTime()->label('When'),
-                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Branch'),
+                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Company'),
                 Tables\Columns\TextColumn::make('document_type')->badge(),
                 Tables\Columns\TextColumn::make('document_id')->label('Doc ID'),
                 Tables\Columns\TextColumn::make('external_ref')->label('AutoCount ref'),

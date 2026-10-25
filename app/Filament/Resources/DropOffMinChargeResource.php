@@ -37,7 +37,7 @@ class DropOffMinChargeResource extends Resource
         return $form->schema([
             Forms\Components\Section::make()->schema([
                 Forms\Components\Select::make('branch_id')
-                    ->label('Branch (blank = all branches)')
+                    ->label('Company (blank = all companies)')
                     ->options(fn () => Branch::query()->where('is_active', true)->orderBy('code')->pluck('name', 'id')),
                 Forms\Components\Select::make('drop_off_type')
                     ->options(DropOffType::options())
@@ -54,7 +54,7 @@ class DropOffMinChargeResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('drop_off_type')->badge(),
-                Tables\Columns\TextColumn::make('branch.code')->label('Branch')->placeholder('All'),
+                Tables\Columns\TextColumn::make('branch.code')->label('Company')->placeholder('All'),
                 Tables\Columns\TextColumn::make('minimum_charge')->money('MYR'),
                 Tables\Columns\IconColumn::make('is_active')->boolean(),
                 Tables\Columns\TextColumn::make('remarks')->limit(40),

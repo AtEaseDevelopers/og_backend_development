@@ -45,7 +45,7 @@ class StoreResource extends Resource
         return $form->schema([
             Forms\Components\Section::make('Store')->schema([
                 Forms\Components\Select::make('branch_id')
-                    ->label('Branch')
+                    ->label('Company')
                     ->options(fn () => Branch::query()->where('is_active', true)->orderBy('code')->get()->mapWithKeys(fn (Branch $b) => [$b->id => $b->code.' — '.$b->name]))
                     ->default(fn () => CurrentCompany::branchId())
                     ->required(),
@@ -68,7 +68,7 @@ class StoreResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('name')->label('Store')->description(fn (Store $s) => $s->code)->searchable(['name', 'code'])->sortable(),
-                Tables\Columns\TextColumn::make('branch.name')->label('Branch')->badge()->sortable(),
+                Tables\Columns\TextColumn::make('branch.name')->label('Company')->badge()->sortable(),
                 Tables\Columns\TextColumn::make('address')->wrap()->limit(80)->placeholder('—'),
                 Tables\Columns\TextColumn::make('pic_name')->label('PIC')->placeholder('—')->sortable(),
                 Tables\Columns\TextColumn::make('pic_phone')->label('Contact number')->placeholder('—'),

@@ -76,7 +76,7 @@ class DefaultBranch
 
         $url = self::url($user);
 
-        abort_unless($url !== null, 403, 'Your account has no branch access yet. Please contact the HQ admin.');
+        abort_unless($url !== null, 403, 'Your account has no company access yet. Please contact the HQ admin.');
 
         return $url;
     }

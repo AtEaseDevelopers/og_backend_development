@@ -19,7 +19,10 @@ class FleetVehicleResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-truck';
 
-    protected static ?string $navigationGroup = 'Fleet';
+    protected static ?string $navigationGroup = 'Master Data';
+
+    // opened from its card on the Master Data page, Fleet & dispatch (user, 25 Oct 2026), not the menu
+    protected static bool $shouldRegisterNavigation = false;
 
     protected static ?string $navigationLabel = 'Fleet Vehicles';
 
@@ -34,7 +37,7 @@ class FleetVehicleResource extends Resource
         return $form->schema([
             Forms\Components\Hidden::make('company_id')->default(fn () => \App\Support\CurrentCompany::id())->required(),
             Forms\Components\Hidden::make('branch_id')->default(fn () => \App\Support\CurrentCompany::branchId())->required(),
-            Forms\Components\Placeholder::make('branch_label')->label('Company / branch')
+            Forms\Components\Placeholder::make('branch_label')->label('Company')
                 ->content(fn () => \App\Support\CurrentBranch::get()?->getFilamentName() ?? '—'),
             Forms\Components\TextInput::make('registration_no')->required()->unique(ignoreRecord: true),
             Forms\Components\Select::make('type')
@@ -61,7 +64,7 @@ class FleetVehicleResource extends Resource
     {
         return $table->columns([
             Tables\Columns\TextColumn::make('registration_no')->searchable()->sortable(),
-            Tables\Columns\TextColumn::make('branch.name'),
+            Tables\Columns\TextColumn::make('branch.name')->label('Company'),
             Tables\Columns\TextColumn::make('type'),
             Tables\Columns\TextColumn::make('defaultDriver.name')->label('Default Driver'),
             Tables\Columns\TextColumn::make('status')->badge(),

@@ -43,7 +43,7 @@ class CommissionBatchResource extends Resource
         return $infolist->schema([
             Infolists\Components\Section::make()->schema([
                 Infolists\Components\TextEntry::make('number'),
-                Infolists\Components\TextEntry::make('sourceBranch.name')->label('Source branch'),
+                Infolists\Components\TextEntry::make('sourceBranch.name')->label('Source company'),
                 Infolists\Components\TextEntry::make('month'),
                 Infolists\Components\TextEntry::make('cutoff_date')->label('CSN return cutoff')->date(),
                 Infolists\Components\TextEntry::make('status')->badge(),
@@ -65,7 +65,7 @@ class CommissionBatchResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('number')->searchable(),
-                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Branch'),
+                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Company'),
                 Tables\Columns\TextColumn::make('month')->sortable(),
                 Tables\Columns\TextColumn::make('cutoff_date')->label('Return cutoff')->date(),
                 Tables\Columns\TextColumn::make('csns_count')->counts('csns')->label('CSNs'),
@@ -86,7 +86,7 @@ class CommissionBatchResource extends Resource
                     ->icon('heroicon-o-sparkles')
                     ->form([
                         Forms\Components\Placeholder::make('branch_label')
-                            ->label('Source branch')
+                            ->label('Source company')
                             ->content(fn () => \App\Support\CurrentBranch::get()?->getFilamentName() ?? '—'),
                         Forms\Components\TextInput::make('month')
                             ->label('Month (YYYY-MM)')

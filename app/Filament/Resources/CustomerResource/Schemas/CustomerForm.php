@@ -10,6 +10,10 @@ use Illuminate\Support\Str;
 
 class CustomerForm
 {
+    /**
+     * One page, no tabs (user, 25 Oct 2026): a section per part, with every column of the client's Customer
+     * Information workbook (debtor code to MSIC 3) as a field. The special prices are a tab on the view page only.
+     */
     public static function configure(Form $form): Form
     {
         return $form->schema([
@@ -20,112 +24,58 @@ class CustomerForm
                 ->default(fn () => \App\Support\CurrentCompany::branchId())
                 ->required(),
 
-            Forms\Components\Tabs::make('Customer')
-                ->tabs([
-                    Forms\Components\Tabs\Tab::make('Account')
-                        ->schema(static::accountTab()),
-                    Forms\Components\Tabs\Tab::make('General')
-                        ->schema(static::generalTab()),
-                    Forms\Components\Tabs\Tab::make('Contact')
-                        ->schema(static::contactTab()),
-                    Forms\Components\Tabs\Tab::make('Branches')
-                        ->schema(static::branchesTab()),
-                    Forms\Components\Tabs\Tab::make('E-Invoice')
-                        ->schema(static::einvoiceTab()),
-                    Forms\Components\Tabs\Tab::make('Portal login')
-                        ->schema(static::portalLoginTab())
-                        ->visibleOn('create'),
-                    Forms\Components\Tabs\Tab::make('Others')
-                        ->schema(static::othersTab()),
-                ])
-                ->columnSpanFull(),
+            static::section('Account', 'heroicon-o-identification', static::accountFields()),
+            static::section('Address', 'heroicon-o-map-pin', static::addressFields()),
+            static::section('Contact', 'heroicon-o-phone', static::contactFields()),
+            static::section('Credit & statement', 'heroicon-o-banknotes', static::creditFields()),
+            static::section('Tax & e-invoice', 'heroicon-o-receipt-percent', static::taxFields()),
+            static::section('Notes', 'heroicon-o-chat-bubble-bottom-center-text', static::noteFields()),
+            static::section('Order type & pricing consent', 'heroicon-o-document-check', static::consentFields())
+                ->description('Credit-term customers may hold a consent letter so approved special prices proceed without another customer confirmation.'),
+            static::section('Contact persons & delivery locations', 'heroicon-o-users', static::listFields())
+                ->collapsible()
+                ->collapsed(fn (string $operation) => $operation === 'edit'),
+            static::section('Customer portal access', 'heroicon-o-key', static::portalLoginFields())
+                ->description('Creates a login for the customer portal (/portal).')
+                ->visibleOn('create'),
         ]);
     }
 
+    /** @param  list<Forms\Components\Component>  $schema */
+    private static function section(string $heading, string $icon, array $schema): Forms\Components\Section
+    {
+        return Forms\Components\Section::make($heading)->icon($icon)->schema($schema)->columnSpanFull();
+    }
+
     /** @return list<Forms\Components\Component> */
-    private static function accountTab(): array
+    public static function accountFields(): array
     {
         return [
             Forms\Components\Grid::make(3)->schema([
-                Forms\Components\Placeholder::make('branch_label')
-                    ->label('Company')
-                    ->content(fn () => \App\Support\CurrentCompany::get()?->getFilamentName() ?? '—'),
-                Forms\Components\TextInput::make('control_account')
-                    ->label('Control account')
-                    ->placeholder('300-D001')
-                    ->maxLength(50),
-                Forms\Components\Select::make('debtor_type')
-                    ->label('Debtor type')
-                    ->options(static::debtorTypeOptions())
-                    ->searchable(),
-            ]),
-            Forms\Components\Grid::make(3)->schema([
+                Forms\Components\TextInput::make('code')
+                    ->label('Debtor code')
+                    ->maxLength(50)
+                    ->unique(ignoreRecord: true)
+                    ->helperText('Leave blank to auto-generate.'),
                 Forms\Components\TextInput::make('company_name')
                     ->label('Company name')
                     ->required()
                     ->maxLength(255)
                     ->columnSpan(2),
-                Forms\Components\TextInput::make('code')
-                    ->label('Debtor account')
-                    ->maxLength(50)
-                    ->unique(ignoreRecord: true)
-                    ->helperText('Leave blank to auto-generate.'),
-            ]),
-            Forms\Components\Grid::make(3)->schema([
                 Forms\Components\TextInput::make('brn')
-                    ->label('Business Registration No (BRN)')
+                    ->label('Company registration no. (BRN)')
                     ->maxLength(50),
-                Forms\Components\Select::make('status')
-                    ->label('Active')
-                    ->options(['active' => 'Yes', 'inactive' => 'No'])
-                    ->default('active')
-                    ->required(),
-                Forms\Components\Toggle::make('is_group_company')
-                    ->label('Group company')
-                    ->default(false),
-            ]),
-        ];
-    }
-
-    /** @return list<Forms\Components\Component> */
-    private static function generalTab(): array
-    {
-        return [
-            Forms\Components\Grid::make(2)->schema([
-                Forms\Components\Textarea::make('address')
-                    ->label('Billing address')
-                    ->rows(3),
-                Forms\Components\Group::make([
-                    Forms\Components\Textarea::make('delivery_address_text')
-                        ->label('Delivery address')
-                        ->rows(2)
-                        ->dehydrated(false),
-                    Forms\Components\Grid::make(3)->schema([
-                        Forms\Components\TextInput::make('delivery_postcode')
-                            ->label('Postcode')
-                            ->dehydrated(false),
-                        Forms\Components\TextInput::make('delivery_state')
-                            ->label('State')
-                            ->dehydrated(false),
-                        Forms\Components\TextInput::make('delivery_city')
-                            ->label('City')
-                            ->dehydrated(false),
-                    ]),
-                ]),
-            ]),
-            Forms\Components\Grid::make(3)->schema([
-                Forms\Components\TextInput::make('area')->maxLength(100),
-                Forms\Components\TextInput::make('email')
-                    ->label('Email address')
-                    ->email()
-                    ->maxLength(255),
-                Forms\Components\TextInput::make('website')
-                    ->url()
-                    ->maxLength(255),
-                Forms\Components\TextInput::make('phone')->tel()->maxLength(50),
-                Forms\Components\TextInput::make('fax')->tel()->maxLength(50),
-                Forms\Components\TextInput::make('attention')->maxLength(255),
-                Forms\Components\TextInput::make('business_nature')->maxLength(255),
+                Forms\Components\TextInput::make('area')
+                    ->label('Area code')
+                    ->maxLength(100),
+                Forms\Components\TextInput::make('debtor_type')
+                    ->label('Debtor type')
+                    ->maxLength(50)
+                    ->helperText('As in AutoCount, e.g. TD.'),
+                Forms\Components\TextInput::make('control_account')
+                    ->label('Control account')
+                    ->placeholder('300-D001')
+                    ->maxLength(50),
                 Forms\Components\Select::make('salesperson_id')
                     ->label('Agent')
                     ->options(fn () => User::query()
@@ -136,38 +86,125 @@ class CustomerForm
                         ->pluck('name', 'id'))
                     ->searchable()
                     ->preload(),
-                Forms\Components\Select::make('currency')
-                    ->options(static::currencyOptions())
-                    ->default('MYR')
+                Forms\Components\Placeholder::make('branch_label')
+                    ->label('O&G company')
+                    ->content(fn () => \App\Support\CurrentCompany::get()?->getFilamentName() ?? '—'),
+                Forms\Components\Select::make('status')
+                    ->label('Status')
+                    ->options(['active' => 'Active', 'inactive' => 'Inactive'])
+                    ->default('active')
+                    ->selectablePlaceholder(false)
                     ->required(),
+                Forms\Components\Toggle::make('is_group_company')
+                    ->label('Group company')
+                    ->default(false)
+                    ->inline(false),
             ]),
-            Forms\Components\Grid::make(3)->schema([
-                Forms\Components\Select::make('statement_type')
-                    ->options([
-                        'open_item' => 'Open item',
-                        'balance_forward' => 'Balance forward',
-                        'no_statement' => 'No statement',
-                    ])
-                    ->default('open_item')
-                    ->required(),
-                Forms\Components\Select::make('aging_on')
-                    ->label('Aging on')
-                    ->options([
-                        'invoice_date' => 'Invoice date',
-                        'due_date' => 'Due date',
-                    ])
-                    ->default('due_date')
-                    ->required(),
+        ];
+    }
+
+    /** @return list<Forms\Components\Component> */
+    private static function addressFields(): array
+    {
+        return [
+            Forms\Components\Grid::make(2)->schema([
+                Forms\Components\Group::make([
+                    Forms\Components\Textarea::make('address')
+                        ->label('Address (address 1 – 4)')
+                        ->rows(4),
+                    Forms\Components\TextInput::make('postcode')->label('Postcode')->maxLength(20),
+                ]),
+                Forms\Components\Group::make([
+                    Forms\Components\Textarea::make('delivery_address_text')
+                        ->label('Delivery address (deliver address 1 – 4)')
+                        ->rows(4)
+                        ->dehydrated(false),
+                    Forms\Components\Grid::make(3)->schema([
+                        Forms\Components\TextInput::make('delivery_postcode')
+                            ->label('Deliver postcode')
+                            ->dehydrated(false),
+                        Forms\Components\TextInput::make('delivery_state')
+                            ->label('State')
+                            ->dehydrated(false),
+                        Forms\Components\TextInput::make('delivery_city')
+                            ->label('City')
+                            ->dehydrated(false),
+                    ]),
+                ]),
+            ]),
+        ];
+    }
+
+    /** @return list<Forms\Components\Component> */
+    public static function contactFields(): array
+    {
+        return [
+            // grouped for the user, not in the workbook's order (user, 25 Oct 2026): people, then numbers, then online
+            Forms\Components\Grid::make(4)->schema([
+                Forms\Components\TextInput::make('attention')->label('Attention')->maxLength(255),
+                Forms\Components\TextInput::make('contact_person_3')->label('Contact person 1')->maxLength(150),
+                Forms\Components\TextInput::make('contact_person_4')->label('Contact person 2')->maxLength(150),
+                Forms\Components\TextInput::make('business_nature')->label('Business nature')->maxLength(255),
+                Forms\Components\TextInput::make('phone')->label('Phone 1')->tel()->maxLength(50),
+                Forms\Components\TextInput::make('phone_2')->label('Phone 2')->tel()->maxLength(50),
+                Forms\Components\TextInput::make('phone_3')->label('Phone 3')->tel()->maxLength(50),
+                Forms\Components\TextInput::make('phone_4')->label('Phone 4')->tel()->maxLength(50),
+                Forms\Components\TextInput::make('mobile')->label('Mobile')->tel()->maxLength(50),
+                Forms\Components\TextInput::make('fax')->label('Fax')->tel()->maxLength(50),
+                Forms\Components\TextInput::make('email')->label('Email address')->email()->maxLength(255),
+                Forms\Components\TextInput::make('website')->label('Website')->url()->maxLength(255),
+                Forms\Components\Toggle::make('email_notifications')
+                    ->label('Email notifications')
+                    ->default(true)
+                    ->inline(false),
+                Forms\Components\Toggle::make('portal_approved')
+                    ->label('Portal approved')
+                    ->default(false)
+                    ->inline(false)
+                    ->visibleOn('edit'),
+            ]),
+        ];
+    }
+
+    /** @return list<Forms\Components\Component> */
+    public static function creditFields(): array
+    {
+        return [
+            Forms\Components\Grid::make(4)->schema([
+                Forms\Components\TextInput::make('display_term')
+                    ->label('Display term')
+                    ->placeholder('30 DAYS')
+                    ->maxLength(50),
                 Forms\Components\Select::make('credit_term_days')
                     ->label('Credit term')
                     ->options(static::creditTermOptions())
                     ->default(0)
                     ->required(),
-            ]),
-            Forms\Components\Grid::make(3)->schema([
+                Forms\Components\Select::make('aging_on')
+                    ->label('Aging on')
+                    ->options([
+                        'invoice_date' => 'Invoice date (I)',
+                        'due_date' => 'Due date (D)',
+                    ])
+                    ->default('due_date')
+                    ->required(),
+                Forms\Components\Select::make('statement_type')
+                    ->label('Statement type')
+                    ->options([
+                        'open_item' => 'Open item (O)',
+                        'balance_forward' => 'Balance forward (B)',
+                        'no_statement' => 'No statement (N)',
+                    ])
+                    ->default('open_item')
+                    ->required(),
+                Forms\Components\Select::make('currency')
+                    ->options(static::currencyOptions())
+                    ->default('MYR')
+                    ->required(),
                 Forms\Components\Toggle::make('is_credit')
                     ->label('Credit customer')
                     ->default(false)
+                    ->inline(false)
                     ->live(),
                 Forms\Components\TextInput::make('credit_limit')
                     ->numeric()
@@ -179,8 +216,6 @@ class CustomerForm
                     ->numeric()
                     ->prefix('RM')
                     ->visible(fn (Get $get): bool => (bool) $get('is_credit')),
-            ]),
-            Forms\Components\Grid::make(2)->schema([
                 Forms\Components\Select::make('credit_control')
                     ->options(static::creditControlOptions())
                     ->default('controlled_by_credit_term')
@@ -193,162 +228,44 @@ class CustomerForm
                     ])
                     ->default('all_documents')
                     ->visible(fn (Get $get): bool => (bool) $get('is_credit')),
-            ]),
-            Forms\Components\Section::make('Order type & pricing consent')
-                ->description('Section C: credit-term customers may hold a consent letter so approved special prices proceed without another customer confirmation.')
-                ->compact()
-                ->schema([
-                    Forms\Components\Grid::make(3)->schema([
-                        Forms\Components\Select::make('default_order_type')
-                            ->label('Default order type')
-                            ->options(\App\Enums\OrderType::options())
-                            ->helperText('Term → Term / Cash / COD · COD → Cash only · Cash cannot change'),
-                        Forms\Components\Select::make('consent_letter_type')
-                            ->label('Consent letter')
-                            ->options(\App\Domains\MasterData\Models\Customer::consentOptions())
-                            ->default(\App\Domains\MasterData\Models\Customer::CONSENT_NONE)
-                            ->live()
-                            ->afterStateUpdated(fn ($state, Set $set) => $set(
-                                'pricing_reconfirmation_required',
-                                $state !== \App\Domains\MasterData\Models\Customer::CONSENT_NO_RECONFIRMATION,
-                            )),
-                        Forms\Components\Toggle::make('pricing_reconfirmation_required')
-                            ->label('Pricing reconfirmation required')
-                            ->default(true)
-                            ->inline(false)
-                            ->helperText('Off = quotation at the agreed special price is accepted automatically.'),
-                    ]),
-                    Forms\Components\Grid::make(3)->schema([
-                        Forms\Components\DatePicker::make('consent_valid_from')->label('Consent valid from'),
-                        Forms\Components\DatePicker::make('consent_valid_until')->label('Consent valid until'),
-                        Forms\Components\FileUpload::make('consent_document_path')
-                            ->label('Consent letter document')
-                            ->disk('public')
-                            ->directory('consent-letters')
-                            ->acceptedFileTypes(['application/pdf', 'image/*'])
-                            ->downloadable()
-                            ->openable(),
-                    ])->visible(fn (Get $get): bool => $get('consent_letter_type') !== \App\Domains\MasterData\Models\Customer::CONSENT_NONE && filled($get('consent_letter_type'))),
-                ]),
-            Forms\Components\Grid::make(2)->schema([
-                Forms\Components\Toggle::make('portal_approved')
-                    ->label('Portal approved')
-                    ->default(false)
-                    ->visibleOn('edit'),
-                Forms\Components\Toggle::make('email_notifications')
-                    ->label('Email notifications')
-                    ->default(true),
+                Forms\Components\TextInput::make('discount_percent')
+                    ->label('Discount %')
+                    ->numeric()
+                    ->suffix('%'),
+                Forms\Components\TextInput::make('price_category')
+                    ->label('Price category')
+                    ->maxLength(50),
+                Forms\Components\TextInput::make('account_group')
+                    ->label('Account group')
+                    ->maxLength(50),
             ]),
         ];
     }
 
     /** @return list<Forms\Components\Component> */
-    private static function portalLoginTab(): array
+    public static function taxFields(): array
     {
         return [
-            Forms\Components\Section::make('Customer portal access')
-                ->description('Creates a login for the customer portal (/portal). After sign-in the customer chooses branch and company.')
-                ->schema([
-                    Forms\Components\TextInput::make('portal_user_name')
-                        ->label('Login name')
-                        ->required()
-                        ->maxLength(255)
-                        ->dehydrated(false),
-                    Forms\Components\TextInput::make('portal_email')
-                        ->label('Login email')
-                        ->email()
-                        ->required()
-                        ->maxLength(255)
-                        ->rule('unique:users,email')
-                        ->dehydrated(false),
-                    Forms\Components\TextInput::make('portal_password')
-                        ->label('Password')
-                        ->password()
-                        ->required()
-                        ->minLength(8)
-                        ->confirmed()
-                        ->dehydrated(false),
-                    Forms\Components\TextInput::make('portal_password_confirmation')
-                        ->label('Confirm password')
-                        ->password()
-                        ->dehydrated(false),
-                    Forms\Components\Toggle::make('portal_approved')
-                        ->label('Portal approved')
-                        ->default(true)
-                        ->helperText('If off, the customer cannot sign in until approved.'),
-                ])
-                ->columns(2),
-        ];
-    }
-
-    /** @return list<Forms\Components\Component> */
-    private static function contactTab(): array
-    {
-        return [
-            Forms\Components\Repeater::make('pics')
-                ->relationship()
-                ->schema([
-                    Forms\Components\TextInput::make('name')->required()->maxLength(255),
-                    Forms\Components\TextInput::make('phone')->tel()->maxLength(50),
-                    Forms\Components\TextInput::make('email')->email()->maxLength(255),
-                    Forms\Components\Toggle::make('is_default')->label('Default contact'),
-                ])
-                ->columns(2)
-                ->defaultItems(1)
-                ->addActionLabel('Add contact')
-                ->columnSpanFull(),
-        ];
-    }
-
-    /** @return list<Forms\Components\Component> */
-    private static function branchesTab(): array
-    {
-        return [
-            Forms\Components\Repeater::make('branches')
-                ->label('Branch / delivery locations')
-                ->relationship('addresses', modifyQueryUsing: fn ($query) => $query->where('type', 'branch'))
-                ->schema([
-                    Forms\Components\Hidden::make('type')->default('branch'),
-                    Forms\Components\TextInput::make('label')
-                        ->label('Branch name')
-                        ->required()
-                        ->maxLength(100),
-                    Forms\Components\Textarea::make('address')->required()->rows(2),
-                    Forms\Components\TextInput::make('postcode')->maxLength(20),
-                    Forms\Components\TextInput::make('state')->maxLength(100),
-                    Forms\Components\TextInput::make('city')->maxLength(100),
-                    Forms\Components\TextInput::make('google_maps_url')
-                        ->label('Google Maps URL')
-                        ->url()
-                        ->maxLength(500),
-                    Forms\Components\Toggle::make('is_default')->label('Default branch'),
-                ])
-                ->columns(2)
-                ->defaultItems(0)
-                ->addActionLabel('Add branch')
-                ->columnSpanFull(),
-        ];
-    }
-
-    /** @return list<Forms\Components\Component> */
-    private static function einvoiceTab(): array
-    {
-        return [
-            Forms\Components\Grid::make(3)->schema([
+            Forms\Components\Grid::make(4)->schema([
+                Forms\Components\TextInput::make('gst_no')->label('GST no.')->maxLength(50),
+                Forms\Components\TextInput::make('sst_registration_no')
+                    ->label('SST no.')
+                    ->maxLength(50),
+                Forms\Components\TextInput::make('tax_type')
+                    ->label('Tax code')
+                    ->placeholder('SV-6')
+                    ->maxLength(50),
                 Forms\Components\TextInput::make('tin')
-                    ->label('TIN')
+                    ->label('TIN no.')
                     ->maxLength(50)
                     ->live(onBlur: true)
                     ->afterStateUpdated(fn (Forms\Set $set, ?string $state) => $set('einvoice_tin', $state)),
+                Forms\Components\TextInput::make('msic_code')->label('MSIC 1')->maxLength(20),
+                Forms\Components\TextInput::make('msic_code_2')->label('MSIC 2')->maxLength(20),
+                Forms\Components\TextInput::make('msic_code_3')->label('MSIC 3')->maxLength(20),
                 Forms\Components\TextInput::make('einvoice_tin')
                     ->label('E-invoice TIN')
                     ->maxLength(50),
-                Forms\Components\TextInput::make('sst_registration_no')
-                    ->label('SST registration no.')
-                    ->maxLength(50),
-                Forms\Components\TextInput::make('msic_code')
-                    ->label('MSIC code')
-                    ->maxLength(20),
                 Forms\Components\Select::make('business_type')
                     ->options([
                         'company' => 'Company',
@@ -376,45 +293,150 @@ class CustomerForm
                     }),
                 Forms\Components\TextInput::make('einvoice_buyer_name')
                     ->label('Buyer name')
-                    ->maxLength(255)
-                    ->columnSpan(2),
-            ]),
-            Forms\Components\Textarea::make('einvoice_address')
-                ->label('E-invoice address')
-                ->rows(3)
-                ->columnSpanFull(),
-        ];
-    }
-
-    /** @return list<Forms\Components\Component> */
-    private static function othersTab(): array
-    {
-        return [
-            Forms\Components\Grid::make(3)->schema([
+                    ->maxLength(255),
                 Forms\Components\TextInput::make('sales_tax_exemption_no')
                     ->label('Sales tax exemption no.')
                     ->maxLength(100),
                 Forms\Components\DatePicker::make('sales_tax_exemption_expiry')
                     ->label('Exemption expiry'),
-                Forms\Components\TextInput::make('discount_percent')
-                    ->label('Discount %')
-                    ->numeric()
-                    ->suffix('%'),
-                Forms\Components\TextInput::make('tax_type')
-                    ->label('Tax type')
-                    ->maxLength(50),
-                Forms\Components\TextInput::make('price_category')
-                    ->label('Price category')
-                    ->maxLength(50),
-                Forms\Components\TextInput::make('account_group')
-                    ->label('Account group')
-                    ->maxLength(50),
+                Forms\Components\Textarea::make('einvoice_address')
+                    ->label('E-invoice address')
+                    ->rows(2)
+                    ->columnSpan(2),
+            ]),
+        ];
+    }
+
+    /** @return list<Forms\Components\Component> */
+    public static function noteFields(): array
+    {
+        return [
+            Forms\Components\Grid::make(3)->schema([
+                Forms\Components\Textarea::make('own_note')
+                    ->label('Own note: other email, statement remark')
+                    ->rows(2),
+                Forms\Components\Textarea::make('mailing_statement_remark')
+                    ->label('Mailing statement remark')
+                    ->rows(2),
+                Forms\Components\Textarea::make('payment_note')
+                    ->label('Own note (payment)')
+                    ->rows(2),
             ]),
             Forms\Components\Textarea::make('notes')
-                ->label('Note')
-                ->rows(4)
-                ->columnSpanFull()
-                ->helperText('Notes can be copied to quotation / invoice documents involving this customer.'),
+                ->label('Note for documents')
+                ->rows(2)
+                ->helperText('Can be copied to quotation / invoice documents involving this customer.'),
+        ];
+    }
+
+    /** @return list<Forms\Components\Component> */
+    private static function consentFields(): array
+    {
+        return [
+            Forms\Components\Grid::make(3)->schema([
+                Forms\Components\Select::make('default_order_type')
+                    ->label('Default order type')
+                    ->options(\App\Enums\OrderType::options())
+                    ->helperText('Term → Term / Cash / COD · COD → Cash only · Cash cannot change'),
+                Forms\Components\Select::make('consent_letter_type')
+                    ->label('Consent letter')
+                    ->options(\App\Domains\MasterData\Models\Customer::consentOptions())
+                    ->default(\App\Domains\MasterData\Models\Customer::CONSENT_NONE)
+                    ->live()
+                    ->afterStateUpdated(fn ($state, Forms\Set $set) => $set(
+                        'pricing_reconfirmation_required',
+                        $state !== \App\Domains\MasterData\Models\Customer::CONSENT_NO_RECONFIRMATION,
+                    )),
+                Forms\Components\Toggle::make('pricing_reconfirmation_required')
+                    ->label('Pricing reconfirmation required')
+                    ->default(true)
+                    ->inline(false)
+                    ->helperText('Off = quotation at the agreed special price is accepted automatically.'),
+            ]),
+            Forms\Components\Grid::make(3)->schema([
+                Forms\Components\DatePicker::make('consent_valid_from')->label('Consent valid from'),
+                Forms\Components\DatePicker::make('consent_valid_until')->label('Consent valid until'),
+                Forms\Components\FileUpload::make('consent_document_path')
+                    ->label('Consent letter document')
+                    ->disk('public')
+                    ->directory('consent-letters')
+                    ->acceptedFileTypes(['application/pdf', 'image/*'])
+                    ->downloadable()
+                    ->openable(),
+            ])->visible(fn (Get $get): bool => $get('consent_letter_type') !== \App\Domains\MasterData\Models\Customer::CONSENT_NONE && filled($get('consent_letter_type'))),
+        ];
+    }
+
+    /** @return list<Forms\Components\Component> */
+    private static function listFields(): array
+    {
+        return [
+            Forms\Components\Repeater::make('pics')
+                ->label('Other contact persons')
+                ->relationship()
+                ->schema([
+                    Forms\Components\TextInput::make('name')->required()->maxLength(255),
+                    Forms\Components\TextInput::make('phone')->tel()->maxLength(50),
+                    Forms\Components\TextInput::make('email')->email()->maxLength(255),
+                    Forms\Components\Toggle::make('is_default')->label('Default contact'),
+                ])
+                ->columns(4)
+                ->defaultItems(0)
+                ->addActionLabel('Add contact person')
+                ->columnSpanFull(),
+            // the customer's own branches / sites (not O&G's)
+            Forms\Components\Repeater::make('branches')
+                ->label('Customer branch / delivery locations')
+                ->relationship('addresses', modifyQueryUsing: fn ($query) => $query->where('type', 'branch'))
+                ->schema([
+                    Forms\Components\Hidden::make('type')->default('branch'),
+                    Forms\Components\TextInput::make('label')
+                        ->label('Location name')
+                        ->required()
+                        ->maxLength(100),
+                    Forms\Components\Textarea::make('address')->required()->rows(2),
+                    Forms\Components\TextInput::make('postcode')->maxLength(20),
+                    Forms\Components\TextInput::make('state')->maxLength(100),
+                    Forms\Components\TextInput::make('city')->maxLength(100),
+                    Forms\Components\TextInput::make('google_maps_url')
+                        ->label('Google Maps URL')
+                        ->url()
+                        ->maxLength(500),
+                    Forms\Components\Toggle::make('is_default')->label('Default location'),
+                ])
+                ->columns(2)
+                ->defaultItems(0)
+                ->addActionLabel('Add location')
+                ->columnSpanFull(),
+        ];
+    }
+
+    /** @return list<Forms\Components\Component> */
+    private static function portalLoginFields(): array
+    {
+        return [
+            Forms\Components\Grid::make(2)->schema([
+                Forms\Components\TextInput::make('portal_user_name')
+                    ->label('Login name')
+                    ->maxLength(255)
+                    ->dehydrated(false),
+                Forms\Components\TextInput::make('portal_email')
+                    ->label('Login email')
+                    ->email()
+                    ->maxLength(255)
+                    ->rule('unique:users,email')
+                    ->dehydrated(false),
+                Forms\Components\TextInput::make('portal_password')
+                    ->label('Password')
+                    ->password()
+                    ->minLength(8)
+                    ->confirmed()
+                    ->dehydrated(false),
+                Forms\Components\TextInput::make('portal_password_confirmation')
+                    ->label('Confirm password')
+                    ->password()
+                    ->dehydrated(false),
+            ]),
         ];
     }
 

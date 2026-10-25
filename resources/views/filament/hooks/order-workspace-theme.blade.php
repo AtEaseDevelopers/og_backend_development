@@ -161,6 +161,9 @@
     .ow-tag-issue { --tag-bg: var(--ow-issue-bg); --tag-fg: var(--ow-issue-fg); --tag-bd: var(--ow-issue-bd); }
     .ow-tag-released { --tag-bg: var(--ow-released-bg); --tag-fg: var(--ow-released-fg); --tag-bd: var(--ow-released-bd); }
     .ow-tag-done { --tag-bg: var(--ow-done-bg); --tag-fg: var(--ow-done-fg); --tag-bd: var(--ow-done-bd); }
+    /* Closed: finished orders, neutral grey */
+    .ow-tag-muted { --tag-bg: #f1f5f9; --tag-fg: #475569; --tag-bd: #cbd5e1; }
+    .dark .ow-tag-muted { --tag-bg: rgb(51 65 85 / .35); --tag-fg: #cbd5e1; --tag-bd: rgb(100 116 139 / .5); }
     /* no orders in this stage: neutral colours, label kept readable */
     .ow-tag-empty:not(.ow-tag-active) { --tag-bg: var(--ow-bg); --tag-fg: var(--ow-muted); --tag-bd: var(--ow-line); }
     .ow-tag-empty:not(.ow-tag-active)::before { opacity: .45; }

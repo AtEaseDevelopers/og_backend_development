@@ -31,7 +31,7 @@ class CommissionRuleResource extends Resource
             Forms\Components\Select::make('source_branch_id')
                 ->relationship('sourceBranch', 'name')
                 ->nullable()
-                ->helperText('Leave empty for all branches'),
+                ->helperText('Leave empty for all companies'),
             Forms\Components\TextInput::make('name')->required(),
             // lorry type and route removed from the rule (user, 15 Oct 2026); rules match by branch only
             Forms\Components\Select::make('split_type')
@@ -61,7 +61,7 @@ class CommissionRuleResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('name')->searchable(),
-                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Branch')->placeholder('All'),
+                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Company')->placeholder('All'),
                 Tables\Columns\TextColumn::make('split_type')->badge(),
                 Tables\Columns\TextColumn::make('rate_percent')->suffix('%'),
                 Tables\Columns\IconColumn::make('is_active')->boolean(),

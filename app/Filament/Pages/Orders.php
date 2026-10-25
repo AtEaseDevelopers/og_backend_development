@@ -426,7 +426,7 @@ class Orders extends Page
     public function cards(array $summary): array
     {
         return [
-            ['key' => '', 'label' => 'All', 'hint' => 'Orders in this branch', 'count' => $summary['total']],
+            ['key' => '', 'label' => 'All', 'hint' => 'Orders in this company', 'count' => $summary['total']],
             ['key' => 'attention', 'label' => 'Needs attention', 'hint' => 'New enquiries & payment review', 'count' => $summary['needs_attention']],
             ['key' => 'customer', 'label' => 'Awaiting customer', 'hint' => 'Quotation confirmation', 'count' => $summary['awaiting_customer']],
             ['key' => 'bill', 'label' => 'Ready to bill', 'hint' => 'Released for billing', 'count' => $summary['ready_to_bill']],

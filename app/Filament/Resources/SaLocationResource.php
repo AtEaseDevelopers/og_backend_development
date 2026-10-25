@@ -26,22 +26,25 @@ class SaLocationResource extends Resource
     // opened from its card on the Master Data page (user, 21 Oct 2026), not the menu
     protected static bool $shouldRegisterNavigation = false;
 
-    protected static ?string $navigationLabel = 'SA Locations';
+    // a company's branches (user, 25 Oct 2026: called Branch, no longer SA location)
+    protected static ?string $navigationLabel = 'Branches';
 
     protected static ?int $navigationSort = 12;
 
-    protected static ?string $modelLabel = 'SA location';
+    protected static ?string $modelLabel = 'branch';
+
+    protected static ?string $pluralModelLabel = 'branches';
 
     public static function form(Form $form): Form
     {
         return $form->schema([
             Forms\Components\Section::make()->schema([
                 Forms\Components\Select::make('branch_id')
-                    ->label('Branch')
+                    ->label('Company')
                     ->options(fn () => Branch::query()->where('is_active', true)->orderBy('code')->get()->mapWithKeys(fn (Branch $b) => [$b->id => $b->code.' — '.$b->name]))
                     ->default(fn () => CurrentCompany::branchId())
                     ->required(),
-                Forms\Components\TextInput::make('code')->required()->maxLength(20)->helperText('Unique within the branch'),
+                Forms\Components\TextInput::make('code')->required()->maxLength(20)->helperText('Unique within the company'),
                 Forms\Components\TextInput::make('name')->required()->maxLength(120),
                 Forms\Components\TextInput::make('csn_prefix')
                     ->label('CSN prefix')
@@ -60,14 +63,14 @@ class SaLocationResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('code')->searchable()->sortable(),
                 Tables\Columns\TextColumn::make('name')->searchable(),
-                Tables\Columns\TextColumn::make('branch.code')->label('Branch')->badge(),
+                Tables\Columns\TextColumn::make('branch.code')->label('Company')->badge(),
                 Tables\Columns\TextColumn::make('csn_prefix')->label('CSN prefix')->badge()->color('info'),
                 Tables\Columns\TextColumn::make('salespersons_count')->counts('salespersons')->label('Salespersons'),
                 Tables\Columns\IconColumn::make('is_active')->boolean(),
             ])
             ->defaultSort('code')
             ->filters([
-                Tables\Filters\SelectFilter::make('branch_id')->label('Branch')->relationship('branch', 'name'),
+                Tables\Filters\SelectFilter::make('branch_id')->label('Company')->relationship('branch', 'name'),
             ])
             ->actions([Tables\Actions\EditAction::make()]);
     }

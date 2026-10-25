@@ -57,7 +57,7 @@
                     <tr>
                         <th>Lorry</th>
                         <th>Lorry company</th>
-                        <th>Branch</th>
+                        <th>Company</th>
                         <th>Drivers (earned)</th>
                         <th class="cbl-num">Job sheets</th>
                         <th class="cbl-num">CSNs</th>

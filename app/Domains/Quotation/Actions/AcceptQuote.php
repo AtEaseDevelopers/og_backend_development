@@ -42,7 +42,7 @@ class AcceptQuote
                 throw new InvalidArgumentException('who accepted it is missing');
             }
 
-            $branch = $quote->branch ?? throw new InvalidArgumentException('the quotation has no branch');
+            $branch = $quote->branch ?? throw new InvalidArgumentException('the quotation has no company');
             $company = $quote->company_id ? Company::query()->find($quote->company_id) : $branch->defaultCompany();
             $customer = $quote->customer ?? $this->customerFromLead($quote, $branch, $company);
             $prices = $this->saveSpecialPrices($quote, $customer, $branch);

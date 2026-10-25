@@ -278,7 +278,7 @@ class ConsignmentNoteResource extends Resource
                             ->label('Scan / paste CSN QR code (optional)')
                             ->helperText('Leave blank to claim the selected CSN directly.'),
                     ])
-                    ->modalDescription(fn (ConsignmentNote $record) => 'Claiming '.$record->number.' reserves it for your branch / store and removes it from the unassigned queue.')
+                    ->modalDescription(fn (ConsignmentNote $record) => 'Claiming '.$record->number.' reserves it for your company / store and removes it from the unassigned queue.')
                     ->action(function (ConsignmentNote $record, array $data) {
                         try {
                             $claim = app(\App\Domains\Dispatch\Actions\ClaimCsn::class);

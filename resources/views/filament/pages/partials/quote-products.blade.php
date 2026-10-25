@@ -40,19 +40,29 @@
                                     @endforeach
                                 </select>
                                 @if ($kind === 'measurement')
-                                    <select wire:model.live="{{ $field }}.sub_category" class="ow-select" aria-label="Product">
-                                        <option value="">— Select product —</option>
+                                    <select wire:model.live="{{ $field }}.sub_category" class="ow-select" aria-label="Sub-category">
+                                        <option value="">— Sub-category —</option>
                                         @foreach ($measurementOptions as $value => $label)
                                             <option value="{{ $value }}">{{ $label }}</option>
                                         @endforeach
                                         <option value="__new__">+ New product / size band…</option>
                                     </select>
                                 @elseif ($kind !== '')
-                                    <select wire:model.live="{{ $field }}.catalog_key" class="ow-select" aria-label="Product">
-                                        <option value="">— Select {{ $kind === 'lorry' ? 'lorry' : 'item' }} —</option>
-                                        @foreach ($kindOptions[$kind] ?? [] as $key => $label)
-                                            <option value="{{ $key }}">{{ $label }}</option>
+                                    {{-- type, then sub-category, then the product of that sub-category (user, 25 Oct 2026) --}}
+                                    @php $sub = (string) ($item['sub_category'] ?? ''); @endphp
+                                    <select wire:model.live="{{ $field }}.sub_category" class="ow-select" aria-label="Sub-category">
+                                        <option value="">— Sub-category —</option>
+                                        @foreach ($this->subCategoryOptions($kind) as $value => $label)
+                                            <option value="{{ $value }}">{{ $label }}</option>
                                         @endforeach
+                                    </select>
+                                    <select wire:model.live="{{ $field }}.catalog_key" class="ow-select" aria-label="Product">
+                                        <option value="">{{ $sub === '' ? 'Choose the sub-category first' : '— Select '.($kind === 'lorry' ? 'lorry' : 'item').' —' }}</option>
+                                        @if ($sub !== '')
+                                            @foreach ($this->kindProductOptions($kind, $sub) as $key => $label)
+                                                <option value="{{ $key }}">{{ $label }}</option>
+                                            @endforeach
+                                        @endif
                                         <option value="new">+ New {{ $kind === 'lorry' ? 'lorry' : 'item' }}…</option>
                                     </select>
                                 @else
@@ -106,7 +116,7 @@
                             <td colspan="5">
                                 <div class="ow-special">
                                     @if ($new)
-                                        <div class="ow-special-title">New {{ $kind === 'lorry' ? 'lorry' : 'product' }} · added to the {{ $productKinds[$kind] ?? '' }} products when the customer accepts</div>
+                                        <div class="ow-special-title">New {{ $kind === 'lorry' ? 'chartered lorry' : 'product' }} · added to the {{ $productKinds[$kind] ?? '' }} products when the customer accepts</div>
                                         <div class="ow-special-grid">
                                             @if ($columns['sub_category'])
                                                 <label class="ow-dim">

@@ -29,7 +29,16 @@ class Customer extends Model
         'status', 'portal_approved', 'payment_methods', 'email_notifications',
         'pricing_reconfirmation_required', 'consent_letter_type', 'consent_valid_from',
         'consent_valid_until', 'consent_document_path', 'default_order_type',
+        // the client's Customer Information workbook columns (user, 25 Oct 2026)
+        'display_term', 'postcode', 'phone_2', 'mobile', 'contact_person_3', 'phone_3', 'contact_person_4', 'phone_4',
+        'gst_no', 'msic_code_2', 'msic_code_3', 'own_note', 'mailing_statement_remark', 'payment_note',
     ];
+
+    protected static function booted(): void
+    {
+        // every customer is also a consignor / consignee (user, 25 Oct 2026)
+        static::saved(fn (Customer $customer) => ConsignorConsignee::syncFromCustomer($customer));
+    }
 
     /** Consent letter types (section C). */
     public const CONSENT_NONE = 'none';

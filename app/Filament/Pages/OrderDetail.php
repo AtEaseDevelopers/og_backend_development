@@ -1403,6 +1403,41 @@ class OrderDetail extends Page
             });
     }
 
+    /** Close a rejected order or one awaiting the customer (user, 26 Oct 2026): finished, not continued; it can be reopened. */
+    public function closeOrderAction(): Action
+    {
+        return Action::make('closeOrder')
+            ->label('Close order')
+            ->color('gray')
+            ->modalHeading(fn () => 'Close '.$this->order()?->number.'?')
+            ->modalDescription('The order will not continue. It moves to Closed and can be reopened later.')
+            ->form([Forms\Components\Textarea::make('reason')->label('Reason (optional)')->rows(2)])
+            ->modalSubmitActionLabel('Close order')
+            ->action(function (array $data): void {
+                $order = $this->order();
+
+                if (! $order || ! in_array($order->status, [QuotationStatus::Rejected, QuotationStatus::Sent, QuotationStatus::PendingReview], true)) {
+                    Notification::make()->title('Only a rejected order or one awaiting the customer can be closed')->danger()->send();
+
+                    return;
+                }
+
+                $from = $order->status->value;
+                $reason = trim((string) ($data['reason'] ?? '')) ?: 'Closed by '.auth()->user()?->name;
+                $order->update(['status' => QuotationStatus::Closed, 'closed_at' => now(), 'closed_reason' => $reason]);
+                QuotationStatusLog::query()->create([
+                    'quotation_id' => $order->id,
+                    'from_status' => $from,
+                    'to_status' => QuotationStatus::Closed->value,
+                    'user_id' => auth()->id(),
+                    'remarks' => 'Closed by '.auth()->user()?->name.' · '.$reason,
+                ]);
+
+                Notification::make()->title('Order closed')->success()->send();
+                $this->refreshDetail();
+            });
+    }
+
     public function reopenAction(): Action
     {
         return Action::make('reopen')

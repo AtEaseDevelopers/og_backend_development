@@ -36,7 +36,9 @@ class OrderStage
         'confirmation' => ['label' => 'Confirmation', 'color' => 'action'],
         'payment' => ['label' => 'Payment verification / Pending item', 'color' => 'action'],
         'csn' => ['label' => 'CSN created', 'color' => 'done'],
-        'closed' => ['label' => 'Rejected / closed', 'color' => 'issue'],
+        // apart (user, 26 Oct 2026): a rejected order can still be edited and sent again; a closed one is finished
+        'rejected' => ['label' => 'Rejected', 'color' => 'issue'],
+        'closed' => ['label' => 'Closed', 'color' => 'muted'],
     ];
 
     /**
@@ -49,7 +51,7 @@ class OrderStage
             : PortalEnquiryStatus::tryFrom((string) $enquiry->status);
 
         $stage = match (true) {
-            $status === PortalEnquiryStatus::Rejected => ['closed', 1, 'Rejected', 'issue', 'Rejected at review', 'View enquiry', true],
+            $status === PortalEnquiryStatus::Rejected => ['rejected', 1, 'Rejected', 'issue', 'Rejected at review', 'View enquiry', true],
             $status === PortalEnquiryStatus::Cancelled => ['closed', 1, 'Cancelled', 'issue', 'Cancelled by customer', 'View enquiry', true],
             ! $enquiry->salesperson_id => ['enquiry', 1, 'New enquiry', 'progress', 'No salesperson assigned · Assign one to continue', 'Assign salesperson', false],
             default => ['quotation', 2, 'Preparing quotation', 'progress', 'Salesperson assigned · Prepare the order', 'Provide pricing', false],
@@ -111,6 +113,8 @@ class OrderStage
             $status === QuotationStatus::Draft && ! $q->salesperson_id => ['enquiry', 1, 'New enquiry', 'progress', 'No salesperson assigned · Assign one to continue', 'Assign salesperson', false],
             $status === QuotationStatus::Draft => ['quotation', 2, 'Preparing quotation', 'progress', $total > 0 ? 'Priced · Ready to send for confirmation' : 'Pricing in progress · Salesperson editing', $total > 0 ? 'Send quotation' : 'Provide pricing', false],
             $status === QuotationStatus::Superseded => ['closed', 2, 'Old version', 'gray', 'Replaced by a newer version · kept for reference', 'View order', true],
+            // the customer rejected (portal or recorded by staff): edit and send a new version, or close it
+            $status === QuotationStatus::Rejected => ['rejected', 3, 'Customer rejected', 'issue', 'Rejected'.($q->rejection_reason ? ' · '.$q->rejection_reason : '').' · Edit and send a new version, or close', 'Edit & send new version', false],
             default => ['closed', 2, $status->getLabel() ?? 'Closed', 'issue', $q->rejection_reason ?: $q->closed_reason ?: ($status->getLabel() ?? 'Closed'), 'View order', true],
         };
 

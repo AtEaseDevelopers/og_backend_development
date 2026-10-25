@@ -77,6 +77,8 @@ class User extends Authenticatable implements FilamentUser, HasTenants
             'password' => 'hashed',
             'is_hq' => 'boolean',
             'is_active' => 'boolean',
+            // the user's own page settings, e.g. master_data_hidden (the Master Data cards they hide)
+            'preferences' => 'array',
         ];
     }
 

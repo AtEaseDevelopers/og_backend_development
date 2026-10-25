@@ -67,6 +67,10 @@
                     <div class="ow-banner-title">{{ $banner['title'] }}</div>
                     <div class="ow-banner-text">{{ $banner['text'] }}</div>
                 </div>
+                @if ($can['close'] ?? false)
+                    {{-- close a rejected order or one awaiting the customer by hand (user, 26 Oct 2026) --}}
+                    <button type="button" wire:click="mountAction('closeOrder')" class="ow-btn" style="margin-left:auto">Close order</button>
+                @endif
                 @if ($banner['cta_label'])
                     @switch($banner['cta_kind'])
                         @case('url')
@@ -251,7 +255,7 @@
                                     @if ($co['customer_pic'] ?? null)
                                         <div><div class="ow-dt">Customer PIC</div><div class="ow-dd">{{ $co['customer_pic'] }}</div></div>
                                     @endif
-                                    <div><div class="ow-dt">Salesperson / SA location</div><div class="ow-dd">{{ $co['salesperson_sa'] }}</div></div>
+                                    <div><div class="ow-dt">Salesperson / branch</div><div class="ow-dd">{{ $co['salesperson_sa'] }}</div></div>
                                     <div><div class="ow-dt">Enquiry</div><div class="ow-dd">@if ($co['enquiry_url'])<a href="{{ $co['enquiry_url'] }}" class="ow-link">{{ $co['enquiry_ref'] }}</a>@else {{ $co['enquiry_ref'] }} @endif</div></div>
                                     <div><div class="ow-dt">Received through</div><div class="ow-dd">{{ $co['received_through'] }}</div></div>
                                     <div>

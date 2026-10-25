@@ -30,7 +30,7 @@ class DriverResource extends Resource
             Forms\Components\Hidden::make('company_id')->default(fn () => \App\Support\CurrentCompany::id())->required(),
             Forms\Components\Hidden::make('branch_id')->default(fn () => \App\Support\CurrentCompany::branchId()),
             Forms\Components\Section::make('Driver')->schema([
-                Forms\Components\Placeholder::make('branch_label')->label('Company / branch')
+                Forms\Components\Placeholder::make('branch_label')->label('Company')
                     ->content(fn () => \App\Support\CurrentBranch::get()?->getFilamentName() ?? '—'),
                 Forms\Components\TextInput::make('code')->maxLength(50),
                 Forms\Components\TextInput::make('name')->label('Driver Name')->required()->maxLength(255),
@@ -46,7 +46,7 @@ class DriverResource extends Resource
                 Forms\Components\Toggle::make('is_active')->default(true)->inline(false),
             ])->columns(3),
             Forms\Components\Section::make('Lorry')
-                ->description('The lorry number, type and tonne also fill the lorry in Master Data → Lorries (created if new) with this driver as its default driver.')
+                ->description('The lorry number, type and tonne also fill the lorry in Master Data → Fleet Vehicles (created if new) with this driver as its default driver.')
                 ->schema([
                     Forms\Components\TextInput::make('lorry_group_code')->label('Lorry Group Code')->maxLength(50),
                     Forms\Components\TextInput::make('lorry_group')->label('Lorry Group Name')->maxLength(150),
@@ -108,7 +108,7 @@ class DriverResource extends Resource
         return $table->columns([
             Tables\Columns\TextColumn::make('code'),
             Tables\Columns\TextColumn::make('name')->searchable()->sortable(),
-            Tables\Columns\TextColumn::make('branch.name'),
+            Tables\Columns\TextColumn::make('branch.name')->label('Company'),
             Tables\Columns\TextColumn::make('phone'),
             Tables\Columns\TextColumn::make('ic_number')->label('IC')->toggleable(isToggledHiddenByDefault: true),
             Tables\Columns\TextColumn::make('lorry_number')->label('Lorry')->description(fn ($record) => collect([$record->lorry_type, $record->tonnage !== null ? rtrim(rtrim(number_format((float) $record->tonnage, 2), '0'), '.').' t' : null])->filter()->implode(' · ') ?: null)->placeholder('—')->searchable(),

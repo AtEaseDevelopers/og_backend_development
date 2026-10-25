@@ -105,9 +105,9 @@
         <form wire:submit="applyFilters" class="mc-filter-form">
             <div class="mc-filter-grid mc-filter-grid-top">
                 <div class="mc-filter-field">
-                    <label class="mc-filter-label" for="filterBranchId">Branch</label>
+                    <label class="mc-filter-label" for="filterBranchId">Company</label>
                     <select id="filterBranchId" wire:model.defer="filterBranchId" class="mc-filter-input">
-                        <option value="">All Branches</option>
+                        <option value="">All Companies</option>
                         @foreach ($this->branchFilterOptions() as $value => $label)
                             <option value="{{ $value }}">{{ $label }}</option>
                         @endforeach
@@ -184,7 +184,7 @@
                     <tr>
                         <th>CSN Number</th>
                         <th>Job Sheet</th>
-                        <th>Branch</th>
+                        <th>Company</th>
                         <th>Driver</th>
                         <th>Lorry</th>
                         <th>Customer</th>

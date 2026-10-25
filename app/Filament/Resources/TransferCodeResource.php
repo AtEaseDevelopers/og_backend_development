@@ -67,7 +67,7 @@ class TransferCodeResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('code')->searchable()->sortable(),
                 Tables\Columns\TextColumn::make('name')->searchable(),
-                Tables\Columns\TextColumn::make('destinationBranch.code')->label('Branch'),
+                Tables\Columns\TextColumn::make('destinationBranch.code')->label('Company'),
                 Tables\Columns\TextColumn::make('type')->badge(),
                 Tables\Columns\TextColumn::make('staff.name')->label('Staff')->listWithLineBreaks()->limitList(3)->expandableLimitedList()->placeholder('—'),
                 Tables\Columns\IconColumn::make('is_active')->boolean(),

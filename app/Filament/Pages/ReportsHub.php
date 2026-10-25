@@ -28,7 +28,7 @@ class ReportsHub extends Page
         'missing_csn' => ['label' => 'Missing CSN', 'description' => 'CSNs marked missing and their investigation status.', 'icon' => 'heroicon-o-exclamation-triangle', 'group' => 'Operations'],
         'break_bulk_psi' => ['label' => 'Break-bulk / PSI-PSO', 'description' => 'Break-bulk handovers between the original and replacement drivers.', 'icon' => 'heroicon-o-arrows-right-left', 'group' => 'Operations'],
         'vehicle' => ['label' => 'Vehicle maintenance / expiry', 'description' => 'Insurance, road tax, permit and service dates of each lorry.', 'icon' => 'heroicon-o-wrench-screwdriver', 'group' => 'Operations'],
-        'payments_cod' => ['label' => 'Payments / COD', 'description' => 'Payments received (cash, COD, transfer, …) by customer and branch.', 'icon' => 'heroicon-o-banknotes', 'group' => 'Finance'],
+        'payments_cod' => ['label' => 'Payments / COD', 'description' => 'Payments received (cash, COD, transfer, …) by customer and company.', 'icon' => 'heroicon-o-banknotes', 'group' => 'Finance'],
         'invoices' => ['label' => 'Invoice batches', 'description' => 'Invoices and Cash Bills issued, with their AutoCount status.', 'icon' => 'heroicon-o-document-text', 'group' => 'Finance'],
         'statements' => ['label' => 'Statements of Account', 'description' => 'Customers\' statements of account (invoices, payments, balance).', 'icon' => 'heroicon-o-clipboard-document', 'group' => 'Finance', 'page' => 'statements'],
         'cod_listing' => ['label' => 'COD Listing', 'description' => 'COD deliveries and the amounts drivers collect.', 'icon' => 'heroicon-o-truck', 'group' => 'Finance', 'page' => 'cod'],

@@ -63,6 +63,8 @@
         .ow-page .ow-pay-change { margin-top: .75rem; padding: .6rem .9rem; border-radius: .6rem; background: rgb(240 253 244); border: 1px solid rgb(187 247 208); color: rgb(22 101 52); }
         .dark .ow-page .ow-pay-change { background: rgb(34 197 94 / .12); border-color: rgb(34 197 94 / .35); color: rgb(134 239 172); }
         .ow-page .ow-product-pick { display: grid; grid-template-columns: minmax(7.5rem, 9rem) minmax(0, 1fr); gap: .4rem; }
+        /* type, sub-category, product on one line: the product gets the room (user, 25 Oct 2026) */
+        .ow-page .ow-product-pick:has(> :nth-child(3)) { grid-template-columns: minmax(6.5rem, 7.5rem) minmax(7.5rem, 9.5rem) minmax(12rem, 1fr); }
         .ow-page .ow-dims { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .4rem; margin-top: .45rem; }
         .ow-page .ow-dim { display: grid; gap: .15rem; font-size: .7rem; color: var(--ow-muted); }
         /* Create quotation: the special price block under a product row (new product fields, conditions, ranges) */
@@ -75,7 +77,7 @@
         .ow-page .ow-ranges th, .ow-page .ow-ranges td { padding: .15rem .35rem; text-align: left; font-weight: 500; }
         .ow-page .ow-ranges .ow-input { width: 7rem; }
         @media (max-width: 639px) {
-            .ow-page .ow-product-pick { grid-template-columns: minmax(0, 1fr); }
+            .ow-page .ow-product-pick, .ow-page .ow-product-pick:has(> :nth-child(3)) { grid-template-columns: minmax(0, 1fr); }
             .ow-page .ow-dims { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
         .ow-page .ow-item-photos { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
@@ -158,6 +160,7 @@
             $productKinds = $this->productKinds();
             $measurementOptions = $this->measurementOptions();
             $kindOptions = ['item' => $this->kindProductOptions('item'), 'lorry' => $this->kindProductOptions('lorry')];
+            $subOptions = ['item' => $this->subCategoryOptions('item'), 'lorry' => $this->subCategoryOptions('lorry')];
             // saved consignors / consignees (Master Data → Consignor / Consignee): the customer's tagged ones first
             $savedConsignors = $isQuote ? ['tagged' => [], 'others' => []] : $this->savedParties('consignor');
             $savedConsignees = $isQuote ? ['tagged' => [], 'others' => []] : $this->savedParties('consignee');
@@ -403,7 +406,7 @@
                                         @endif
                                     </div>
                                 @elseif (filled($pair['legacy_store_branch_id'] ?? null))
-                                    <div class="ow-note" style="margin-top:.25rem">This record was saved with the branch {{ \App\Domains\MasterData\Models\Branch::query()->whereKey($pair['legacy_store_branch_id'])->value('name') ?? '' }} as its store. Pick a store to replace it.</div>
+                                    <div class="ow-note" style="margin-top:.25rem">This record was saved with the company {{ \App\Domains\MasterData\Models\Branch::query()->whereKey($pair['legacy_store_branch_id'])->value('name') ?? '' }} as its store. Pick a store to replace it.</div>
                                 @elseif ($stores === [])
                                     <div class="ow-note" style="margin-top:.25rem">No store yet · add one in Master Data → Stores.</div>
                                 @endif
@@ -538,14 +541,21 @@
                                 @unless ($isQuote)<th>Photos</th>@endunless
                                 <th class="ow-num">Unit price</th>
                                 <th class="ow-num">Line total</th>
-                                <th></th>
+                                <th style="width:4.5rem">
+                                    @if (! $locked && filled($form['customer_id'] ?? null))
+                                        {{-- every product's earlier orders of this customer; a row's own icon shows that product only --}}
+                                        <button type="button" wire:click="mountAction('customerHistory', { order: {{ $oi }} })" class="ow-icon-btn" title="All previous records of this customer" aria-label="All previous records of this customer">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></svg>
+                                        </button>
+                                    @endif
+                                </th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach ($pair['items'] as $j => $item)
                                 @php $fixedItem = blank($item['kind'] ?? null) && (($item['line_type'] ?? 'uom') === 'item' || (filled($item['item_name'] ?? null) && ! array_key_exists((string) ($item['catalog_key'] ?? ''), $productOptions))); @endphp
                                 <tr wire:key="ow-o{{ $oi }}-pair-{{ $i }}-item-{{ $j }}">
-                                    <td style="min-width:22rem">
+                                    <td style="min-width:30rem">
                                         @if ($fixedItem)
                                             {{-- product kept from the order record that is not in the UOM product list --}}
                                             <input type="text" class="ow-input" value="{{ $item['item_name'] }}" readonly>
@@ -560,24 +570,44 @@
                                                     @endforeach
                                                 </select>
                                                 @if ($kind === 'measurement')
-                                                    <select wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.sub_category" class="ow-select" aria-label="Product">
-                                                        <option value="">— Select product —</option>
+                                                    <select wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.sub_category" class="ow-select" aria-label="Sub-category">
+                                                        <option value="">— Sub-category —</option>
                                                         @foreach ($measurementOptions as $value => $label)
                                                             <option value="{{ $value }}">{{ $label }}</option>
                                                         @endforeach
+                                                        <option value="{{ \App\Filament\Pages\CreateOrder::OTHER_PRODUCT }}">Others</option>
                                                     </select>
+                                                    @if (($item['sub_category'] ?? '') === \App\Filament\Pages\CreateOrder::OTHER_PRODUCT)
+                                                        <input type="text" wire:model.live.debounce.600ms="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.item_name" class="ow-input" placeholder="Product name" aria-label="Product name" autocomplete="off">
+                                                    @endif
                                                 @elseif ($kind !== '')
-                                                    <select wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.catalog_key" class="ow-select" aria-label="Product">
-                                                        <option value="">— Select {{ $kind === 'lorry' ? 'lorry' : 'item' }} —</option>
-                                                        @foreach ($kindOptions[$kind] ?? [] as $key => $label)
-                                                            <option value="{{ $key }}">{{ $label }}</option>
+                                                    {{-- type, then sub-category, then the product of that sub-category (user, 25 Oct 2026) --}}
+                                                    @php $sub = (string) ($item['sub_category'] ?? ''); @endphp
+                                                    <select wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.sub_category" class="ow-select" aria-label="Sub-category">
+                                                        <option value="">— Sub-category —</option>
+                                                        @foreach ($subOptions[$kind] ?? [] as $value => $label)
+                                                            <option value="{{ $value }}">{{ $label }}</option>
                                                         @endforeach
+                                                        <option value="{{ \App\Filament\Pages\CreateOrder::OTHER_PRODUCT }}">Others</option>
                                                     </select>
+                                                    @if ($sub === \App\Filament\Pages\CreateOrder::OTHER_PRODUCT)
+                                                        {{-- a product not in the system: named here, kept on this order only --}}
+                                                        <input type="text" wire:model.live.debounce.600ms="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.item_name" class="ow-input" placeholder="Product name" aria-label="Product name" autocomplete="off">
+                                                    @elseif ($sub !== '')
+                                                        <select wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.catalog_key" class="ow-select" aria-label="Product">
+                                                            <option value="">— Select {{ $kind === 'lorry' ? 'lorry' : 'item' }} —</option>
+                                                            @foreach ($this->kindProductOptions($kind, $sub) as $key => $label)
+                                                                <option value="{{ $key }}">{{ $label }}</option>
+                                                            @endforeach
+                                                        </select>
+                                                    @else
+                                                        <select class="ow-select" disabled aria-label="Product"><option>Choose the sub-category first</option></select>
+                                                    @endif
                                                 @else
                                                     <select class="ow-select" disabled aria-label="Product"><option>Choose the type first</option></select>
                                                 @endif
                                             </div>
-                                            @if ($kind === 'measurement')
+                                            @if ($kind === 'measurement' && ($item['sub_category'] ?? '') !== \App\Filament\Pages\CreateOrder::OTHER_PRODUCT)
                                                 <div class="ow-dims">
                                                     @foreach (['length' => 'L (cm)', 'width' => 'W (cm)', 'height' => 'H (cm)', 'weight' => 'Weight (kg)'] as $dim => $dimLabel)
                                                         <label class="ow-dim">
@@ -654,6 +684,7 @@
                                             </label>
                                             <div class="ow-price-hint ow-price-diff">{{ match (true) {
                                                 ($item['no_band'] ?? false) => 'No size band fits · key in the price',
+                                                ($item['sub_category'] ?? '') === \App\Filament\Pages\CreateOrder::OTHER_PRODUCT => 'Not in the system · for this order only · key in the price',
                                                 ($item['kind'] ?? '') === 'measurement' && blank($item['catalog_key'] ?? null) => 'Enter L, W, H and weight for the list price, or key in the price',
                                                 default => 'No rate for this location · key in the price',
                                             } }}</div>

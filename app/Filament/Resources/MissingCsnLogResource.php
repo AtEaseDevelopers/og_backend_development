@@ -36,7 +36,7 @@ class MissingCsnLogResource extends Resource
         return $infolist->schema([
             Infolists\Components\Section::make()->schema([
                 Infolists\Components\TextEntry::make('consignmentNote.number')->label('CSN'),
-                Infolists\Components\TextEntry::make('sourceBranch.code')->label('Branch'),
+                Infolists\Components\TextEntry::make('sourceBranch.code')->label('Company'),
                 Infolists\Components\TextEntry::make('deliveryOrder.number')->label('DO'),
                 Infolists\Components\TextEntry::make('status')->badge(),
                 Infolists\Components\TextEntry::make('investigation_status'),
@@ -52,7 +52,7 @@ class MissingCsnLogResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('consignmentNote.number')->label('CSN')->searchable(),
-                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Branch'),
+                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Company'),
                 Tables\Columns\TextColumn::make('status')->badge()
                     ->color(fn (string $state) => match ($state) {
                         'pending_return' => 'warning',

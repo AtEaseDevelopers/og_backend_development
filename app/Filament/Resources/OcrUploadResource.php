@@ -42,6 +42,7 @@ class OcrUploadResource extends Resource
     {
         return $form->schema([
             Forms\Components\Select::make('branch_id')
+                ->label('Company')
                 ->options(fn () => Branch::query()->pluck('name', 'id'))
                 ->required(),
             Forms\Components\Select::make('customer_id')
@@ -63,7 +64,7 @@ class OcrUploadResource extends Resource
         return $infolist->schema([
             Infolists\Components\Section::make()->schema([
                 Infolists\Components\TextEntry::make('original_filename'),
-                Infolists\Components\TextEntry::make('branch.name'),
+                Infolists\Components\TextEntry::make('branch.name')->label('Company'),
                 Infolists\Components\TextEntry::make('customer.company_name'),
                 Infolists\Components\TextEntry::make('status')->badge(),
                 Infolists\Components\TextEntry::make('quotation.number')->label('Quotation'),
@@ -92,7 +93,7 @@ class OcrUploadResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('id')->sortable(),
                 Tables\Columns\TextColumn::make('original_filename')->searchable(),
-                Tables\Columns\TextColumn::make('branch.code'),
+                Tables\Columns\TextColumn::make('branch.code')->label('Company'),
                 Tables\Columns\TextColumn::make('customer.company_name')->placeholder('—'),
                 Tables\Columns\TextColumn::make('status')->badge()
                     ->color(fn (string $state) => match ($state) {
@@ -110,6 +111,7 @@ class OcrUploadResource extends Resource
                     ->label('Upload hardcopy')
                     ->form([
                         Forms\Components\Select::make('branch_id')
+                            ->label('Company')
                             ->options(fn () => Branch::query()->pluck('name', 'id'))
                             ->default(fn () => auth()->user()?->defaultBranch()?->id)
                             ->required(),

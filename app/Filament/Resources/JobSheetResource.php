@@ -60,7 +60,7 @@ class JobSheetResource extends Resource
         return $infolist->schema([
             Infolists\Components\Section::make()->schema([
                 Infolists\Components\TextEntry::make('number'),
-                Infolists\Components\TextEntry::make('operatingBranch.name')->label('Operating Branch'),
+                Infolists\Components\TextEntry::make('operatingBranch.name')->label('Operating company'),
                 Infolists\Components\TextEntry::make('lorry.registration_no')->label('Lorry'),
                 Infolists\Components\TextEntry::make('driver.name')->label('Driver'),
                 Infolists\Components\TextEntry::make('operating_date')->date(),
@@ -99,7 +99,7 @@ class JobSheetResource extends Resource
                     ->sortable(),
                 // Relationship columns sort on a correlated subselect of the related name, so no join and no duplicate rows
                 Tables\Columns\TextColumn::make('operatingBranch.name')
-                    ->label('Operating Branch')
+                    ->label('Operating company')
                     ->sortable(),
                 Tables\Columns\TextColumn::make('lorry.registration_no')
                     ->label('Lorry')

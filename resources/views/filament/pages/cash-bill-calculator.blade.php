@@ -85,7 +85,7 @@
                             </th>
                             <th>CSN / Order</th>
                             <th>CSN date</th>
-                            <th>Source Branch</th>
+                            <th>Source company</th>
                             <th class="cb-num">Amount due</th>
                             <th>Payment Status</th>
                         </tr>
@@ -162,7 +162,7 @@
                         <th>CSN / Order</th>
                         <th>Customer</th>
                         <th>CSN date</th>
-                        <th>Source Branch</th>
+                        <th>Source company</th>
                         <th class="cb-num">Amount due</th>
                         @if ($splitting)<th class="cb-num">Paying (RM)</th>@endif
                         <th>Payment Status</th>

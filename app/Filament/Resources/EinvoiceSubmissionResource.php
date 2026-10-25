@@ -82,7 +82,7 @@ class EinvoiceSubmissionResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('invoice.number')->searchable()->label('Invoice'),
-                Tables\Columns\TextColumn::make('invoice.sourceBranch.code')->label('Branch'),
+                Tables\Columns\TextColumn::make('invoice.sourceBranch.code')->label('Company'),
                 Tables\Columns\TextColumn::make('status')->badge()
                     ->color(fn (string $state) => match ($state) {
                         'valid' => 'success',

@@ -45,18 +45,25 @@ class ClosePendingCustomerReviews
         // 2) No update for the configured window → Closed Case
         $cutoff = $now->copy()->subDays($days);
 
+        // rejected orders not edited and sent again within the window close too (user, 26 Oct 2026)
         $closed = Quotation::query()
-            ->whereIn('status', [QuotationStatus::PendingReview->value, QuotationStatus::Sent->value])
+            ->where(fn ($query) => $query
+                ->where(fn ($q) => $q
+                    ->whereIn('status', [QuotationStatus::PendingReview->value, QuotationStatus::Sent->value])
+                    ->where(fn ($q) => $q->whereNull('pending_review_since')->orWhere('pending_review_since', '<=', $cutoff)))
+                ->orWhere('status', QuotationStatus::Rejected->value))
             ->where('updated_at', '<=', $cutoff)
-            ->where(fn ($q) => $q->whereNull('pending_review_since')->orWhere('pending_review_since', '<=', $cutoff))
             ->get()
             ->each(function (Quotation $quotation) use ($days): void {
                 $from = $quotation->status->value;
+                $why = $quotation->status === QuotationStatus::Rejected
+                    ? 'Rejected and not sent again within '.$days.' days'
+                    : 'No customer response within '.$days.' days';
 
                 $quotation->update([
                     'status' => QuotationStatus::Closed,
                     'closed_at' => now(),
-                    'closed_reason' => 'No customer response within '.$days.' days',
+                    'closed_reason' => $why,
                 ]);
 
                 QuotationStatusLog::query()->create([
@@ -64,7 +71,7 @@ class ClosePendingCustomerReviews
                     'from_status' => $from,
                     'to_status' => QuotationStatus::Closed->value,
                     'user_id' => null,
-                    'remarks' => 'Closed Case — no customer response within '.$days.' days',
+                    'remarks' => 'Closed Case — '.lcfirst($why),
                 ]);
             });
 

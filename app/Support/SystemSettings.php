@@ -37,7 +37,7 @@ class SystemSettings
     public static function labels(): array
     {
         return [
-            self::PENDING_REVIEW_DAYS => 'Pending customer review duration (days)',
+            self::PENDING_REVIEW_DAYS => 'Auto-close rejected / awaiting customer orders after (days)',
             self::EMAILS_ENABLED => 'Send system-generated emails',
             self::WHATSAPP_ENABLED => 'Enable WhatsApp share links',
             self::ENQUIRY_LOCK_SECONDS => 'Enquiry lock timeout (seconds)',

@@ -40,7 +40,7 @@ class DeliveryOrderResource extends Resource
             Infolists\Components\Section::make()->schema([
                 Infolists\Components\TextEntry::make('number'),
                 Infolists\Components\TextEntry::make('consignmentNote.number')->label('CSN'),
-                Infolists\Components\TextEntry::make('sourceBranch.name')->label('Source Branch'),
+                Infolists\Components\TextEntry::make('sourceBranch.name')->label('Source company'),
                 Infolists\Components\TextEntry::make('jobSheet.number')->label('Job Sheet'),
                 Infolists\Components\TextEntry::make('lorry.registration_no')->label('Lorry'),
                 Infolists\Components\TextEntry::make('driver.name')->label('Driver'),
@@ -58,7 +58,7 @@ class DeliveryOrderResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('number')->searchable()->sortable(),
                 Tables\Columns\TextColumn::make('consignmentNote.number')->label('CSN'),
-                Tables\Columns\TextColumn::make('sourceBranch.name')->label('Branch'),
+                Tables\Columns\TextColumn::make('sourceBranch.name')->label('Company'),
                 Tables\Columns\TextColumn::make('lorry.registration_no')->label('Lorry'),
                 Tables\Columns\TextColumn::make('driver.name'),
                 Tables\Columns\TextColumn::make('jobSheet.number')->label('Job Sheet'),

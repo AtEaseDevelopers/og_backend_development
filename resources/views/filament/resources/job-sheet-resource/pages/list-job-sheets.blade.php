@@ -46,9 +46,9 @@
                 <x-og.date-range :live="false" from="filterOperatingFrom" to="filterOperatingTo" :from-value="$filterOperatingFrom" :to-value="$filterOperatingTo" label="Operating date" />
             </div>
             <div class="js-filter-field">
-                <label class="js-filter-label" for="filterBranchId">Branch</label>
+                <label class="js-filter-label" for="filterBranchId">Company</label>
                 <select id="filterBranchId" wire:model.defer="filterBranchId" class="js-filter-input">
-                    <option value="">All Branches</option>
+                    <option value="">All Companies</option>
                     @foreach ($this->branchFilterOptions() as $value => $label)
                         <option value="{{ $value }}">{{ $label }}</option>
                     @endforeach

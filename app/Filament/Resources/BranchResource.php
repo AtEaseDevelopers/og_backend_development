@@ -26,22 +26,32 @@ class BranchResource extends Resource
 
     protected static ?int $navigationSort = 1;
 
+    // the O&G companies the top-bar switcher changes between (user, 25 Oct 2026: called Company, no longer Branch)
+    protected static ?string $navigationLabel = 'Company';
+
+    protected static ?string $modelLabel = 'company';
+
+    protected static ?string $pluralModelLabel = 'companies';
+
     public static function form(Form $form): Form
     {
         return $form->schema([
             Forms\Components\TextInput::make('code')->required()->maxLength(20)->unique(ignoreRecord: true),
-            Forms\Components\TextInput::make('name')->required(),
-            Forms\Components\TextInput::make('company_name')->required(),
-            Forms\Components\TextInput::make('company_no'),
+            Forms\Components\TextInput::make('name')->label('Name')->required(),
+            Forms\Components\TextInput::make('company_name')->label('Registered company name')->required(),
+            Forms\Components\TextInput::make('company_no')->label('Company no.'),
             Forms\Components\Textarea::make('address')
                 ->rows(3)
-                ->helperText('Also the store address: an order whose consignor brings the goods to this branch (Store) uses it as the pickup address.')
+                ->helperText('Also the store address: an order whose consignor brings the goods to this company (Store) uses it as the pickup address.')
                 ->columnSpanFull(),
             Forms\Components\TextInput::make('phone')->tel()->maxLength(50),
+            // on the quotation letterhead (user, 26 Oct 2026)
+            Forms\Components\TextInput::make('fax')->label('Fax')->tel()->maxLength(50),
+            Forms\Components\TextInput::make('sst_no')->label('SST No.')->maxLength(50),
             Forms\Components\TextInput::make('email')->email(),
             Forms\Components\Toggle::make('is_active')
                 ->default(true)
-                ->helperText('Only active branches are offered as stores on Create order.'),
+                ->helperText('Only active companies are offered as stores on Create order.'),
         ]);
     }
 
@@ -51,7 +61,7 @@ class BranchResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('code')->searchable()->sortable(),
                 Tables\Columns\TextColumn::make('name')->searchable(),
-                Tables\Columns\TextColumn::make('company_name')->searchable(),
+                Tables\Columns\TextColumn::make('company_name')->label('Registered company name')->searchable(),
                 Tables\Columns\TextColumn::make('address')->limit(60)->placeholder('No address yet')->wrap()->toggleable(),
                 Tables\Columns\TextColumn::make('phone')->placeholder('—')->toggleable(),
                 Tables\Columns\IconColumn::make('is_active')->boolean(),

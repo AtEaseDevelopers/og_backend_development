@@ -24,7 +24,7 @@ class Branch extends Model implements HasName
 {
     protected $fillable = [
         'code', 'name', 'company_name', 'company_no', 'address',
-        'phone', 'email', 'letterhead_path', 'is_active',
+        'phone', 'fax', 'sst_no', 'email', 'letterhead_path', 'is_active',
     ];
 
     protected function casts(): array

@@ -63,7 +63,7 @@
                             <th>Customer Name</th>
                             <th>Registration No</th>
                             <th class="cca-col-amount">Limit Requested (MYR)</th>
-                            <th>Branch</th>
+                            <th>Company</th>
                             <th>App Date</th>
                             <th>Status</th>
                         </tr>

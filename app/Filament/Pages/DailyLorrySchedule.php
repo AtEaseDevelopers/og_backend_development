@@ -60,13 +60,13 @@ class DailyLorrySchedule extends Page
 
     public function getSubheading(): ?string
     {
-        return 'Where every lorry starts and goes on the selected day, by branch.';
+        return 'Where every lorry starts and goes on the selected day, by company.';
     }
 
     /** @return array<string, string> */
     public function branchOptions(): array
     {
-        return ['all' => 'All branches'] + Branch::query()
+        return ['all' => 'All companies'] + Branch::query()
             ->where('is_active', true)
             ->orderBy('code')
             ->get()

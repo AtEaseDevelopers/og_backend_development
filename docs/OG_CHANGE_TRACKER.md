@@ -4,7 +4,7 @@
 > what is done, what is left, and the rules the user has set. Update it whenever an item changes status,
 > and refresh "Last updated" with the output of plain `date` (local Malaysia time).
 
-**Last updated:** Wed Oct 21 03:26:06 MPST 2026 · Reports and Master Data as card pages; driver import; committed
+**Last updated:** Sun Oct 25 19:40:55 MPST 2026 · Round 6: company/branch rename, consignors from customers, Master Data page, customer form and import; not committed
 
 **Previous round:** finished and pushed as commit `a29b179` on `main` (8 Oct 2026: orders, order details,
 billing / COD / Term, CSN bulk actions, QR codes, returned-CSN scanning, cash bill calculator). Its details are
@@ -338,7 +338,35 @@ Legend: [x] done · [~] done in code, not yet browser-checked · [ ] not started
 ### 58. Assign to lorry: scan or search the CSNs — done
 - [x] The Assign to lorry modal has a **Scan or type a CSN number** box (the number or the QR code's token; Enter ticks that CSN / subsheet in the list, clears the box and shows a notice as the Cash Bill Calculator does: Ticked, Already ticked, or CSN not found) and the list has a **search** box; ticking by hand and Select all stay (user, 21 Oct 2026).
 
+## Round 6 (user, 25 Oct) — not committed
+
+| # | Change | Status |
+|---|---|---|
+| 6.1 | Consignor / Consignee lists every customer (synced, tagged "Customer") beside the ones created there; Create order offers both (searchable, address as second line). Migration `2026_10_25_100000` | Done, tested |
+| 6.2 | Wording: what the top switcher changes (KL, JB…) is **Company**; SA locations are **Branches**. Master Data group "Organisation" → "Company"; cards Company / Branches; ~70 labels + ~40 blade texts. DB names unchanged | Done, tested |
+| 6.3 | Fleet Vehicles moved from the side menu to Master Data → Fleet & dispatch | Done, tested |
+| 6.4 | Products & pricing: UOM → **Measurements**, Lorries → **Chartered Lorry**; product type picker shows Measurement / Item / Chartered Lorry | Done, tested |
+| 6.5 | Master Data page: label-only cards, 4 groups in one row, fits without scrolling (laptop); phone stacks | Done, checked in browser |
+| 6.6 | "Show / hide menus" per user (`users.preferences`, migration `2026_10_25_110000`); Select all / Deselect all beside each group label, shown only when useful; eye-slash badge per group with the count, hover lists the hidden menus | Done, tested |
+| 6.7 | Customer fields for every column of the client's Customer Information workbook (migration `2026_10_25_120000`) | Done, tested |
+| 6.8 | Customer form on one page with sections (no tabs); view page = Details + Special price tabs | Done, tested |
+| 6.9 | Delete removed from customer edit; no Inactive button (user's choice): Status (Active / Inactive) is set in the Account card's Edit or on the edit page; inactive customers not offered on Create order, Create quotation, CSN form | Done |
+| 6.10 | Customer list from the client workbook: no upload button (user's choice); entered by a query with `CustomerInformationImporter` (matches by debtor code, fills every column). Accidental local replace was restored from `client-customers.csv` | Done — upload button removed |
+| 6.11 | Contact fields grouped (people, phones, other); Contact person 3/4 labelled 1/2; view page hides empty optional contact fields | Done |
+| 6.12 | Customer view: compact cards 3 across, label beside value; each card has its own Edit (modal of that card); header Edit removed | Done (modal opens; Save not yet tried by the user) |
+| 6.13 | Local: 7 duplicate Excel customers merged (special prices moved to the Excel code, duplicate deleted) | Done (local only) |
+| 6.14 | Orders page: summary cards removed; Customer / type / order type / service / salesperson row only under "Filters +" | Done |
+| 6.15 | Product picker: Type → Sub-category → Product on Create order, Create quotation and the CSN form rates; one line, product gets the width | Done |
+| 6.16 | Sub-category "Others": type a product name, priced by hand, kept on that order / CSN only (no product created). Not on Create quotation (it keeps "+ New item") | Done |
+| 6.17 | History icon above the row icons (beside Line total): every earlier order line of the customer, any product; a row's icon still shows that product only | Done, checked by the user |
+| 6.18 | Customer history popup (beside Line total): Special price and Earlier orders as two tabs; solid headings | Done |
+| 6.19 | Quotation PDF (Quotations → PDF) in the client's format (their "Quotation of Transportation Charges", 1 May 2026): letterhead + Ref No. / Page No. / QUOTATION on each page, customer, Date, Issued by, RE (Effective date = quotation date), bold Courier rate tables (ranges × destinations, RM 14-00), minimum charge lines, the 3 notes | Done, rendered and compared (rolled-back test) |
+| 6.20 | Order stages: "Rejected / closed" split into **Rejected** (customer rejected; "Edit & send new version" → new version, Preparing quotation) and **Closed**; "Close order" by hand for Rejected / Awaiting customer; nightly auto-close of Rejected too (days in Settings: "Auto-close rejected / awaiting customer orders after (days)", default 7) | Done, tested (rolled back) |
+| 6.21 | Quotation letterhead: company Fax and SST No. fields (Master Data → Company, migration `2026_10_26_100000`, fills KL's address, tel, fax, email, SST no. where empty); Tel and Fax on one line | Done |
+| 6.22 | Local sample quotations Q00005 (measurement), Q00006 (items), Q00007 (chartered lorry), Q00008 (mixed) for A GOODWAY TRADING | Done (local only) |
+
 ## Open questions for the user
+- Round 6: truncating customers resets IDs, so old orders / CSNs / invoices would show the new customer that gets their old ID. Kept IDs instead (unused customers removed, used ones inactive). Clean slate (clear old test orders too) only if the user confirms. Role name "Branch Manager" and data names like "KL Branch" were left unchanged; customer portal wording left as branch/company.
 - Should the L, W, H and weight entered on Create order be saved on the order (CSN / DO)?
 - The GitHub repo is still public and holds the client's customer list and price lists: make it private.
 - The pick-up minimum is applied per record (each consignor → consignee). Two records collected from the same consignor are each topped up: confirm with the client, or should it be once per order?

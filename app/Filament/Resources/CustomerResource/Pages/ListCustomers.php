@@ -13,6 +13,8 @@ class ListCustomers extends ListRecords
 
     protected static string $resource = CustomerResource::class;
 
+    // no "Import customer list" button (user, 25 Oct 2026): the client's customer lists are entered by a query run
+    // with CustomerInformationImporter instead
     protected function getHeaderActions(): array
     {
         return [Actions\CreateAction::make()];

@@ -138,7 +138,7 @@
                 <div class="csn-field"><div class="csn-label">Consignment number</div><div class="csn-value">{{ $display($task['number'] ?? null) }}</div></div>
                 <div class="csn-field"><div class="csn-label">Created date</div><div class="csn-value">{{ $display($task['created_date'] ?? null) }}</div></div>
                 <div class="csn-field"><div class="csn-label">Transfer code</div><div class="csn-value">{{ $display($task['transfer_code'] ?? null) }}</div></div>
-                <div class="csn-field"><div class="csn-label">Transfer branch</div><div class="csn-value">{{ $display($task['transfer_branch'] ?? null) }}</div></div>
+                <div class="csn-field"><div class="csn-label">Transfer company</div><div class="csn-value">{{ $display($task['transfer_branch'] ?? null) }}</div></div>
                 <div class="csn-field"><div class="csn-label">Delivery segments</div><div class="csn-value">{{ $task['segment_count'] ?? 0 }}</div></div>
                 <div class="csn-field"><div class="csn-label">Main driver</div><div class="csn-value">{{ $display($task['main_driver'] ?? null) }}</div></div>
                 <div class="csn-field"><div class="csn-label">Sub driver</div><div class="csn-value">{{ $display($task['sub_driver'] ?? null) }}</div></div>

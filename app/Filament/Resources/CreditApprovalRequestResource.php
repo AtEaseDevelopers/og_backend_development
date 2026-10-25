@@ -44,7 +44,7 @@ class CreditApprovalRequestResource extends Resource
         return $infolist->schema([
             Infolists\Components\Section::make()->schema([
                 Infolists\Components\TextEntry::make('customer.company_name')->label('Customer'),
-                Infolists\Components\TextEntry::make('branch.name')->label('Branch'),
+                Infolists\Components\TextEntry::make('branch.name')->label('Company'),
                 Infolists\Components\TextEntry::make('quotation.number')->label('Quotation'),
                 Infolists\Components\TextEntry::make('requested_amount')->money('MYR'),
                 Infolists\Components\TextEntry::make('reason')->columnSpanFull(),
@@ -62,7 +62,7 @@ class CreditApprovalRequestResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('customer.company_name')->searchable(),
-                Tables\Columns\TextColumn::make('branch.name'),
+                Tables\Columns\TextColumn::make('branch.name')->label('Company'),
                 Tables\Columns\TextColumn::make('quotation.number')->label('Quotation'),
                 Tables\Columns\TextColumn::make('requested_amount')->money('MYR'),
                 Tables\Columns\TextColumn::make('reason')->limit(40),

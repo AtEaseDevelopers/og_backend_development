@@ -7,10 +7,10 @@
 
 <x-filament-panels::page>
     <x-filament::section>
-        <x-slot name="heading">Cross-branch lorry assignment</x-slot>
+        <x-slot name="heading">Cross-company lorry assignment</x-slot>
         <x-slot name="description">
-            Assign a CSN from any source branch to a lorry registered under any company.
-            Source branch remains sticky for billing and commission.
+            Assign a CSN from any source company to a lorry registered under any company.
+            Source company remains sticky for billing and commission.
         </x-slot>
 
         <form wire:submit="assign" class="space-y-6">

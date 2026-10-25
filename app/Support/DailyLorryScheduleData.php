@@ -51,7 +51,7 @@ class DailyLorryScheduleData
 
                 return [
                     'code' => $branch?->code ?? '—',
-                    'name' => $branch?->name ?? 'Unknown branch',
+                    'name' => $branch?->name ?? 'Unknown company',
                     'trips' => $branchSheets->map(fn (JobSheet $sheet) => $this->tripRow($sheet, $branch))->values()->all(),
                     'other_orders' => $this->otherBranchOrders($branchSheets, $branch),
                 ];

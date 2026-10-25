@@ -139,7 +139,7 @@ class JobSheetAuditLogData
             'lorry_id' => 'Lorry Change',
             'checked_in_at' => 'Driver Check-in',
             'operating_date' => 'Operating Date Change',
-            'operating_branch_id' => 'Branch Change',
+            'operating_branch_id' => 'Company Change',
             'is_shared_dispatch' => 'Shared Dispatch Flag',
             default => ucfirst(str_replace('_', ' ', $field)).' Change',
         };

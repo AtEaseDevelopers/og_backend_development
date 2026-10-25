@@ -16,7 +16,8 @@ use Illuminate\Database\Eloquent\Builder;
 
 /**
  * Master Data → Consignor / Consignee (user, 21 Oct 2026): saved consignors and consignees (name, address, PIC,
- * telephone) tagged to customers. Create order lists them on each consignor & consignee block.
+ * telephone) tagged to customers. Create order lists them on each consignor & consignee block. Every customer is
+ * listed too (user, 25 Oct 2026): its name, address, PIC and telephone come from the customer and are changed there.
  */
 class ConsignorConsigneeResource extends Resource
 {
@@ -45,23 +46,32 @@ class ConsignorConsigneeResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->when(CurrentCompany::id(), fn (Builder $q, $id) => $q->where('company_id', $id));
+        return parent::getEloquentQuery()->with('customer:id,code,company_name')->when(CurrentCompany::id(), fn (Builder $q, $id) => $q->where('company_id', $id));
     }
 
     public static function form(Form $form): Form
     {
+        // a customer's row: name, address, PIC and telephone follow the customer
+        $fromCustomer = fn (?ConsignorConsignee $record) => (bool) $record?->isFromCustomer();
+
         return $form->schema([
             Forms\Components\Section::make()->schema([
-                Forms\Components\TextInput::make('name')->label('Name')->required()->maxLength(255),
+                Forms\Components\Placeholder::make('from_customer')
+                    ->label('Customer')
+                    ->content(fn (?ConsignorConsignee $record) => trim(($record?->customer?->code ? $record->customer->code.' — ' : '').$record?->customer?->company_name)
+                        .' · the name, address, PIC and telephone come from the customer: change them on the customer.')
+                    ->visible($fromCustomer)
+                    ->columnSpanFull(),
+                Forms\Components\TextInput::make('name')->label('Name')->required()->maxLength(255)->disabled($fromCustomer),
                 Forms\Components\Select::make('type')
                     ->label('Used as')
                     ->options(ConsignorConsignee::TYPES)
                     ->default('both')
                     ->selectablePlaceholder(false)
                     ->required(),
-                Forms\Components\TextInput::make('pic_name')->label('PIC name')->maxLength(150),
-                Forms\Components\TextInput::make('phone')->label('Telephone number')->tel()->maxLength(50),
-                Forms\Components\Textarea::make('address')->label('Address')->rows(2)->columnSpanFull(),
+                Forms\Components\TextInput::make('pic_name')->label('PIC name')->maxLength(150)->disabled($fromCustomer),
+                Forms\Components\TextInput::make('phone')->label('Telephone number')->tel()->maxLength(50)->disabled($fromCustomer),
+                Forms\Components\Textarea::make('address')->label('Address')->rows(2)->columnSpanFull()->disabled($fromCustomer),
                 Forms\Components\Select::make('location_id')
                     ->label('Area (price list location)')
                     ->helperText('Optional: filled as From (consignor) or To (consignee) on Create order, so the price follows.')
@@ -86,7 +96,15 @@ class ConsignorConsigneeResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('name')->searchable()->sortable()->weight('semibold')->description(fn (ConsignorConsignee $record) => $record->address),
+                Tables\Columns\TextColumn::make('name')->searchable(query: fn (Builder $query, string $search) => $query->where(fn (Builder $q) => $q
+                    ->where('name', 'like', "%{$search}%")
+                    ->orWhereHas('customer', fn (Builder $customer) => $customer->where('code', 'like', "%{$search}%"))))->sortable()->weight('semibold')->description(fn (ConsignorConsignee $record) => $record->address),
+                Tables\Columns\TextColumn::make('source')
+                    ->label('Source')
+                    ->state(fn (ConsignorConsignee $record) => $record->isFromCustomer() ? 'Customer' : 'Created here')
+                    ->badge()
+                    ->color(fn (string $state) => $state === 'Customer' ? 'info' : 'gray')
+                    ->description(fn (ConsignorConsignee $record) => $record->customer?->code),
                 Tables\Columns\TextColumn::make('type')->label('Used as')->badge()->formatStateUsing(fn (ConsignorConsignee $record) => $record->typeLabel()),
                 Tables\Columns\TextColumn::make('pic_name')->label('PIC')->placeholder('—')->searchable(),
                 Tables\Columns\TextColumn::make('phone')->label('Telephone')->placeholder('—'),
@@ -96,11 +114,20 @@ class ConsignorConsigneeResource extends Resource
             ])
             ->defaultSort('name')
             ->filters([
+                Tables\Filters\SelectFilter::make('source')
+                    ->label('Source')
+                    ->options(['customer' => 'Customers', 'created' => 'Created here'])
+                    ->query(fn (Builder $query, array $data) => match ($data['value'] ?? null) {
+                        'customer' => $query->whereNotNull('customer_id'),
+                        'created' => $query->whereNull('customer_id'),
+                        default => $query,
+                    }),
                 Tables\Filters\SelectFilter::make('type')->label('Used as')->options(ConsignorConsignee::TYPES),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                // a customer's row goes with the customer
+                Tables\Actions\DeleteAction::make()->hidden(fn (ConsignorConsignee $record) => $record->isFromCustomer()),
             ]);
     }
 

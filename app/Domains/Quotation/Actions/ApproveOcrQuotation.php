@@ -24,7 +24,7 @@ class ApproveOcrQuotation
         return DB::transaction(function () use ($upload, $data, $actor, $corrections) {
             $branchId = $upload->branch_id ?? $actor->defaultBranch()?->id;
             if (! $branchId) {
-                throw new InvalidArgumentException('Branch is required to create quotation.');
+                throw new InvalidArgumentException('Company is required to create quotation.');
             }
 
             $customerId = $upload->customer_id;

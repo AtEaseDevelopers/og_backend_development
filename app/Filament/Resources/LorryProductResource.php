@@ -15,7 +15,7 @@ class LorryProductResource extends UomResource
 
     protected static ?string $navigationIcon = 'heroicon-o-truck';
 
-    protected static ?string $navigationLabel = 'Lorries';
+    protected static ?string $navigationLabel = 'Chartered Lorry';
 
     protected static ?string $modelLabel = 'chartered lorry';
 

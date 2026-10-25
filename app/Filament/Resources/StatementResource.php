@@ -36,7 +36,7 @@ class StatementResource extends Resource
     {
         return $form->schema([
             Forms\Components\Select::make('source_branch_id')
-                ->label('Branch')
+                ->label('Company')
                 ->options(Branch::query()->pluck('name', 'id'))
                 ->required(),
             Forms\Components\Select::make('customer_id')
@@ -53,7 +53,7 @@ class StatementResource extends Resource
         return $infolist->schema([
             Infolists\Components\Section::make()->schema([
                 Infolists\Components\TextEntry::make('customer.company_name'),
-                Infolists\Components\TextEntry::make('sourceBranch.name'),
+                Infolists\Components\TextEntry::make('sourceBranch.name')->label('Company'),
                 Infolists\Components\TextEntry::make('statement_date')->date(),
                 Infolists\Components\TextEntry::make('outstanding_balance')->money('MYR'),
             ])->columns(2),
@@ -72,7 +72,7 @@ class StatementResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('customer.company_name')->searchable(),
-                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Branch'),
+                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Company'),
                 Tables\Columns\TextColumn::make('statement_date')->date()->sortable(),
                 Tables\Columns\TextColumn::make('outstanding_balance')->money('MYR'),
                 Tables\Columns\TextColumn::make('created_at')->dateTime(),

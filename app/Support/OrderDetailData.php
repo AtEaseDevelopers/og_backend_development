@@ -165,6 +165,9 @@ class OrderDetailData
             'csn' => $stage['color'] === 'action'
                 ? $this->b('warning', 'CSN pending', 'Released, but the CSN was not created · create it to continue to dispatch.', 'Create CSN →', 'action', 'generateBilling')
                 : $this->b('success', 'CSN created', 'Released · continue in CSN management.', 'View CSN →', 'url', $order ? ConsignmentNoteResource::getUrl('index', ['tableFilters' => ['quotation_id' => ['value' => $order->id]]]) : null),
+            'rejected' => $order
+                ? $this->b('danger', 'Customer rejected the quotation', 'Reason: '.($order->rejection_reason ?: 'not given').' · Edit the details and send a new version (back to Preparing quotation), or close the order.', 'Edit & send new version →', 'action', 'revise')
+                : $this->b('danger', $stage['label'], $stage['hint'], null, 'action', ''),
             'closed' => $order?->status === QuotationStatus::Superseded
                 ? $this->oldVersionBanner($order)
                 : $this->b('danger', $stage['label'], $stage['hint'], $order?->status === QuotationStatus::Closed ? 'Reopen case' : null, 'action', 'reopen'),
@@ -1189,6 +1192,8 @@ class OrderDetailData
             'unblock_cod' => $order && $order->orderType() === OrderType::Cod && $order->cod_blocked,
             'generate_billing' => $order && $status === QuotationStatus::Confirmed && ($order->billingStatus() !== BillingStatus::Generated || $order->consignmentNotes->isEmpty()),
             'reopen' => $order && $status === QuotationStatus::Closed,
+            // close by hand (user, 26 Oct 2026): a rejected order or one awaiting the customer
+            'close' => $order && $latest && in_array($status, [QuotationStatus::Rejected, QuotationStatus::Sent, QuotationStatus::PendingReview], true),
             'credit_decision' => $order && $status === QuotationStatus::PendingApproval && $isManager && CreditApprovalRequest::query()->where('quotation_id', $order->id)->where('status', 'pending')->exists(),
             'review_payments' => $order && $isManager,
             'send_invoice' => (bool) $order,

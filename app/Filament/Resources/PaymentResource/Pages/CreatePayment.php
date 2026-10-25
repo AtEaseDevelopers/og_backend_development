@@ -32,7 +32,7 @@ class CreatePayment extends CreateRecord
         $branchId = CurrentCompany::branchId();
 
         if (! $branchId) {
-            throw ValidationException::withMessages(['data.customer_id' => 'Select a branch first (top of the page).']);
+            throw ValidationException::withMessages(['data.customer_id' => 'Select a company first (top of the page).']);
         }
 
         $amount = round((float) ($data['amount'] ?? 0), 2);

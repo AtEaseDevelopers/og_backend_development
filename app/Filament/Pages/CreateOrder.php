@@ -210,7 +210,8 @@ class CreateOrder extends Page
                     $kind = $this->itemKind($item);
                     $this->orders[$o]['pairs'][$p]['items'][$i]['kind'] = $kind;
 
-                    if ($kind === Uom::MEASUREMENT && blank($item['sub_category'] ?? null)) {
+                    // every type picks a sub-category before the product (user, 25 Oct 2026)
+                    if (blank($item['sub_category'] ?? null)) {
                         $this->orders[$o]['pairs'][$p]['items'][$i]['sub_category'] = (string) Uom::query()->whereKey(explode(':', (string) $item['catalog_key'], 2)[1] ?? 0)->value('sub_category');
                     }
                 }
@@ -218,35 +219,46 @@ class CreateOrder extends Page
         }
     }
 
+    /** The active saved consignors / consignees of this company, loaded once per request (both roles). */
+    private ?\Illuminate\Support\Collection $savedPartyRows = null;
+
     /**
      * Saved consignors or consignees (Master Data → Consignor / Consignee) for a block: those tagged to the selected
-     * customer first, then the others.
+     * customer first, then the others. The customers are among them (user, 25 Oct 2026), tagged "Customer".
      *
-     * @return array{tagged: array<int, string>, others: array<int, string>}
+     * @return array{tagged: array<int, array{label: string, tag: string, sub: string}>, others: array<int, array{label: string, tag: string, sub: string}>}
      */
     public function savedParties(string $role): array
     {
         $customerId = filled($this->form['customer_id'] ?? null) ? (int) $this->form['customer_id'] : null;
-        $parties = ConsignorConsignee::query()
-            ->usedAs($role)
+        $this->savedPartyRows ??= ConsignorConsignee::query()
             ->where('is_active', true)
             ->when(CurrentCompany::id(), fn ($q, $id) => $q->where('company_id', $id))
-            ->with(['customers:id', 'location:id,name'])
+            ->with(['customers:id', 'location:id,name', 'customer:id,code'])
             ->orderBy('name')
             ->get();
-        $label = fn (ConsignorConsignee $party) => $party->name.collect([$party->pic_name, $party->location?->name])->filter()->map(fn ($part) => ' · '.$part)->implode('');
+        $parties = $this->savedPartyRows->whereIn('type', [$role, 'both']);
+        $option = fn (ConsignorConsignee $party) => [
+            'label' => ($party->customer?->code ? $party->customer->code.' — ' : '').$party->name
+                .collect([$party->pic_name, $party->location?->name])->filter()->map(fn ($part) => ' · '.$part)->implode(''),
+            'tag' => $party->isFromCustomer() ? 'Customer' : '',
+            'sub' => (string) $party->address,
+        ];
         $tagged = $customerId ? $parties->filter(fn (ConsignorConsignee $party) => $party->customers->contains('id', $customerId)) : collect();
 
         return [
-            'tagged' => $tagged->mapWithKeys(fn (ConsignorConsignee $party) => [$party->id => $label($party)])->all(),
-            'others' => $parties->reject(fn (ConsignorConsignee $party) => $tagged->contains('id', $party->id))->mapWithKeys(fn (ConsignorConsignee $party) => [$party->id => $label($party)])->all(),
+            'tagged' => $tagged->mapWithKeys(fn (ConsignorConsignee $party) => [$party->id => $option($party)])->all(),
+            'others' => $parties->reject(fn (ConsignorConsignee $party) => $tagged->contains('id', $party->id))->mapWithKeys(fn (ConsignorConsignee $party) => [$party->id => $option($party)])->all(),
         ];
     }
 
-    /** The product types of the price list (Master Data → UOM, Items and Lorries). @return array<string, string> */
+    /** The sub-category for a product not in the system: its name and price are keyed in on the order. */
+    public const OTHER_PRODUCT = '__other__';
+
+    /** The product types of the price list (Master Data → Measurements, Items and Chartered Lorry). @return array<string, string> */
     public function productKinds(): array
     {
-        return [Uom::MEASUREMENT => 'Measurement', Uom::ITEM => 'Item', Uom::LORRY => 'Lorry'];
+        return Uom::CATEGORIES;
     }
 
     /** A row's type: the one chosen, else its product's category. */
@@ -279,11 +291,31 @@ class CreateOrder extends Page
             ->all();
     }
 
-    /** Item or Lorry products to choose. @return array<string, string> */
-    public function kindProductOptions(string $kind): array
+    /**
+     * The sub-categories of a type's offered products (Pipe, Ladder, … for Item), chosen before the product
+     * (user, 25 Oct 2026). Measurement's are measurementOptions(). @return array<string, string>
+     */
+    public function subCategoryOptions(string $kind): array
+    {
+        return Uom::query()
+            ->whereIn('id', $this->offeredProductIds())
+            ->where('category', $kind)
+            ->whereNotNull('sub_category')
+            ->where('sub_category', '!=', '')
+            ->distinct()
+            ->orderBy('sub_category')
+            ->pluck('sub_category')
+            ->mapWithKeys(fn (string $sub) => [$sub => $sub])
+            ->all();
+    }
+
+    /** Item or Lorry products to choose, of the sub-category when one is chosen. @return array<string, string> */
+    public function kindProductOptions(string $kind, ?string $subCategory = null): array
     {
         $options = $kind === Uom::LORRY ? $this->catalogOptions('lorry') : $this->catalogOptions('uom');
-        $ids = Uom::query()->whereIn('id', $this->offeredProductIds())->where('category', $kind)->pluck('id')->all();
+        $ids = Uom::query()->whereIn('id', $this->offeredProductIds())->where('category', $kind)
+            ->when(filled($subCategory), fn ($q) => $q->where('sub_category', $subCategory))
+            ->pluck('id')->all();
 
         return array_filter($options, fn (string $label, string $key) => in_array((int) (explode(':', $key, 2)[1] ?? 0), $ids, true), ARRAY_FILTER_USE_BOTH);
     }
@@ -744,7 +776,11 @@ class CreateOrder extends Page
     /** @return array<int|string, string> */
     public function customerOptions(): array
     {
-        $query = Customer::query()->orderBy('company_name');
+        $selected = $this->form['customer_id'] ?? null;
+        // inactive customers are not offered (user, 25 Oct 2026); the one already on the order stays
+        $query = Customer::query()
+            ->where(fn ($q) => $q->where('status', 'active')->when(filled($selected), fn ($q) => $q->orWhere('id', $selected)))
+            ->orderBy('company_name');
 
         if ($companyId = CurrentCompany::id()) {
             $query->where('company_id', $companyId);
@@ -1301,7 +1337,27 @@ class CreateOrder extends Page
             $itemIndex = (int) $m[2];
             $item = &$this->pairs[$index]['items'][$itemIndex];
 
+            // sub-category "Others" (user, 25 Oct 2026): a product not in the system, named and priced on this order
+            // only (no product is created)
+            if ($m[3] === 'sub_category' && $value === self::OTHER_PRODUCT) {
+                $item = array_merge($item, [
+                    'line_type' => 'uom', 'catalog_key' => '', 'item_name' => '', 'uom' => '', 'manual_price' => '', 'price_edited' => false,
+                    'unit_price' => null, 'tier' => null, 'no_band' => false, 'length' => '', 'width' => '', 'height' => '', 'weight' => '',
+                ]);
+
+                return;
+            }
+
+            if (in_array($m[3], ['length', 'width', 'height', 'weight'], true) && ($item['sub_category'] ?? '') === self::OTHER_PRODUCT) {
+                return;
+            }
+
             if ($m[3] !== 'kind' && $this->itemKind($item) !== Uom::MEASUREMENT) {
+                // an Item / Chartered Lorry row: another sub-category, the product is picked again
+                if ($m[3] === 'sub_category') {
+                    $item = array_merge($item, ['catalog_key' => '', 'item_name' => '', 'uom' => '', 'manual_price' => '', 'price_edited' => false, 'unit_price' => null, 'tier' => null]);
+                }
+
                 return;
             }
 
@@ -1790,6 +1846,33 @@ class CreateOrder extends Page
             });
     }
 
+    /** Every earlier order line of the selected customer, any product (the history button beside Line total, user 25 Oct 2026). */
+    public function customerHistoryAction(): Action
+    {
+        return Action::make('customerHistory')
+            ->label('Customer history')
+            ->modalHeading(fn () => 'Previous records · '.($this->customerName() ?? 'customer'))
+            ->modalDescription('Special prices and earlier orders of this customer, every product.')
+            ->modalContent(function (array $arguments) {
+                $this->switchToOrder((int) ($arguments['order'] ?? $this->activeOrder));
+                $customerId = filled($this->form['customer_id'] ?? null)
+                    ? Customer::query()->whereKey($this->form['customer_id'])->when(CurrentCompany::id(), fn ($q, $id) => $q->where('company_id', $id))->value('id')
+                    : null;
+
+                return view('filament.pages.partials.order-customer-history', [
+                    'customer' => $this->customerName(),
+                    // the customer's special prices, as on Customer → Special price (user, 25 Oct 2026)
+                    'special' => $customerId ? \App\Filament\Resources\CustomerResource::specialPrices(Customer::query()->find($customerId)) : [],
+                    'rows' => $customerId
+                        ? app(CustomerQuotationPriceHistory::class)->productHistory((int) $customerId, null, null, $this->historyExcludedQuotationIds(), 100, CurrentCompany::id())
+                        : [],
+                ]);
+            })
+            ->modalWidth(MaxWidth::FiveExtraLarge)
+            ->modalSubmitAction(false)
+            ->modalCancelActionLabel('Close');
+    }
+
     public function productHistoryAction(): Action
     {
         return Action::make('productHistory')
@@ -2082,7 +2165,7 @@ class CreateOrder extends Page
         $company = Filament::getTenant();
 
         if (! $branch) {
-            Notification::make()->title('Select a branch first')->danger()->send();
+            Notification::make()->title('Select a company first')->danger()->send();
 
             return;
         }

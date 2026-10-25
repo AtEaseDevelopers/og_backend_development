@@ -30,9 +30,9 @@
                     <x-og.date-range single :live="false" from="filterDeliveryDate" :from-value="$filterDeliveryDate" label="Delivery date" />
                 </div>
                 <div class="fd-filter-field">
-                    <label class="fd-filter-label" for="filterBranchId">Branch</label>
+                    <label class="fd-filter-label" for="filterBranchId">Company</label>
                     <select id="filterBranchId" wire:model.defer="filterBranchId" class="fd-filter-input">
-                        <option value="">All Branches</option>
+                        <option value="">All Companies</option>
                         @foreach ($this->branchFilterOptions() as $value => $label)
                             <option value="{{ $value }}">{{ $label }}</option>
                         @endforeach
@@ -105,7 +105,7 @@
                     <tr>
                         <th>DO / Task Ref</th>
                         <th>Job Sheet</th>
-                        <th>Branch</th>
+                        <th>Company</th>
                         <th>Driver</th>
                         <th>Lorry</th>
                         <th>Destination</th>

@@ -14,7 +14,7 @@
                 </div>
             </div>
             <div>
-                <label class="fi-fo-field-wrp-label text-sm font-medium text-gray-950 dark:text-white" for="schedule-branch">Branch</label>
+                <label class="fi-fo-field-wrp-label text-sm font-medium text-gray-950 dark:text-white" for="schedule-branch">Company</label>
                 <select id="schedule-branch" wire:model.live="branch" class="fi-select-input block w-64 rounded-lg border-gray-300 text-sm shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-white">
                     @foreach ($this->branchOptions() as $value => $label)
                         <option value="{{ $value }}">{{ $label }}</option>
@@ -78,7 +78,7 @@
     @if ($schedule['branches'] === [])
         <x-filament::section>
             <div class="rounded-lg border border-dashed border-gray-300 px-4 py-10 text-center text-sm text-gray-500 dark:border-white/10">
-                No lorry trips scheduled for {{ $day->format('d.m.Y') }}@if ($branch !== 'all') in this branch @endif.
+                No lorry trips scheduled for {{ $day->format('d.m.Y') }}@if ($branch !== 'all') in this company @endif.
             </div>
         </x-filament::section>
     @endif

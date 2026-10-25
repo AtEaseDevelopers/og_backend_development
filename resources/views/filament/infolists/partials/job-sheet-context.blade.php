@@ -68,7 +68,7 @@
                 <div class="jsv-value">{{ $display($information['operating_date'] ?? null) }}</div>
             </div>
             <div class="jsv-field">
-                <div class="jsv-label">Operating Branch</div>
+                <div class="jsv-label">Operating company</div>
                 <div class="jsv-value">{{ $display($information['operating_branch'] ?? null) }}</div>
             </div>
             <div class="jsv-field">

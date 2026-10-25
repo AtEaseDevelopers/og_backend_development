@@ -41,7 +41,7 @@ class LorryResource extends Resource
             // the lorry sizes the fleet vehicles use; a chartered lorry trip's price is set on its UOM product
             // (Master Data → UOM, category Chartered Lorry, user 21 Oct 2026)
             Forms\Components\Section::make('Chartered lorry details')
-                ->description('Lorry sizes used by the fleet vehicles. The price of a chartered lorry trip is set in Master Data → UOM (category Chartered Lorry).')
+                ->description('Lorry sizes used by the fleet vehicles. The price of a chartered lorry trip is set in Master Data → Chartered Lorry.')
                 ->schema([
                 Forms\Components\TextInput::make('code')
                     ->maxLength(50)

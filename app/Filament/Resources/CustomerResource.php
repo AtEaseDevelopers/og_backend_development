@@ -42,41 +42,78 @@ class CustomerResource extends Resource
     public static function infolist(Infolist $infolist): Infolist
     {
         return $infolist->schema([
+            // the details on one tab, a section per part as on the form (user, 25 Oct 2026); special prices on their own tab
             Infolists\Components\Tabs::make('Customer')->tabs([
-                Infolists\Components\Tabs\Tab::make('Account')->schema([
-                    Infolists\Components\TextEntry::make('code')->label('Debtor account'),
-                    Infolists\Components\TextEntry::make('company_name'),
-                    Infolists\Components\TextEntry::make('brn')->label('Business Registration No (BRN)'),
-                    Infolists\Components\TextEntry::make('control_account'),
-                    Infolists\Components\TextEntry::make('debtor_type')->formatStateUsing(
-                        fn (?string $state) => CustomerForm::debtorTypeOptions()[$state] ?? $state
-                    ),
-                    Infolists\Components\IconEntry::make('status')
-                        ->label('Active')
-                        ->boolean()
-                        ->getStateUsing(fn (Customer $record) => $record->status === 'active'),
-                    Infolists\Components\IconEntry::make('is_group_company')->boolean(),
-                ])->columns(2),
-                Infolists\Components\Tabs\Tab::make('General')->schema([
-                    Infolists\Components\TextEntry::make('address')->label('Billing address')->columnSpanFull(),
-                    Infolists\Components\TextEntry::make('email'),
-                    Infolists\Components\TextEntry::make('phone'),
-                    Infolists\Components\TextEntry::make('fax'),
-                    Infolists\Components\TextEntry::make('area'),
-                    Infolists\Components\TextEntry::make('salesperson.name')->label('Agent'),
-                    Infolists\Components\TextEntry::make('credit_term_days')
-                        ->label('Credit term')
-                        ->formatStateUsing(fn ($state) => CustomerForm::creditTermOptions()[$state] ?? "{$state} days"),
-                    Infolists\Components\TextEntry::make('credit_limit')->money('MYR'),
-                    Infolists\Components\IconEntry::make('is_credit')->boolean(),
-                ])->columns(2),
-                Infolists\Components\Tabs\Tab::make('E-Invoice')->schema([
-                    Infolists\Components\TextEntry::make('tin')->label('TIN'),
-                    Infolists\Components\TextEntry::make('sst_registration_no'),
-                    Infolists\Components\TextEntry::make('msic_code'),
-                    Infolists\Components\TextEntry::make('einvoice_buyer_name')->label('Buyer name'),
-                    Infolists\Components\TextEntry::make('einvoice_address')->columnSpanFull(),
-                ])->columns(2),
+                Infolists\Components\Tabs\Tab::make('Details')->schema([
+                    // compact cards side by side, label beside value (user, 25 Oct 2026), so the page needs little scrolling
+                    Infolists\Components\ViewEntry::make('compact_style')->hiddenLabel()->view('filament.infolists.customer-compact-style')->columnSpanFull(),
+                    Infolists\Components\Grid::make(['default' => 1, 'md' => 2, 'xl' => 3])->extraAttributes(['class' => 'cv-compact'])->schema([
+                    Infolists\Components\Section::make('Account')->icon('heroicon-o-identification')->headerActions([static::editCard('account', 'Account', CustomerForm::accountFields())])->schema([
+                        Infolists\Components\TextEntry::make('code')->label('Debtor code'),
+                        Infolists\Components\TextEntry::make('company_name')->label('Company name'),
+                        Infolists\Components\TextEntry::make('brn')->label('Company registration no. (BRN)')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('area')->label('Area code')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('debtor_type')->label('Debtor type')->placeholder('—')
+                            ->formatStateUsing(fn (?string $state) => CustomerForm::debtorTypeOptions()[$state] ?? $state),
+                        Infolists\Components\TextEntry::make('control_account')->label('Control account')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('salesperson.name')->label('Agent')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('status')->label('Status')->badge()
+                            ->formatStateUsing(fn (?string $state) => $state === 'active' ? 'Active' : 'Inactive')
+                            ->color(fn (?string $state) => $state === 'active' ? 'success' : 'gray'),
+                        Infolists\Components\IconEntry::make('is_group_company')->label('Group company')->boolean(),
+                    ])->compact()->inlineLabel()->columns(1)->columnSpan(1),
+                    Infolists\Components\Section::make('Address')->icon('heroicon-o-map-pin')->headerActions([static::editCard('address', 'Address', static::addressCardFields())])->schema([
+                        Infolists\Components\TextEntry::make('address')->label('Address')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('postcode')->label('Postcode')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('delivery_address')->label('Delivery address')->placeholder('—')
+                            ->state(fn (Customer $record) => $record->addresses()->where('type', 'delivery')->orderByDesc('is_default')->value('address')),
+                        Infolists\Components\TextEntry::make('delivery_postcode')->label('Deliver postcode')->placeholder('—')
+                            ->state(fn (Customer $record) => $record->addresses()->where('type', 'delivery')->orderByDesc('is_default')->value('postcode')),
+                    ])->compact()->inlineLabel()->columns(1)->columnSpan(1),
+                    Infolists\Components\Section::make('Contact')->icon('heroicon-o-phone')->headerActions([static::editCard('contact', 'Contact', CustomerForm::contactFields())])->schema([
+                        Infolists\Components\TextEntry::make('attention')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('contact_person_3')->label('Contact person 1')->hidden(fn (?string $state) => blank($state)),
+                        Infolists\Components\TextEntry::make('contact_person_4')->label('Contact person 2')->hidden(fn (?string $state) => blank($state)),
+                        Infolists\Components\TextEntry::make('business_nature')->label('Business nature')->hidden(fn (?string $state) => blank($state)),
+                        Infolists\Components\TextEntry::make('phone')->label('Phone 1')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('phone_2')->label('Phone 2')->hidden(fn (?string $state) => blank($state)),
+                        Infolists\Components\TextEntry::make('phone_3')->label('Phone 3')->hidden(fn (?string $state) => blank($state)),
+                        Infolists\Components\TextEntry::make('phone_4')->label('Phone 4')->hidden(fn (?string $state) => blank($state)),
+                        Infolists\Components\TextEntry::make('mobile')->label('Mobile')->hidden(fn (?string $state) => blank($state)),
+                        Infolists\Components\TextEntry::make('fax')->hidden(fn (?string $state) => blank($state)),
+                        Infolists\Components\TextEntry::make('email')->label('Email address')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('website')->hidden(fn (?string $state) => blank($state)),
+                    ])->compact()->inlineLabel()->columns(1)->columnSpan(1),
+                    Infolists\Components\Section::make('Credit & statement')->icon('heroicon-o-banknotes')->headerActions([static::editCard('credit', 'Credit & statement', CustomerForm::creditFields())])->schema([
+                        Infolists\Components\TextEntry::make('display_term')->label('Display term')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('credit_term_days')->label('Credit term')
+                            ->formatStateUsing(fn ($state) => CustomerForm::creditTermOptions()[$state] ?? "{$state} days"),
+                        Infolists\Components\TextEntry::make('aging_on')->label('Aging on')->placeholder('—')
+                            ->formatStateUsing(fn (?string $state) => ['invoice_date' => 'Invoice date (I)', 'due_date' => 'Due date (D)'][$state] ?? $state),
+                        Infolists\Components\TextEntry::make('statement_type')->label('Statement type')->placeholder('—')
+                            ->formatStateUsing(fn (?string $state) => ['open_item' => 'Open item (O)', 'balance_forward' => 'Balance forward (B)', 'no_statement' => 'No statement (N)'][$state] ?? $state),
+                        Infolists\Components\IconEntry::make('is_credit')->label('Credit customer')->boolean(),
+                        Infolists\Components\TextEntry::make('credit_limit')->money('MYR'),
+                        Infolists\Components\TextEntry::make('currency')->placeholder('—'),
+                    ])->compact()->inlineLabel()->columns(1)->columnSpan(1),
+                    Infolists\Components\Section::make('Tax & e-invoice')->icon('heroicon-o-receipt-percent')->headerActions([static::editCard('tax', 'Tax & e-invoice', CustomerForm::taxFields())])->schema([
+                        Infolists\Components\TextEntry::make('gst_no')->label('GST no.')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('sst_registration_no')->label('SST no.')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('tax_type')->label('Tax code')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('tin')->label('TIN no.')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('msic_code')->label('MSIC 1')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('msic_code_2')->label('MSIC 2')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('msic_code_3')->label('MSIC 3')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('einvoice_buyer_name')->label('Buyer name')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('einvoice_address')->label('E-invoice address')->placeholder('—')->columnSpanFull(),
+                    ])->compact()->inlineLabel()->columns(1)->columnSpan(1),
+                    Infolists\Components\Section::make('Notes')->icon('heroicon-o-chat-bubble-bottom-center-text')->headerActions([static::editCard('notes', 'Notes', CustomerForm::noteFields())])->schema([
+                        Infolists\Components\TextEntry::make('own_note')->label('Own note: other email, statement remark')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('mailing_statement_remark')->label('Mailing statement remark')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('payment_note')->label('Own note (payment)')->placeholder('—'),
+                    ])->compact()->inlineLabel()->columns(1)->columnSpan(1),
+                    ]),
+                ]),
                 // read only: special prices come from the price-list import and accepted quotations only
                 Infolists\Components\Tabs\Tab::make('Special price')
                     ->badge(fn (Customer $record) => static::specialPriceCount($record) ?: null)
@@ -89,6 +126,66 @@ class CustomerResource extends Resource
                     ]),
             ])->columnSpanFull(),
         ]);
+    }
+
+    /**
+     * Edit one card of the customer view in a modal (user, 25 Oct 2026), instead of the whole customer on the edit page.
+     *
+     * @param  list<\Filament\Forms\Components\Component>  $fields
+     */
+    private static function editCard(string $key, string $heading, array $fields): Infolists\Components\Actions\Action
+    {
+        return Infolists\Components\Actions\Action::make('edit_'.$key)
+            ->label('Edit')
+            ->icon('heroicon-m-pencil-square')
+            ->size('sm')
+            ->link()
+            ->modalHeading('Edit '.strtolower($heading))
+            ->modalWidth('4xl')
+            ->modalSubmitActionLabel('Save')
+            ->visible(fn (Customer $record) => static::canEdit($record))
+            ->form($fields)
+            ->fillForm(function (Customer $record) use ($key): array {
+                $data = $record->attributesToArray();
+
+                if ($key === 'address') {
+                    $delivery = $record->addresses()->where('type', 'delivery')->orderByDesc('is_default')->first();
+                    $data['delivery_address_text'] = $delivery?->address;
+                    $data['delivery_postcode'] = $delivery?->postcode;
+                }
+
+                return $data;
+            })
+            ->action(function (Customer $record, array $data) use ($key, $heading): void {
+                if ($key === 'address') {
+                    $delivery = trim((string) ($data['delivery_address_text'] ?? ''));
+
+                    if ($delivery !== '') {
+                        \App\Domains\MasterData\Models\CustomerAddress::query()->updateOrCreate(
+                            ['customer_id' => $record->id, 'type' => 'delivery', 'is_default' => true],
+                            ['label' => 'Primary delivery', 'address' => $delivery, 'postcode' => $data['delivery_postcode'] ?? null],
+                        );
+                    }
+
+                    unset($data['delivery_address_text'], $data['delivery_postcode']);
+                }
+
+                $record->update($data);
+                \Filament\Notifications\Notification::make()->title($heading.' saved')->success()->send();
+            });
+    }
+
+    /** @return list<\Filament\Forms\Components\Component> */
+    private static function addressCardFields(): array
+    {
+        return [
+            \Filament\Forms\Components\Grid::make(2)->schema([
+                \Filament\Forms\Components\Textarea::make('address')->label('Address (address 1 – 4)')->rows(4),
+                \Filament\Forms\Components\Textarea::make('delivery_address_text')->label('Delivery address (deliver address 1 – 4)')->rows(4),
+                \Filament\Forms\Components\TextInput::make('postcode')->label('Postcode')->maxLength(20),
+                \Filament\Forms\Components\TextInput::make('delivery_postcode')->label('Deliver postcode')->maxLength(20),
+            ]),
+        ];
     }
 
     /** The customer's special price rows (one per product and condition, as the price list template's rows). */
@@ -158,11 +255,11 @@ class CustomerResource extends Resource
                 ->searchable()
                 ->sortable(),
             Tables\Columns\TextColumn::make('company_name')
-                ->label('Company')
+                ->label('Company name')
                 ->searchable()
                 ->sortable()
                 ->wrap(),
-            Tables\Columns\TextColumn::make('branch.name')->label('Branch'),
+            Tables\Columns\TextColumn::make('branch.name')->label('O&G company')->toggleable(isToggledHiddenByDefault: true),
             Tables\Columns\TextColumn::make('area')->toggleable(isToggledHiddenByDefault: true),
             Tables\Columns\TextColumn::make('brn')->label('BRN')->toggleable(isToggledHiddenByDefault: true),
             Tables\Columns\TextColumn::make('salesperson.name')->label('Agent')->toggleable(isToggledHiddenByDefault: true),
@@ -175,6 +272,8 @@ class CustomerResource extends Resource
                 ->badge()
                 ->formatStateUsing(fn (string $state) => $state === 'active' ? 'Active' : 'Inactive')
                 ->color(fn (string $state) => $state === 'active' ? 'success' : 'gray'),
+        ])->filters([
+            Tables\Filters\SelectFilter::make('status')->options(['active' => 'Active', 'inactive' => 'Inactive']),
         ])->actions([
             Tables\Actions\ViewAction::make(),
             Tables\Actions\EditAction::make(),

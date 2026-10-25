@@ -81,7 +81,7 @@ class ReportDetail extends Page implements HasForms, HasTable
                 Forms\Components\Hidden::make('source_branch_id')
                     ->default(fn () => \App\Support\CurrentBranch::id()),
                 Forms\Components\Placeholder::make('branch_label')
-                    ->label('Company / branch')
+                    ->label('Company')
                     ->content(fn () => \App\Support\CurrentBranch::get()?->getFilamentName() ?? '—'),
                 DateRangePicker::make('period')
                     ->label('Date')
@@ -176,14 +176,14 @@ class ReportDetail extends Page implements HasForms, HasTable
         return match ($this->report) {
             'missing_csn' => [
                 Tables\Columns\TextColumn::make('consignmentNote.number')->label('CSN'),
-                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Branch'),
+                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Company'),
                 Tables\Columns\TextColumn::make('status')->badge(),
                 Tables\Columns\TextColumn::make('marked_missing_at')->dateTime(),
                 Tables\Columns\TextColumn::make('investigation_status'),
             ],
             'payments_cod' => [
                 Tables\Columns\TextColumn::make('id'),
-                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Branch'),
+                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Company'),
                 Tables\Columns\TextColumn::make('customer.company_name'),
                 Tables\Columns\TextColumn::make('method')->badge(),
                 Tables\Columns\TextColumn::make('amount')->money('MYR'),
@@ -193,7 +193,7 @@ class ReportDetail extends Page implements HasForms, HasTable
             'commission' => [
                 Tables\Columns\TextColumn::make('number'),
                 Tables\Columns\TextColumn::make('batch.month')->label('Month'),
-                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Branch'),
+                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Company'),
                 Tables\Columns\TextColumn::make('lorry.registration_no')->label('Lorry')->placeholder('—'),
                 Tables\Columns\TextColumn::make('drivers')->label('Drivers (earned)')->state(fn (CommissionSlip $record) => $record->driverBreakdownText() ?: '—')->wrap(),
                 Tables\Columns\TextColumn::make('system_amount')->money('MYR'),
@@ -210,7 +210,7 @@ class ReportDetail extends Page implements HasForms, HasTable
             ],
             'invoices' => [
                 Tables\Columns\TextColumn::make('number'),
-                Tables\Columns\TextColumn::make('sourceBranch.code'),
+                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Company'),
                 Tables\Columns\TextColumn::make('customer.company_name'),
                 Tables\Columns\TextColumn::make('type')->badge(),
                 Tables\Columns\TextColumn::make('billing_month'),
@@ -219,7 +219,7 @@ class ReportDetail extends Page implements HasForms, HasTable
             ],
             'autocount' => [
                 Tables\Columns\TextColumn::make('created_at')->dateTime(),
-                Tables\Columns\TextColumn::make('sourceBranch.code'),
+                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Company'),
                 Tables\Columns\TextColumn::make('document_type'),
                 Tables\Columns\TextColumn::make('document_id'),
                 Tables\Columns\TextColumn::make('external_ref'),
@@ -228,14 +228,14 @@ class ReportDetail extends Page implements HasForms, HasTable
             ],
             'einvoice' => [
                 Tables\Columns\TextColumn::make('invoice.number'),
-                Tables\Columns\TextColumn::make('invoice.sourceBranch.code')->label('Branch'),
+                Tables\Columns\TextColumn::make('invoice.sourceBranch.code')->label('Company'),
                 Tables\Columns\TextColumn::make('status')->badge(),
                 Tables\Columns\TextColumn::make('uuid')->limit(20),
                 Tables\Columns\TextColumn::make('submitted_at')->dateTime(),
             ],
             'vehicle' => [
                 Tables\Columns\TextColumn::make('lorry.registration_no'),
-                Tables\Columns\TextColumn::make('lorry.branch.code'),
+                Tables\Columns\TextColumn::make('lorry.branch.code')->label('Company'),
                 Tables\Columns\TextColumn::make('type')->badge(),
                 Tables\Columns\TextColumn::make('expiry_date')->date(),
                 Tables\Columns\TextColumn::make('next_service_date')->date(),
@@ -244,7 +244,7 @@ class ReportDetail extends Page implements HasForms, HasTable
             default => [
                 Tables\Columns\TextColumn::make('number')->label('DO'),
                 Tables\Columns\TextColumn::make('consignmentNote.number')->label('CSN'),
-                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Branch'),
+                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Company'),
                 Tables\Columns\TextColumn::make('lorry.registration_no')->label('Lorry'),
                 Tables\Columns\TextColumn::make('driver.name'),
                 Tables\Columns\TextColumn::make('status')->badge(),

@@ -589,7 +589,7 @@ class ClientPriceListImporter
                 || strcasecmp((string) $b->name, $short.' Branch') === 0);
 
             if (! $branch && $name !== '') {
-                $warnings[] = "Branch \"{$name}\" is not a branch in the system · its prices apply to every branch";
+                $warnings[] = "Company \"{$name}\" is not a company in the system · its prices apply to every company";
             }
 
             $resolved[$name] = $branch?->id;

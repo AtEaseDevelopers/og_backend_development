@@ -152,7 +152,7 @@ class ClaimCsn
         // Shared dispatch: a lorry from any branch may execute; only restrict when the user
         // has explicit branch access that excludes this CSN's source branch.
         if ($branchIds !== [] && ! $user->driver_id && ! in_array($csn->source_branch_id, $branchIds, true)) {
-            throw new InvalidArgumentException('This CSN belongs to a branch you do not have access to.');
+            throw new InvalidArgumentException('This CSN belongs to a company you do not have access to.');
         }
     }
 

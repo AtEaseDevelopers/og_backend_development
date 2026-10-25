@@ -53,7 +53,7 @@ class CommissionSlipResource extends Resource
             Infolists\Components\Section::make()->schema([
                 Infolists\Components\TextEntry::make('number'),
                 Infolists\Components\TextEntry::make('batch.month')->label('Batch month'),
-                Infolists\Components\TextEntry::make('sourceBranch.code')->label('Branch'),
+                Infolists\Components\TextEntry::make('sourceBranch.code')->label('Company'),
                 Infolists\Components\TextEntry::make('lorry.registration_no')->label('Lorry'),
                 Infolists\Components\TextEntry::make('drivers')
                     ->label('Drivers')
@@ -101,7 +101,7 @@ class CommissionSlipResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('number')->searchable(),
                 Tables\Columns\TextColumn::make('batch.month')->label('Month'),
-                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Branch'),
+                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Company'),
                 Tables\Columns\TextColumn::make('lorry.registration_no')->label('Lorry')->searchable()->placeholder('—'),
                 Tables\Columns\TextColumn::make('drivers')
                     ->label('Drivers (earned)')

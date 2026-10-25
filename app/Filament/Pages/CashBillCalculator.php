@@ -114,7 +114,7 @@ class CashBillCalculator extends Page
             ['key' => 'ewallet', 'label' => 'eWallet'],
             ['key' => 'bank_transfer', 'label' => 'Bank Transfer'],
             ['key' => 'online', 'label' => 'Online Payment'],
-            ['key' => 'counter', 'label' => 'Branch-Configured Method'],
+            ['key' => 'counter', 'label' => 'Company-Configured Method'],
         ];
     }
 

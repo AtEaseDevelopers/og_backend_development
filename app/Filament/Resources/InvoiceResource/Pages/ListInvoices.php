@@ -33,7 +33,7 @@ class ListInvoices extends ListRecords
                         ->default(now()->format('Y-m'))
                         ->required(),
                     Forms\Components\Select::make('branch_id')
-                        ->label('Branch (optional)')
+                        ->label('Company (optional)')
                         ->options(Branch::query()->pluck('name', 'id'))
                         ->searchable(),
                     // only these customers' delivered Term CSNs (blank = every customer)

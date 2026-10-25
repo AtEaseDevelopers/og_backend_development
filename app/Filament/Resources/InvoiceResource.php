@@ -35,7 +35,7 @@ class InvoiceResource extends Resource
         return $infolist->schema([
             Infolists\Components\Section::make()->schema([
                 Infolists\Components\TextEntry::make('number'),
-                Infolists\Components\TextEntry::make('sourceBranch.name')->label('Branch'),
+                Infolists\Components\TextEntry::make('sourceBranch.name')->label('Company'),
                 Infolists\Components\TextEntry::make('customer.company_name')->label('Customer'),
                 Infolists\Components\TextEntry::make('type')->badge(),
                 Infolists\Components\TextEntry::make('billing_month'),
@@ -62,7 +62,7 @@ class InvoiceResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('number')->searchable()->sortable(),
-                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Branch'),
+                Tables\Columns\TextColumn::make('sourceBranch.code')->label('Company'),
                 Tables\Columns\TextColumn::make('customer.company_name')->searchable(),
                 Tables\Columns\TextColumn::make('type')->badge(),
                 Tables\Columns\TextColumn::make('billing_month'),

@@ -53,7 +53,7 @@ class UserResource extends Resource
                 ->dehydrateStateUsing(fn (?string $state) => filled($state) ? Hash::make($state) : null),
             Forms\Components\TextInput::make('phone')->tel()->maxLength(50),
             Forms\Components\Select::make('branch_id')
-                ->label('Branch access')
+                ->label('Company access')
                 ->options(fn () => Branch::query()->where('is_active', true)->orderBy('code')->pluck('name', 'id'))
                 ->searchable()
                 ->required()
@@ -73,10 +73,10 @@ class UserResource extends Resource
                 ->required(fn (?User $record): bool => ! $record?->hasAnyRole(['customer', 'driver'])),
             Forms\Components\Toggle::make('is_active')->default(true),
             Forms\Components\Section::make('Sales ownership (section A)')
-                ->description('Each salesperson belongs to one SA location; the SA location carries the CSN prefix. The ordering link fixes the salesperson on every order a customer submits through it.')
+                ->description('Each salesperson belongs to one branch; the branch carries the CSN prefix. The ordering link fixes the salesperson on every order a customer submits through it.')
                 ->schema([
                     Forms\Components\Select::make('sa_location_id')
-                        ->label('SA location')
+                        ->label('Branch')
                         ->options(fn () => \App\Domains\MasterData\Models\SaLocation::query()->where('is_active', true)->orderBy('code')->get()
                             ->mapWithKeys(fn ($l) => [$l->id => $l->code.' — '.$l->name.' ('.$l->csn_prefix.')']))
                         ->searchable(),
@@ -96,7 +96,7 @@ class UserResource extends Resource
             Tables\Columns\TextColumn::make('name')->searchable()->sortable(),
             Tables\Columns\TextColumn::make('email')->searchable(),
             Tables\Columns\TextColumn::make('branches.code')
-                ->label('Branches')
+                ->label('Companies')
                 ->badge()
                 ->separator(','),
             Tables\Columns\TextColumn::make('roles.name')
@@ -104,7 +104,7 @@ class UserResource extends Resource
                 ->badge()
                 ->separator(','),
             Tables\Columns\TextColumn::make('saLocation.code')
-                ->label('SA location')
+                ->label('Branch')
                 ->placeholder('—'),
             Tables\Columns\IconColumn::make('is_active')->boolean(),
         ])->actions([

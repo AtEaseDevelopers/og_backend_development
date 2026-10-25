@@ -13,8 +13,9 @@ class EditCustomer extends EditRecord
 
     protected static string $resource = CustomerResource::class;
 
+    // no Delete (user, 25 Oct 2026): set a customer inactive from the customer list instead
     protected function getHeaderActions(): array
     {
-        return [Actions\DeleteAction::make()];
+        return [Actions\ViewAction::make()];
     }
 }

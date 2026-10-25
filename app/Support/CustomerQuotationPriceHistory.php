@@ -20,9 +20,10 @@ class CustomerQuotationPriceHistory
      * @param  list<int>|int|null  $excludeQuotationIds
      * @return list<array{date: ?string, order: string, quote: string, status: ?string, destination: string, same_destination: bool, qty: float, uom: ?string, unit_price: ?float, line_total: ?float, quotation_id: int, view_url: ?string}>
      */
-    public function productHistory(int $customerId, string $itemName, ?string $location = null, array|int|null $excludeQuotationIds = null, int $limit = 20, ?int $companyId = null): array
+    public function productHistory(int $customerId, ?string $itemName, ?string $location = null, array|int|null $excludeQuotationIds = null, int $limit = 20, ?int $companyId = null): array
     {
-        $itemName = trim($itemName);
+        // null = every product of the customer (the history button beside Line total, user 25 Oct 2026)
+        $itemName = $itemName === null ? null : trim($itemName);
 
         if ($itemName === '') {
             return [];
@@ -32,7 +33,7 @@ class CustomerQuotationPriceHistory
         $location = mb_strtolower(trim((string) $location));
 
         $lines = QuotationLine::query()
-            ->where('item_name', $itemName)
+            ->when($itemName !== null, fn ($q) => $q->where('item_name', $itemName))
             ->whereHas('quotation', fn ($query) => $query
                 ->where('customer_id', $customerId)
                 ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
@@ -63,6 +64,7 @@ class CustomerQuotationPriceHistory
                     'date' => ($quotation?->quoted_at ?? $quotation?->created_at)?->format('d/m/Y'),
                     'order' => (string) ($quotation?->portalEnquiry?->order_number ?: ($quotation?->number ?? '—')),
                     'quote' => (string) ($quotation?->number ?? '—'),
+                    'product' => (string) $line->item_name,
                     'status' => $quotation?->status instanceof QuotationStatus ? $quotation->status->getLabel() : null,
                     'destination' => (string) ($names->first() ?? '—'),
                     'same_destination' => $location !== '' && $names->contains(fn (string $name) => mb_strtolower($name) === $location),

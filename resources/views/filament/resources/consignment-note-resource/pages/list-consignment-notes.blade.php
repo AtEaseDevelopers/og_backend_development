@@ -175,7 +175,7 @@
                                 </select>
                             </div>
                             <div class="ow-field">
-                                <label>SA location prefix</label>
+                                <label>Branch prefix</label>
                                 <select wire:model.live="saLocation" class="ow-select">
                                     @foreach ($this->saLocationOptions() as $value => $label)
                                         <option value="{{ $value }}">{{ $label }}</option>

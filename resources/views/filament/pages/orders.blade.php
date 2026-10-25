@@ -30,23 +30,7 @@
     </div>
 
     <div class="ow-stack">
-        {{-- Summary cards --}}
-        <div class="ow-cards">
-            @foreach ($cards as $card)
-                <button type="button"
-                        wire:click="selectCard('{{ $card['key'] }}')"
-                        @class([
-                            'ow-stat',
-                            'ow-stat-'.$card['key'] => $card['key'] !== '',
-                            'ow-stat-active' => ($this->card ?? '') === $card['key'],
-                        ])>
-                    <div class="ow-stat-label">{{ $card['label'] }}</div>
-                    <div class="ow-stat-value">{{ $card['count'] }}</div>
-                    <div class="ow-stat-hint">{{ $card['hint'] }}</div>
-                </button>
-            @endforeach
-        </div>
-
+        {{-- the summary cards were removed (user, 25 Oct 2026); the stage tags below filter the table --}}
         {{-- Order stage tags: click one to filter the table --}}
         <div class="ow-tags" role="group" aria-label="Filter by order stage">
             @foreach ($this->stageTags($data['stage_counts']) as $tag)
@@ -95,6 +79,8 @@
                     </div>
                 </div>
 
+                {{-- customer, type, order type, service and salesperson: shown with "Filters +" too (user, 25 Oct 2026) --}}
+                @if ($filtersOpen)
                 <div class="ow-fgrid ow-fgrid-5">
                     <div class="ow-field">
                         <label>Customer</label>
@@ -138,7 +124,6 @@
                     </div>
                 </div>
 
-                @if ($filtersOpen)
                     <div class="ow-fgrid">
                         <div class="ow-field">
                             <label>Payment status</label>
@@ -157,7 +142,7 @@
                             </select>
                         </div>
                         <div class="ow-field">
-                            <label>SA location prefix</label>
+                            <label>Branch prefix</label>
                             <select wire:model.live="saLocation" class="ow-select">
                                 @foreach ($this->saLocationOptions() as $value => $label)
                                     <option value="{{ $value }}">{{ $label }}</option>

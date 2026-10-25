@@ -16,6 +16,14 @@ class CustomerPic extends Model
         return ['is_default' => 'boolean'];
     }
 
+    protected static function booted(): void
+    {
+        // the customer's consignor / consignee row may take its address / PIC from the default one (user, 25 Oct 2026)
+        $sync = fn (self $row) => $row->customer && ConsignorConsignee::syncFromCustomer($row->customer);
+        static::saved($sync);
+        static::deleted($sync);
+    }
+
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);

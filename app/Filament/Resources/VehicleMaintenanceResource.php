@@ -105,7 +105,7 @@ class VehicleMaintenanceResource extends Resource
         return $infolist->schema([
             Infolists\Components\Section::make()->schema([
                 Infolists\Components\TextEntry::make('registration_no')->label('Lorry'),
-                Infolists\Components\TextEntry::make('branch.name')->label('Branch')->placeholder('—'),
+                Infolists\Components\TextEntry::make('branch.name')->label('Company')->placeholder('—'),
                 Infolists\Components\TextEntry::make('type')->label('Lorry type')->placeholder('—'),
                 Infolists\Components\TextEntry::make('capacity')->label('Capacity (kg)')->numeric()->placeholder('—'),
             ])->columns(4),
@@ -144,7 +144,7 @@ class VehicleMaintenanceResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('registration_no')->label('Lorry')->searchable()->sortable()->weight('semibold')->description(fn (Lorry $record) => $record->type),
-                Tables\Columns\TextColumn::make('branch.code')->label('Branch'),
+                Tables\Columns\TextColumn::make('branch.code')->label('Company'),
                 static::expiryColumn('insurance'),
                 static::expiryColumn('road_tax'),
                 static::expiryColumn('permit'),

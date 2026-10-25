@@ -29,7 +29,7 @@ class ListDrivers extends ListRecords
                 ->icon('heroicon-o-arrow-up-tray')
                 ->color('gray')
                 ->modalHeading('Import driver list')
-                ->modalDescription('Upload the Lorry & Driver Details workbook. Each row becomes a driver of this branch (a driver already here, same IC or name, is updated) with its lorry company, group, lorry and attendant; the lorry is added to Master Data → Lorries with this driver.')
+                ->modalDescription('Upload the Lorry & Driver Details workbook. Each row becomes a driver of this company (a driver already here, same IC or name, is updated) with its lorry company, group, lorry and attendant; the lorry is added to Master Data → Lorries with this driver.')
                 ->form([
                     Forms\Components\FileUpload::make('file')
                         ->label('Excel workbook')

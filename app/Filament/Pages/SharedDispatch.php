@@ -48,7 +48,7 @@ class SharedDispatch extends Page implements HasForms
             ->schema([
                 Forms\Components\DatePicker::make('operating_date')->required()->live(),
                 Forms\Components\Select::make('lorry_id')
-                    ->label('Lorry (all branches)')
+                    ->label('Lorry (all companies)')
                     ->options(function () {
                         return Lorry::query()
                             ->with('branch')
@@ -159,7 +159,7 @@ class SharedDispatch extends Page implements HasForms
             Notification::make()
                 ->title('Assigned via shared dispatch')
                 ->body(sprintf(
-                    'CSN %s → DO %s on Job Sheet %s (lorry branch %s, source %s)',
+                    'CSN %s → DO %s on Job Sheet %s (lorry company %s, source %s)',
                     $csn->number,
                     $do->number,
                     $do->jobSheet?->number,

@@ -3,210 +3,144 @@
 <head>
     <meta charset="utf-8">
     <title>{{ $quote->number }}</title>
-    {{-- the earlier quotation layout (pdf/quotation) --}}
+    {{-- the client's quotation format (user, 26 Oct 2026: as their "Quotation of Transportation Charges"):
+         letterhead + Ref No. / Page No. / QUOTATION on every page, the rates in a typewriter style --}}
     <style>
-        @page { margin: 36px 42px; }
-        body {
-            font-family: DejaVu Sans, sans-serif;
-            font-size: 11px;
-            color: #000;
-            line-height: 1.35;
-        }
-        .center { text-align: center; }
-        .right { text-align: right; }
-        .bold { font-weight: bold; }
-        .upper { text-transform: uppercase; }
-        .line { border-top: 1px solid #000; margin: 10px 0 12px; }
-        .title {
-            font-size: 18px;
-            font-weight: bold;
-            letter-spacing: 1px;
-            margin: 0 0 10px;
-        }
-        .meta-table { width: 100%; margin-bottom: 14px; }
-        .meta-table td { vertical-align: top; padding: 0; }
-        .customer-block { margin-bottom: 14px; }
-        .customer-block div { margin-bottom: 2px; }
-        .subject {
-            text-decoration: underline;
-            font-weight: bold;
-            margin: 10px 0 6px;
-        }
-        .intro { margin-bottom: 10px; }
-        table.rates {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 4px;
-        }
-        table.rates th,
-        table.rates td {
-            border: 1px solid #000;
-            padding: 5px 6px;
-            vertical-align: top;
-        }
-        table.rates th {
-            font-weight: bold;
-            text-align: center;
-        }
-        table.rates td.item-col { width: 34%; }
-        table.rates td.price-col { text-align: center; width: auto; }
-        table.rates td.amount-col { text-align: right; white-space: nowrap; }
-        .item-sub { font-size: 10px; margin-top: 2px; }
-        .footnotes { margin-top: 10px; font-size: 10px; }
-        .footnotes div { margin-bottom: 3px; }
-        .footer-block { margin-top: 18px; font-size: 11px; }
-        .footer-block div { margin-bottom: 4px; }
-        .issued-line { margin-top: 8px; }
+        @page { margin: 168px 36px 46px 36px; }
+        body { font-family: DejaVu Sans, sans-serif; font-size: 10px; color: #000; line-height: 1.3; }
+        header { position: fixed; top: -150px; left: 0; right: 0; }
+        .lh-name { font-size: 17px; font-weight: bold; }
+        .lh-small { font-size: 9px; line-height: 1.35; }
+        .lh-rule { border-top: 4px solid #000; margin: 5px 0 6px; }
+        .lh-meta { width: 100%; border-collapse: collapse; }
+        .lh-meta td { padding: 0; vertical-align: bottom; }
+        .lh-meta .k { font-weight: bold; font-size: 10px; }
+        .lh-title { font-size: 19px; font-weight: bold; text-align: right; }
+        .pagenum:before { content: counter(page); }
+
+        .party { width: 100%; border-collapse: collapse; margin-top: 2px; }
+        .party td { vertical-align: top; padding: 0; font-weight: bold; font-size: 10px; }
+        .party .gap { height: 10px; }
+        .re { margin: 10px 0 12px; font-size: 12px; font-weight: bold; text-decoration: underline; }
+
+        /* the rates: bold Courier, as the original (text kept to Courier's characters: < instead of ≤) */
+        .tw, .tw td { font-family: Courier, monospace; font-weight: bold; font-size: 9.5px; }
+        .tw-line { font-family: Courier, monospace; font-weight: bold; font-size: 9.5px; margin: 0 0 10px; white-space: pre-wrap; }
+        table.tw { width: 100%; border-collapse: collapse; margin: 0 0 14px; page-break-inside: avoid; table-layout: fixed; }
+        table.tw td { padding: 1px 4px 1px 0; vertical-align: top; white-space: nowrap; }
+        table.tw td.label { white-space: normal; }
+        table.tw tr.head td { padding-bottom: 6px; }
+        table.tw .under { display: block; letter-spacing: 0; overflow: hidden; }
+        table.tw tr.row td { padding-top: 3px; padding-bottom: 3px; }
+        .notes { font-family: Courier, monospace; font-weight: bold; font-size: 9.5px; margin-top: 8px; }
+        .notes div { margin-bottom: 2px; }
     </style>
 </head>
 <body>
     @php
         $branch = $quote->branch;
-
         $companyName = strtoupper($company?->name ?? $branch?->company_name ?? 'O&G TRANSPORT');
         $regNo = $company?->brn ?? $branch?->company_no ?? '';
         $address = strtoupper($company?->address ?? $branch?->address ?? '');
         $phone = $company?->phone ?? $branch?->phone ?? '';
         $email = $company?->email ?? $branch?->email ?? '';
-        $sstNo = $company?->tin ?? '';
-
-        $issuedBy = $salesperson?->name ?? $quote->creator?->name ?? auth()->user()?->name ?? '';
-        $contactPerson = match (true) {
-            $salesperson?->name && $salesperson?->phone => $salesperson->name.' ( '.$salesperson->phone.' )',
-            (bool) $salesperson?->name => $salesperson->name,
-            default => '',
-        };
-
-        $orderType = \App\Enums\OrderType::tryFrom((string) ($quote->form['order_type'] ?? ''));
-        $paymentTerms = match (true) {
-            $orderType === \App\Enums\OrderType::Term && filled($party['credit_term_days']) => $party['credit_term_days'].' Days',
-            $orderType !== null => $orderType->getLabel(),
-            default => 'Cash / COD',
-        };
-
-        $formatRm = fn ($amount): string => $amount === null || $amount === '' ? '' : 'RM '.number_format((float) $amount, 2, '.', ',');
-        $formatQty = fn ($qty): string => rtrim(rtrim(number_format((float) $qty, 3, '.', ','), '0'), '.');
-        $grandTotal = round(collect($blocks)->sum('total'), 2);
+        $fax = $branch?->fax ?? '';
+        $sstNo = ($company?->tin ?: $branch?->sst_no) ?? '';
+        $issuedBy = $salesperson?->name ?? $quote->creator?->name ?? '';
+        $date = $quote->quote_date;
+        $effective = $date ? $date->format('jS F Y') : null;
+        $dash = fn (string $text, string $char) => str_repeat($char, max(4, min(48, mb_strlen($text))));
     @endphp
 
-    {{-- Letterhead --}}
-    <div class="center bold upper" style="font-size:12px;">{{ $companyName }}</div>
-    @if($regNo)
-        <div class="center">(REG NO. : {{ $regNo }})</div>
-    @endif
-    @if($address)
-        <div class="center upper" style="margin-top:4px;">{{ $address }}</div>
-    @endif
-    <div class="center" style="margin-top:4px;">
-        @if($phone) Tel: {{ $phone }} @endif
-        @if($email) Email: {{ $email }} @endif
-    </div>
-    @if($sstNo)
-        <div class="center" style="margin-top:4px;">SST No. : {{ $sstNo }}</div>
-    @endif
+    {{-- letterhead, repeated on every page --}}
+    <header>
+        <div class="lh-name">{{ $companyName }}</div>
+        <div class="lh-small">
+            @if ($regNo)(REG NO. : {{ $regNo }} )<br>@endif
+            @if ($address){{ $address }}<br>@endif
+            @if ($phone || $fax)@if ($phone)Tel : {{ $phone }}@endif @if ($fax)&nbsp; Fax : {{ $fax }}@endif<br>@endif
+            <table class="lh-meta"><tr>
+                <td class="lh-small">@if ($email)Email : {{ $email }}@endif</td>
+                <td class="lh-small">@if ($sstNo)SST No. : {{ $sstNo }}@endif</td>
+            </tr></table>
+        </div>
+        <div class="lh-rule"></div>
+        <table class="lh-meta"><tr>
+            <td class="k" style="width:28%">Ref No. : {{ $quote->number }}</td>
+            <td class="k" style="width:32%">Page No. : <span class="pagenum"></span></td>
+            <td class="lh-title">QUOTATION</td>
+        </tr></table>
+    </header>
 
-    <div class="line"></div>
-
-    <div class="right title">QUOTATION</div>
-
-    {{-- Ref on the left; date with the page number below it on the right --}}
-    <table class="meta-table">
+    {{-- the customer (or lead), date and issued by: first page only --}}
+    <table class="party">
         <tr>
-            <td style="width:50%;">Ref No. : {{ $quote->number }}</td>
-            <td class="right" style="width:50%;">
-                Date : {{ $quote->quote_date?->format('d/m/Y') }}
-                <div style="margin-top:2px;">Page No. : 1</div>
+            <td style="width:62%">
+                {{ strtoupper($party['name']) }}
+                @if ($party['address'])<br>{!! nl2br(e(strtoupper($party['address']))) !!}@endif
+            </td>
+            <td>
+                <table style="border-collapse:collapse">
+                    <tr><td style="width:5.5rem">Date</td><td>: {{ $date?->format('d/m/Y') }}</td></tr>
+                    <tr><td colspan="2" class="gap"></td></tr>
+                    <tr><td>Issued by:</td><td>{{ $issuedBy }}</td></tr>
+                </table>
+            </td>
+        </tr>
+        <tr><td colspan="2" class="gap"></td></tr>
+        <tr>
+            <td colspan="2">
+                Email : {{ $party['email'] }}<br>
+                Tel : {{ $party['phone'] }}&nbsp;&nbsp;Fax : {{ $party['fax'] }}<br>
+                Attn : {{ strtoupper((string) $party['attention']) }}
             </td>
         </tr>
     </table>
 
-    {{-- Customer / lead --}}
-    <div class="customer-block">
-        <div class="bold upper">{{ $party['name'] }}</div>
-        @if($party['address'])
-            <div class="upper">{!! nl2br(e($party['address'])) !!}</div>
-        @endif
-        <div>Email : {{ $party['email'] }}</div>
-        @if($party['phone'])
-            <div>Tel : {{ $party['phone'] }}</div>
-        @endif
-        @if($party['fax'])
-            <div>Fax : {{ $party['fax'] }}</div>
-        @endif
-        @if($party['attention'])
-            <div>Attention : {{ strtoupper($party['attention']) }}</div>
-        @endif
-    </div>
+    <div class="re">RE : Quotation Of Transport Charges{{ $effective ? ' (Effective '.$effective.')' : '' }}</div>
 
-    <div class="issued-line right">Issued by : {{ $issuedBy }}</div>
+    <div class="tw-line">***** PRICE NOT INCLUDE 6% SST *****</div>
 
-    <div class="subject">RE : Quotation Of Transport Charges</div>
-    <div class="intro">Please find the transportation charges for the following:-</div>
-
-    {{-- Products per destination --}}
-    <table class="rates">
-        <thead>
-            <tr>
-                <th class="item-col">Item</th>
-                <th class="price-col">Destination</th>
-                <th class="price-col">Qty</th>
-                <th class="price-col">Unit price</th>
-                <th class="price-col">Amount</th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse($blocks as $block)
-                @foreach($block['lines'] as $line)
-                    <tr>
-                        <td class="item-col">{{ $line['item'] }}</td>
-                        <td class="price-col">
-                            {{ $block['destination'] }}
-                            @if($block['consignee'])
-                                <div class="item-sub">{{ $block['consignee'] }}</div>
-                            @endif
-                        </td>
-                        <td class="price-col">{{ $formatQty($line['qty']) }}</td>
-                        <td class="price-col">{{ $formatRm($line['price']) }}</td>
-                        <td class="amount-col">{{ $formatRm($line['amount']) }}</td>
-                    </tr>
+    @forelse ($tables as $table)
+        {{-- fixed widths: the product column 40%, the destinations share the rest evenly (columns line up across tables) --}}
+        @php $colWidth = round(60 / max(1, count($table['columns'])), 2); @endphp
+        <table class="tw">
+            <colgroup>
+                <col style="width:40%">
+                @foreach ($table['columns'] as $column)<col style="width:{{ $colWidth }}%">@endforeach
+            </colgroup>
+            <tr class="head">
+                <td class="label" style="width:40%">{{ $table['title'] }}<span class="under">{{ $dash(\Illuminate\Support\Str::limit($table['title'], 40, ''), '=') }}</span></td>
+                @foreach ($table['columns'] as $c => $column)
+                    {{-- a destination this table has no price for: an empty column, kept for the alignment --}}
+                    <td style="width:{{ $colWidth }}%">@if (collect($table['rows'])->contains(fn ($row) => $row['prices'][$c] !== null)){{ $column }}<span class="under">{{ $dash($column, '-') }}</span>@endif</td>
                 @endforeach
-                @if($block['minimum'])
-                    <tr>
-                        <td class="item-col">
-                            Minimum charge
-                            <div class="item-sub">{{ $block['minimum']['label'] ?? 'Minimum' }} {{ $formatRm($block['minimum']['minimum'] ?? null) }} (top-up)</div>
-                        </td>
-                        <td class="price-col">{{ $block['destination'] }}</td>
-                        <td class="price-col">1</td>
-                        <td class="price-col">{{ $formatRm($block['minimum']['top_up']) }}</td>
-                        <td class="amount-col">{{ $formatRm($block['minimum']['top_up']) }}</td>
-                    </tr>
-                @endif
-            @empty
-                <tr>
-                    <td class="item-col" colspan="5">No transport charges listed.</td>
+            </tr>
+            @foreach ($table['rows'] as $row)
+                <tr class="row">
+                    <td class="label">{{ $row['label'] }}</td>
+                    @foreach ($row['prices'] as $price)
+                        <td style="white-space:pre">{{ $price ?? '' }}</td>
+                    @endforeach
                 </tr>
-            @endforelse
-            @if($blocks !== [])
-                <tr>
-                    <td class="item-col bold" colspan="4" style="text-align:right;">Total</td>
-                    <td class="amount-col bold">{{ $formatRm($grandTotal) }}</td>
-                </tr>
-            @endif
-        </tbody>
-    </table>
+            @endforeach
+        </table>
+    @empty
+        <div class="tw-line">No transport charges listed.</div>
+    @endforelse
 
-    <div class="footnotes">
-        <div>*Prices are per unit to each destination. A destination below its minimum charge (pick-up, construction site or drop-off) is topped up to it.</div>
-    </div>
-
-    {{-- Footer --}}
-    <div class="footer-block">
-        <div>Terms of payment : {{ $paymentTerms }}</div>
-        @if($contactPerson)
-            <div>Contact Person : {{ strtoupper($contactPerson) }}</div>
-        @endif
-        <div style="margin-top:10px;">If you have any doubts, please contact us.</div>
+    <div class="notes">
+        @foreach ($minimums as $line)
+            <div>* {{ $line }}</div>
+        @endforeach
+        <div>* ADDITIONAL CHARGES APPLY TO DELIVERIES TO SITE LOCATIONS AND OUTSKIRT AREAS.</div>
+        <div>* MAXIMUM TIME FOR LOADING AND UNLOADING IS 2 HOURS.</div>
+        <div style="margin-top:8px">Note:</div>
+        <div>1. Sales &amp; Service Tax (SST) is not included in the transportation charges stated.</div>
+        <div>2. Compensation for lost/damaged goods is capped at 50 times the transportation charge.</div>
+        <div>3. Only claims reported within 7 days of delivery will be considered.</div>
+        <div style="margin-top:8px">* This is a computer generated document. No signature is required. *</div>
+        <div style="margin-top:14px">***** PRICE NOT INCLUDE 6% SST *****{{ $effective ? '     (Effective '.$effective.')' : '' }}</div>
     </div>
 </body>
 </html>

@@ -167,7 +167,7 @@ class CreateQuotation extends CreateOrder
     public function partyOptions(): array
     {
         $companyId = CurrentCompany::id();
-        $customers = Customer::query()->when($companyId, fn ($q, $id) => $q->where('company_id', $id))->orderBy('company_name')->get(['id', 'code', 'company_name'])
+        $customers = Customer::query()->when($companyId, fn ($q, $id) => $q->where('company_id', $id))->where('status', 'active')->orderBy('company_name')->get(['id', 'code', 'company_name'])
             ->mapWithKeys(fn (Customer $c) => ['customer:'.$c->id => ['label' => trim(($c->code ? $c->code.' — ' : '').$c->company_name), 'lead' => false]]);
         $leads = Lead::query()->when($companyId, fn ($q, $id) => $q->where('company_id', $id))->whereNull('customer_id')->orderBy('name')->get(['id', 'name'])
             ->mapWithKeys(fn (Lead $lead) => ['lead:'.$lead->id => ['label' => $lead->name, 'lead' => true]]);
@@ -520,7 +520,7 @@ class CreateQuotation extends CreateOrder
         $branch = CurrentCompany::branch();
 
         if (! $branch) {
-            Notification::make()->title('Select a branch first')->danger()->send();
+            Notification::make()->title('Select a company first')->danger()->send();
 
             return;
         }

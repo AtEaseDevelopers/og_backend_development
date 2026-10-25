@@ -30,7 +30,7 @@ class ListUoms extends ListRecords
                 // one import for every category (it fills UOM, Items and Lorries)
                 ->visible(fn () => static::getResource() === UomResource::class && UomResource::canCreate())
                 ->modalHeading('Import price list')
-                ->modalDescription('Upload the O&G Customer Pricing Setup workbook(s): the Default Price file and/or the Special Price file. The default prices of the file\'s branch, and the special prices of each customer in it, are replaced.')
+                ->modalDescription('Upload the O&G Customer Pricing Setup workbook(s): the Default Price file and/or the Special Price file. The default prices of the file\'s company, and the special prices of each customer in it, are replaced.')
                 ->modalSubmitActionLabel('Import')
                 ->form([
                     Forms\Components\FileUpload::make('files')

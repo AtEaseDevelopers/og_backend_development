@@ -33,11 +33,12 @@ class UomResource extends Resource
     // opened from its card on the Master Data page (user, 21 Oct 2026), not the menu
     protected static bool $shouldRegisterNavigation = false;
 
-    protected static ?string $navigationLabel = 'UOM';
+    // Master Data → Measurements (user, 25 Oct 2026; was UOM)
+    protected static ?string $navigationLabel = 'Measurements';
 
-    protected static ?string $modelLabel = 'UOM';
+    protected static ?string $modelLabel = 'measurement product';
 
-    protected static ?string $pluralModelLabel = 'UOMs';
+    protected static ?string $pluralModelLabel = 'measurements';
 
     protected static ?int $navigationSort = 6;
 
@@ -220,7 +221,7 @@ class UomResource extends Resource
         return [
             Forms\Components\Grid::make(4)->schema([
                 Forms\Components\Select::make('branch_id')
-                    ->label('Branch')
+                    ->label('Company')
                     ->options(fn () => Branch::query()->orderBy('name')->pluck('name', 'id')->all())
                     ->required(),
                 Forms\Components\TextInput::make('pickup_location')

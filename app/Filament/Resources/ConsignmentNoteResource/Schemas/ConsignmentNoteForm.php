@@ -273,9 +273,35 @@ class ConsignmentNoteForm
     {
         return [
             Forms\Components\Grid::make(12)->schema([
+                // type, then sub-category, then the product of that sub-category, as on Create order (user, 25 Oct 2026);
+                // "Others": a product not in the system, named in Item / description
+                Forms\Components\Select::make('kind')
+                    ->label('Type')
+                    ->options(\App\Domains\MasterData\Models\Uom::CATEGORIES)
+                    ->live()
+                    ->afterStateUpdated(function (Set $set): void {
+                        $set('sub_category', null);
+                        $set('catalog_key', null);
+                    })
+                    ->columnSpan(2),
+                Forms\Components\Select::make('sub_category')
+                    ->label('Sub-category')
+                    ->options(fn (Get $get) => filled($get('kind'))
+                        ? \App\Domains\MasterData\Models\Uom::query()->where('is_active', true)->where('category', $get('kind'))
+                            ->whereNotNull('sub_category')->where('sub_category', '!=', '')->distinct()->orderBy('sub_category')
+                            ->pluck('sub_category', 'sub_category')->all() + [\App\Filament\Pages\CreateOrder::OTHER_PRODUCT => 'Others']
+                        : [])
+                    ->disabled(fn (Get $get) => blank($get('kind')))
+                    ->live()
+                    ->afterStateUpdated(fn (Set $set) => $set('catalog_key', null))
+                    ->columnSpan(2),
                 Forms\Components\Select::make('catalog_key')
-                    ->label('Master')
-                    ->options(fn () => app(QuotationPricingLookup::class)->catalogOptions())
+                    ->label('Product')
+                    ->options(fn (Get $get) => \App\Domains\MasterData\Models\Uom::query()->where('is_active', true)
+                        ->where('category', $get('kind'))->where('sub_category', $get('sub_category'))->orderBy('name')
+                        ->get(['id', 'name'])->mapWithKeys(fn ($uom) => ['uom:'.$uom->id => $uom->name])->all())
+                    ->hidden(fn (Get $get) => $get('sub_category') === \App\Filament\Pages\CreateOrder::OTHER_PRODUCT)
+                    ->disabled(fn (Get $get) => blank($get('sub_category')))
                     ->searchable()
                     ->columnSpan(3)
                     ->live()
@@ -305,19 +331,19 @@ class ConsignmentNoteForm
                         $set('prices', $prices);
                     }),
                 Forms\Components\TextInput::make('item_name')
-                    ->label('Item / description')
+                    ->label(fn (Get $get) => $get('sub_category') === \App\Filament\Pages\CreateOrder::OTHER_PRODUCT ? 'Product name (this CSN only)' : 'Item / description')
                     ->required()
-                    ->columnSpan(5),
+                    ->columnSpan(fn (Get $get) => $get('sub_category') === \App\Filament\Pages\CreateOrder::OTHER_PRODUCT ? 6 : 3),
                 Forms\Components\TextInput::make('quantity')
                     ->label('Qty')
                     ->numeric()
                     ->default(1)
-                    ->columnSpan(2),
+                    ->columnSpan(1),
                 Forms\Components\Select::make('uom')
                     ->label('UOM')
                     ->options(static::unitMeasureOptions())
                     ->searchable()
-                    ->columnSpan(2),
+                    ->columnSpan(1),
             ]),
             Forms\Components\Grid::make(3)
                 ->schema(fn (Get $get): array => static::priceFieldsForColumns(
