@@ -118,6 +118,12 @@ class JobSheetResource extends Resource
                     ->sortable(),
             ])
             ->actions([
+                // the Job Sheet print (client's layout, a page per job sheet code), user 27 Oct 2026
+                Tables\Actions\Action::make('print')
+                    ->label('Print')
+                    ->icon('heroicon-o-printer')
+                    ->url(fn (JobSheet $record) => route('filament.admin.job-sheets.pdf', ['tenant' => \Filament\Facades\Filament::getTenant(), 'jobSheet' => $record->id]))
+                    ->openUrlInNewTab(),
                 Tables\Actions\Action::make('viewDetails')
                     ->label('View Details')
                     ->visible(fn (): bool => ! Livewire::current() instanceof ListJobSheets)

@@ -395,6 +395,7 @@ Legend: [x] done · [~] done in code, not yet browser-checked · [ ] not started
 | 7.24 | Assign to lorry: a slide-over (the Assign button stays in view, the body scrolls); the long CSN list with Select all removed — the list shows only the scanned / typed CSNs (untick to drop one) | Done |
 | 7.25 | Pickup subsheet "0 created": not a bug — the chosen lorry was the CSN's own main lorry (skipped on purpose); now the action says why ("JCM 6456 already carries this CSN… pick another lorry, or leave Lorries empty") | Done, tested |
 | 7.26 | CSN list filter bar: Search and CSN date on top; Customer, Order type and Payment status moved under "Filters +" | Done |
+| 7.27 | Job sheet list: a Print action on every row (same PDF as the job sheet page) | Done, tested |
 
 ## Open questions for the user
 - Round 6: truncating customers resets IDs, so old orders / CSNs / invoices would show the new customer that gets their old ID. Kept IDs instead (unused customers removed, used ones inactive). Clean slate (clear old test orders too) only if the user confirms. Role name "Branch Manager" and data names like "KL Branch" were left unchanged; customer portal wording left as branch/company.
