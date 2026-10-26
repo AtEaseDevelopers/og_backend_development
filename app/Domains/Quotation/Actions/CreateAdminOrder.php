@@ -117,6 +117,8 @@ class CreateAdminOrder
                         'consignor_name' => $pair['consignor_name'] ?? null,
                         'store_branch_id' => $pair['store_branch_id'] ?? null,
                         'store_id' => $pair['store_id'] ?? null,
+                        'consignee_mode' => $pair['consignee_mode'] ?? null,
+                        'consignee_store_id' => $pair['consignee_store_id'] ?? null,
                         'consignor_pic_name' => $pair['consignor_pic_name'] ?? null,
                         'consignor_pic_phone' => $pair['consignor_pic_phone'] ?? null,
                         'consignee_pic_name' => $pair['consignee_pic_name'] ?? null,
@@ -169,6 +171,8 @@ class CreateAdminOrder
                     'customer_do_number' => $pair['customer_do_number'] ?? null,
                     'expected_delivery_date' => $pair['expected_delivery_date'] ?? null,
                     'instructions' => $pair['instructions'] ?? null,
+                    'admin_notes' => $pair['admin_notes'] ?? null,
+                    'stops' => $pair['stops'] ?? null,
                     // the block's photos belong to its own record
                     'attachments' => array_values(array_filter($pair['attachments'] ?? [], 'is_array')),
                     'items' => collect($pair['items'] ?? [])->map(fn (array $item) => [

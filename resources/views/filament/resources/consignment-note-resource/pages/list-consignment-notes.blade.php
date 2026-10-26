@@ -98,6 +98,22 @@
             </div>
 
             <div class="csn-toggle-field">
+                <span class="csn-toggle-caption">Branch</span>
+                <x-filament::tabs label="Branch">
+                    @foreach ($this->branchToggles() as $toggle)
+                        <x-filament::tabs.item
+                            :active="(string) $saLocation === $toggle['value']"
+                            :badge="$toggle['count']"
+                            wire:click="$set('saLocation', '{{ $toggle['value'] }}')"
+                            :title="$toggle['title']"
+                        >
+                            {{ $toggle['label'] }}
+                        </x-filament::tabs.item>
+                    @endforeach
+                </x-filament::tabs>
+            </div>
+
+            <div class="csn-toggle-field">
                 <span class="csn-toggle-caption">Transfer code</span>
                 <x-filament::tabs label="Transfer code">
                     @foreach ($this->transferToggles() as $toggle)
@@ -127,34 +143,10 @@
                                    class="ow-input"
                                    placeholder="Search CSN, customer, DO, order or invoice no.…">
                         </div>
-                        {{-- one row: search, CSN date, customer, order type, payment status (the rest behind "Filters +") --}}
+                        {{-- the top row: search and CSN date (everything else behind "Filters +") --}}
                         <div class="ow-field">
                             <label>CSN date</label>
                             <x-og.date-range from="csnFrom" to="csnTo" :from-value="$csnFrom" :to-value="$csnTo" label="CSN date" />
-                        </div>
-                        <div class="ow-field">
-                            <label>Customer</label>
-                            <select wire:model.live="customer" class="ow-select">
-                                @foreach ($this->customerOptions() as $value => $label)
-                                    <option value="{{ $value }}">{{ $label }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div class="ow-field">
-                            <label>Order type</label>
-                            <select wire:model.live="orderType" class="ow-select">
-                                @foreach ($this->orderTypeOptions() as $value => $label)
-                                    <option value="{{ $value }}">{{ $label }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div class="ow-field">
-                            <label>Payment status</label>
-                            <select wire:model.live="paymentStatus" class="ow-select">
-                                @foreach ($this->paymentStatusOptions() as $value => $label)
-                                    <option value="{{ $value }}">{{ $label }}</option>
-                                @endforeach
-                            </select>
                         </div>
                         <div class="ow-actions">
                             <button type="button" wire:click="toggleFilters" @class(['ow-btn', 'ow-pill-dark' => $filtersOpen])>
@@ -166,6 +158,31 @@
 
                     @if ($filtersOpen)
                         <div class="ow-fgrid">
+                            {{-- customer, order type and payment status: under "Filters +" (user, 27 Oct 2026); the top row keeps Search and CSN date --}}
+                            <div class="ow-field">
+                            <label>Customer</label>
+                            <select wire:model.live="customer" class="ow-select">
+                                @foreach ($this->customerOptions() as $value => $label)
+                                    <option value="{{ $value }}">{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            </div>
+                            <div class="ow-field">
+                            <label>Order type</label>
+                            <select wire:model.live="orderType" class="ow-select">
+                                @foreach ($this->orderTypeOptions() as $value => $label)
+                                    <option value="{{ $value }}">{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            </div>
+                            <div class="ow-field">
+                            <label>Payment status</label>
+                            <select wire:model.live="paymentStatus" class="ow-select">
+                                @foreach ($this->paymentStatusOptions() as $value => $label)
+                                    <option value="{{ $value }}">{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            </div>
                             <div class="ow-field">
                                 <label>Billing type</label>
                                 <select wire:model.live="billingType" class="ow-select">

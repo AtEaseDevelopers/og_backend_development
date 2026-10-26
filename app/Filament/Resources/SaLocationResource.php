@@ -47,11 +47,14 @@ class SaLocationResource extends Resource
                 Forms\Components\TextInput::make('code')->required()->maxLength(20)->helperText('Unique within the company'),
                 Forms\Components\TextInput::make('name')->required()->maxLength(120),
                 Forms\Components\TextInput::make('csn_prefix')
-                    ->label('CSN prefix')
+                    ->label('CSN location code')
                     ->required()
-                    ->maxLength(10)
-                    ->helperText('Printed on CSN numbers, e.g. KLS → KLS-CSN-202610-0001'),
-                Forms\Components\Textarea::make('address')->columnSpanFull(),
+                    ->maxLength(4)
+                    ->helperText('2 letters (KL, SA, MK, KG, PK, PP, PA, JB) · CSN numbers: KL → KL-261000001 (year, month, running number)'),
+                // the branch is the store a consignor brings the goods to: this address is the Store order's pickup location
+                Forms\Components\Textarea::make('address')
+                    ->helperText('Also the store address: a Store order from this branch uses it as the pickup location.')
+                    ->columnSpanFull(),
                 Forms\Components\Toggle::make('is_active')->default(true),
             ])->columns(2),
         ]);

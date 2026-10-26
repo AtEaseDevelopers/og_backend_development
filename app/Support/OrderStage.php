@@ -21,7 +21,7 @@ use App\Enums\QuotationStatus;
  */
 class OrderStage
 {
-    public const STEPS = ['Enquiry', 'Quotation', 'Confirmation', 'Proforma', 'Payment verification / Pending item', 'CSN'];
+    public const STEPS = ['Enquiry', 'Quotation', 'Pending payment', 'Payment verification', 'Pending item', 'CSN'];
 
     /**
      * Stage keys (as returned in forEnquiry / forOrder 'key') → tag label and colour, in flow order.
@@ -33,8 +33,10 @@ class OrderStage
         'enquiry' => ['label' => 'New enquiry', 'color' => 'progress'],
         'quotation' => ['label' => 'Preparing quotation', 'color' => 'progress'],
         'awaiting_customer' => ['label' => 'Awaiting customer', 'color' => 'customer'],
-        'confirmation' => ['label' => 'Confirmation', 'color' => 'action'],
-        'payment' => ['label' => 'Payment verification / Pending item', 'color' => 'action'],
+        // the flow (user, 27 Oct 2026): Awaiting customer → Pending payment → Payment verification → Pending item → CSN created
+        'confirmation' => ['label' => 'Pending payment', 'color' => 'customer'],
+        'payment' => ['label' => 'Payment verification', 'color' => 'action'],
+        'item' => ['label' => 'Pending item', 'color' => 'action'],
         'csn' => ['label' => 'CSN created', 'color' => 'done'],
         // apart (user, 26 Oct 2026): a rejected order can still be edited and sent again; a closed one is finished
         'rejected' => ['label' => 'Rejected', 'color' => 'issue'],
@@ -92,21 +94,22 @@ class OrderStage
         $stage = match (true) {
             $status === QuotationStatus::Converted || $hasCsn => ['csn', 6, 'CSN created', 'done', 'Released · Continue in CSN management', 'View CSN', false],
             // a Store order paid / released: its CSN waits for the goods at the store (user, 21 Oct 2026)
-            $status === QuotationStatus::Confirmed && $billing === BillingStatus::Generated && $q->awaitsItem() => ['payment', 5, 'Pending item', 'action', 'Paid · Waiting for the goods at the store · Confirm when they are in', 'Ready for CSN', false],
+            $status === QuotationStatus::Confirmed && $billing === BillingStatus::Generated && $q->awaitsItem() => ['item', 5, 'Pending item', 'action', 'Paid · Waiting for the goods at the store · Confirm when they are in', 'Ready for CSN', false],
             // billing issued but its CSN not created (a release creates both, so only after an error)
             $status === QuotationStatus::Confirmed && $billing === BillingStatus::Generated => ['csn', 6, 'CSN pending', 'action', 'Released · The CSN was not created · Create it to continue', 'Create CSN', false],
-            $status === QuotationStatus::Confirmed && $billing === BillingStatus::Failed => ['payment', 5, 'Billing failed', 'issue', 'Billing generation failed · Retry', 'Retry billing', false],
-            $status === QuotationStatus::Confirmed && $q->cod_blocked => ['payment', 5, 'COD blocked', 'issue', $q->cod_block_reason ?: 'COD order blocked by admin', 'Review COD block', false],
-            $status === QuotationStatus::Confirmed && $q->isReleased() => ['payment', 5, 'Ready to bill', 'released', 'Admin released · Billing not issued', 'Review billing', false],
-            $status === QuotationStatus::Confirmed && $rejected => ['payment', 5, 'Payment review', 'action', 'Receipt mismatch · Customer correction needed', 'View rejection', false],
-            $status === QuotationStatus::Confirmed && $pending > 0 => ['payment', 5, 'Payment review', 'action', 'Payment proof submitted · Verify and approve', 'Review payment', false],
-            $status === QuotationStatus::Confirmed && $type === OrderType::Term => ['payment', 5, 'Admin release required', 'action', 'Credit order · Release to issue invoice and CSN', 'Review admin release', false],
-            $status === QuotationStatus::Confirmed && $type === OrderType::Cod => ['payment', 5, 'Ready to bill', 'released', 'COD order · CSN created, invoice once fully paid', 'Review billing', false],
+            $status === QuotationStatus::Confirmed && $billing === BillingStatus::Failed => ['payment', 4, 'Billing failed', 'issue', 'Billing generation failed · Retry', 'Retry billing', false],
+            $status === QuotationStatus::Confirmed && $q->cod_blocked => ['payment', 4, 'COD blocked', 'issue', $q->cod_block_reason ?: 'COD order blocked by admin', 'Review COD block', false],
+            $status === QuotationStatus::Confirmed && $q->isReleased() => ['payment', 4, 'Ready to bill', 'released', 'Admin released · Billing not issued', 'Review billing', false],
+            $status === QuotationStatus::Confirmed && $rejected => ['payment', 4, 'Payment review', 'action', 'Receipt mismatch · Customer correction needed', 'View rejection', false],
+            $status === QuotationStatus::Confirmed && $pending > 0 => ['payment', 4, 'Payment review', 'action', 'Payment proof submitted · Verify and approve', 'Review payment', false],
+            $status === QuotationStatus::Confirmed && $type === OrderType::Term => ['payment', 4, 'Admin release required', 'action', 'Credit order · Release to issue invoice and CSN', 'Review admin release', false],
+            $status === QuotationStatus::Confirmed && $type === OrderType::Cod => ['payment', 4, 'Ready to bill', 'released', 'COD order · CSN created, invoice once fully paid', 'Review billing', false],
             // a Cash order still owed: pending payment (Admin release is for Credit / Term orders only)
-            $status === QuotationStatus::Confirmed && $paid > 0 && $paid + 0.005 < $total => ['payment', 5, 'Pending payment', 'customer', 'Partial payment · Outstanding RM '.number_format($total - $paid, 2), 'Review payment', false],
-            $status === QuotationStatus::Confirmed => ['payment', 5, 'Pending payment', 'customer', 'Proforma issued · Waiting for customer payment', 'Review payment', false],
+            // waiting for the customer's payment: the Pending payment stage (user, 27 Oct 2026)
+            $status === QuotationStatus::Confirmed && $paid > 0 && $paid + 0.005 < $total => ['confirmation', 3, 'Pending payment', 'customer', 'Partial payment · Outstanding RM '.number_format($total - $paid, 2), 'Review payment', false],
+            $status === QuotationStatus::Confirmed => ['confirmation', 3, 'Pending payment', 'customer', 'Proforma issued · Waiting for customer payment', 'Review payment', false],
             $status === QuotationStatus::PendingApproval => ['confirmation', 3, 'Credit approval', 'action', 'Customer confirmed · Awaiting branch manager credit approval', 'Review credit approval', false],
-            $status === QuotationStatus::Accepted => [$hasProforma ? 'payment' : 'confirmation', $hasProforma ? 4 : 3, 'Customer confirmed', 'progress', $hasProforma ? 'Proforma issued' : 'Confirmation recorded', 'View order', false],
+            $status === QuotationStatus::Accepted => ['confirmation', 3, 'Pending payment', 'customer', $hasProforma ? 'Customer confirmed · Proforma issued · Waiting for payment' : 'Customer confirmed · Proforma being issued', 'Review payment', false],
             $status === QuotationStatus::PendingReview => ['awaiting_customer', 3, 'Awaiting customer', 'customer', 'Pending customer review · No response yet', 'View quotation', false],
             $status === QuotationStatus::Sent => ['awaiting_customer', 3, 'Awaiting customer', 'customer', 'Quotation sent · Customer has not confirmed', 'View quotation', false],
             $status === QuotationStatus::Negotiation => ['quotation', 3, 'Customer rejected · revising', 'action', 'Customer rejected the price · Edit and send again', 'Edit pricing', false],
@@ -129,7 +132,7 @@ class OrderStage
             'hint' => $stage[4],
             'next' => $stage[5],
             'closed' => $stage[6],
-            'attention' => in_array($key, ['enquiry', 'quotation', 'confirmation'], true) || (in_array($key, ['payment', 'csn'], true) && in_array($color, ['action', 'issue'], true)),
+            'attention' => in_array($key, ['enquiry', 'quotation'], true) || (in_array($key, ['confirmation', 'payment', 'item', 'csn'], true) && in_array($color, ['action', 'issue'], true)),
             'ready_to_bill' => $key === 'payment' && $color === 'released',
         ];
     }
@@ -224,7 +227,8 @@ class OrderStage
             $n = $index + 1;
 
             // Non-cash orders (credit term / COD) go from confirmation straight to the CSN
-            if (! $cashFlow && in_array($n, [5, 6], true)) {
+            // (Payment verification and Pending item are the cash flow's steps)
+            if (! $cashFlow && in_array($n, [4, 5], true)) {
                 continue;
             }
             $state = match (true) {
@@ -236,10 +240,13 @@ class OrderStage
 
             // Proforma / billing / CSN are facts, not just positions in the flow
             if ($order) {
-                if ($n === 4 && $order->proformaInvoice()->exists()) {
+                if ($n === 4 && (float) $order->paid_amount + 0.005 >= (float) $order->total_amount && (float) $order->total_amount > 0) {
                     $state = $n === $current ? 'current' : 'done';
                 }
                 if ($n === 6 && $order->billingStatus() === BillingStatus::Generated) {
+                    $state = 'done';
+                }
+                if ($n === 5 && $stage['key'] === 'item') {
                     $state = 'done';
                 }
                 if ($n === 7 && $stage['key'] === 'csn') {

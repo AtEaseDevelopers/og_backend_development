@@ -31,6 +31,7 @@ class ConvertQuotationToCsns
     public function __construct(
         private GenerateProformaInvoice $proforma,
         private CsnDocumentNumbers $documentNumbers,
+        private \App\Domains\Dispatch\Actions\CreateSubsheet $subsheets,
     ) {}
 
     /** @return Collection<int, ConsignmentNote> */
@@ -84,7 +85,10 @@ class ConvertQuotationToCsns
                     'billing_type' => $billingType,
                     'invoice_number' => $latestInvoice?->number,
                     'proforma_number' => $orderProforma?->number,
-                    'customer_do_number' => $quotation->customer_do_number,
+                    'customer_do_number' => $quotation->customer_do_number ?: (\App\Support\OrderStops::doNumbers($quotation->stops)[0] ?? null),
+                    // the record's stops (several pick-up / drop-off locations, each with its DO number) go on the CSN
+                    'stops' => $quotation->stops ?: null,
+                    'other_do_numbers' => array_slice(\App\Support\OrderStops::doNumbers($quotation->stops), 1) ?: null,
                     'service_type' => $destination->service_type ?? ($typeSetting['service_type'] ?? $quotation->service_type?->value),
                     'drop_off_type' => $destination->drop_off_type ?? ($typeSetting['drop_off_type'] ?? null),
                     'status' => CsnStatus::PendingAssignment,
@@ -122,7 +126,7 @@ class ConvertQuotationToCsns
                     'qr_token' => (string) Str::uuid(),
                     'tracking_token' => Str::random(40),
                     'created_by' => $actor->id,
-                ], $quotation->branch, $csnPrefix);
+                ], $quotation->branch, $csnPrefix, $quotation->portalEnquiry?->created_at ?? $quotation->created_at);
 
                 $csn = ConsignmentNote::query()->create($csnData);
 
@@ -142,6 +146,17 @@ class ConvertQuotationToCsns
                 // Legacy path (manual convert without an order-level proforma): COD proforma per CSN
                 if ($billingType === CsnBillingType::Cod->value && ! $orderProforma) {
                     $this->proforma->execute($csn);
+                }
+
+                // consignee Store (user, 27 Oct 2026): the goods go to a store for the customer to collect → a subsheet
+                // with transfer code O (own collection), ready to be put on a lorry
+                if ($quotation->consignee_store_id) {
+                    $store = \App\Domains\MasterData\Models\Store::query()->find($quotation->consignee_store_id);
+                    $this->subsheets->forCsn($csn, [
+                        'transfer_code' => 'O',
+                        'task_type' => 'transfer',
+                        'notes' => 'Own collection'.($store ? ' at '.$store->label() : '').' · created with the CSN',
+                    ]);
                 }
 
                 $notes->push($csn);

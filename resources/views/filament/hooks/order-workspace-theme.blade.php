@@ -183,7 +183,19 @@
     }
     .ow-input:focus, .ow-select:focus, .ow-textarea:focus { outline: 2px solid rgb(59 130 246 / .35); outline-offset: 0; border-color: #3b82f6; }
     .ow-input[readonly] { background: var(--ow-soft); color: var(--ow-muted); }
-    .ow-search { flex: 1 1 14rem; max-width: 22rem; }
+    .ow-search { flex: 1 1 14rem; max-width: 26rem; }
+    /* the search box with pinned order-number tags (user, 27 Oct 2026) */
+    .ow-search-box { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; min-height: 2.15rem; padding: .2rem .35rem; border: 1px solid var(--ow-line); border-radius: .5rem; background: var(--ow-bg); }
+    .ow-search-box .ow-input { flex: 1 1 8rem; min-width: 6rem; border: 0; padding: .25rem .3rem; background: transparent; }
+    .ow-search-box .ow-input:focus { outline: none; }
+    .ow-search-box:focus-within { outline: 2px solid rgb(59 130 246 / .35); border-color: #3b82f6; }
+    .ow-search-tag { display: inline-flex; align-items: center; gap: .25rem; padding: .1rem .3rem .1rem .5rem; border-radius: 999px; font-size: .75rem; font-weight: 600; background: var(--ow-progress-bg, #eff6ff); color: var(--ow-progress-fg, #1d4ed8); border: 1px solid var(--ow-progress-bd, #bfdbfe); white-space: nowrap; }
+    .ow-search-tag button { border: 0; background: none; color: inherit; font-size: .95rem; line-height: 1; padding: 0 .15rem; cursor: pointer; opacity: .7; }
+    .ow-search-tag button:hover { opacity: 1; }
+    /* copy / duplicate icons beside the order no. */
+    .ow-copy { display: inline-flex; align-items: center; justify-content: center; width: 1.3rem; height: 1.3rem; margin-left: .25rem; border: 0; border-radius: .3rem; background: none; color: var(--ow-muted); cursor: pointer; vertical-align: middle; }
+    .ow-copy svg { width: .85rem; height: .85rem; }
+    .ow-copy:hover { color: var(--ow-text); background: var(--ow-line-2, #eef0f3); }
     .ow-filter-top .ow-actions { min-height: 2.15rem; }
     .ow-filter-top .ow-actions { margin-left: auto; }
 

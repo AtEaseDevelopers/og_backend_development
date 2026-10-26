@@ -66,6 +66,23 @@
 
     {{-- Charges & Billing — 2 columns inside --}}
     <div class="csn-card csn-card-compact">
+        @if (($charges['stops'] ?? []) !== [])
+            {{-- several pick-up / drop-off locations, each with its DO number (user, 27 Oct 2026) --}}
+            <div class="csn-card-title">Stops</div>
+            <table class="csn-table" style="width:100%;margin-bottom:1rem">
+                <thead><tr><th>#</th><th>Stop</th><th>Location</th><th>DO number</th></tr></thead>
+                <tbody>
+                    @foreach ($charges['stops'] as $n => $stop)
+                        <tr>
+                            <td>{{ $n + 1 }}</td>
+                            <td>{{ \App\Support\OrderStops::label($stop) }}</td>
+                            <td style="white-space:pre-line">{{ $display($stop['location'] ?? null) }}</td>
+                            <td>{{ $display($stop['do_number'] ?? null) }}</td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        @endif
         <div class="csn-card-title">Charges & Billing</div>
         <div class="csn-grid-2 csn-grid-pair">
             <div class="csn-field-stack csn-charges-stack">

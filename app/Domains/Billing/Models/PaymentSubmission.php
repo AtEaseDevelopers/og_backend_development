@@ -108,9 +108,13 @@ class PaymentSubmission extends Model
         return $this->method instanceof PaymentMethod ? $this->method : PaymentMethod::tryFrom((string) $this->method);
     }
 
+    /**
+     * No second approver (user, 27 Oct 2026): a payment recorded with its slip is approved at once and the order moves
+     * on (before, Cash / Pay-at-Counter needed a verify by one user and an approve by another).
+     */
     public function requiresTwoApprovals(): bool
     {
-        return (bool) $this->method()?->requiresTwoApprovals();
+        return false;
     }
 
     public function isOpen(): bool

@@ -9,8 +9,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
- * Sales Area (SA) location. Each salesperson belongs to one SA location, and each
- * SA location carries the CSN number prefix used for its orders (section A / H).
+ * A branch of the company (Master Data → Branches; formerly "SA location"). Each salesperson belongs to one branch,
+ * each branch carries the CSN location code (KL, SA, …), and each branch is a store a consignor can bring the goods
+ * to (user, 26 Oct 2026): its store row (Store, stores.sa_location_id) is kept in step here.
  */
 class SaLocation extends Model
 {
@@ -23,6 +24,29 @@ class SaLocation extends Model
     protected function casts(): array
     {
         return ['is_active' => 'boolean'];
+    }
+
+    protected static function booted(): void
+    {
+        static::saved(fn (SaLocation $branch) => $branch->syncStore());
+    }
+
+    /** The branch's store (the Store option on Create order): same code, name, address and active flag. */
+    public function syncStore(): Store
+    {
+        return Store::query()->updateOrCreate(['sa_location_id' => $this->id], [
+            'company_id' => $this->company_id,
+            'branch_id' => $this->branch_id,
+            'code' => $this->code,
+            'name' => $this->name,
+            'address' => $this->address,
+            'is_active' => (bool) $this->is_active,
+        ]);
+    }
+
+    public function store(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(Store::class, 'sa_location_id');
     }
 
     public function branch(): BelongsTo

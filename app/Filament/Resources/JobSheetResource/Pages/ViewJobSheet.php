@@ -71,6 +71,12 @@ class ViewJobSheet extends ViewRecord
         $record = $this->getRecord();
 
         return [
+            // the Job Sheet print (client's layout): Self + one page per job sheet code (user, 27 Oct 2026)
+            Actions\Action::make('pdf')
+                ->label('Print job sheet')
+                ->icon('heroicon-o-printer')
+                ->url(fn () => route('filament.admin.job-sheets.pdf', ['tenant' => \Filament\Facades\Filament::getTenant(), 'jobSheet' => $record->id]))
+                ->openUrlInNewTab(),
             Actions\Action::make('backToListing')
                 ->label('Back to Listing')
                 ->color('gray')

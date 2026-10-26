@@ -277,7 +277,9 @@ class ListConsignmentNotes extends ListRecords
                 ->modalDescription(fn () => $this->myTransferCodes() !== []
                     ? 'Subsheets with your transfer code'.(count($this->myTransferCodes()) > 1 ? 's' : '').' '.implode(', ', $this->myTransferCodes()).' that are not on a lorry yet. Pick the lorry, tick them (or Select all) and assign.'
                     : 'CSNs not on a lorry yet. Pick the lorry, tick them (or Select all) and assign. (A transfer code\'s staff see the subsheets of their codes here.)')
-                ->modalWidth('3xl')
+                // a slide-over (user, 27 Oct 2026): the Assign button stays in view, only the body scrolls
+                ->slideOver()
+                ->modalWidth('2xl')
                 ->form(fn () => array_values(array_filter([
                     Forms\Components\Select::make('lorry_id')
                         ->label('Lorry')
@@ -290,7 +292,7 @@ class ListConsignmentNotes extends ListRecords
                     $this->assignableItems() === [] ? null : Forms\Components\TextInput::make('scan')
                         ->label('Scan or type a CSN number')
                         ->placeholder('Scan the barcode, or type the number and press Enter')
-                        ->helperText('Ticks it in the list below; the list can be searched and ticked by hand too.')
+                        ->helperText('Each scan adds the CSN to the list below (untick one to leave it out).')
                         ->autocomplete(false)
                         ->live(onBlur: true)
                         ->extraInputAttributes(['x-on:keydown.enter.prevent' => '$el.blur(); setTimeout(() => $el.focus(), 300)'])
@@ -329,13 +331,17 @@ class ListConsignmentNotes extends ListRecords
                     $this->assignableItems() === []
                         ? Forms\Components\Placeholder::make('none')->hiddenLabel()->content($this->myTransferCodes() !== [] ? 'No subsheet with your transfer code is waiting for a lorry.' : 'No CSN is waiting for a lorry.')
                         : Forms\Components\CheckboxList::make('item_keys')
-                            ->label($this->myTransferCodes() !== [] ? 'Subsheets' : 'CSNs')
-                            ->options(fn () => array_map(fn (array $item) => $item['label'], $this->assignableItems()))
+                            ->label(fn (Forms\Get $get) => ($this->myTransferCodes() !== [] ? 'Subsheets' : 'CSNs').' to assign ('.count((array) $get('item_keys')).')')
+                            // only the scanned / ticked ones are listed (user, 27 Oct 2026: the full list made the modal too long)
+                            ->options(function (Forms\Get $get) {
+                                $items = $this->assignableItems();
+
+                                return collect((array) $get('item_keys'))->mapWithKeys(fn ($key) => isset($items[$key]) ? [$key => $items[$key]['label']] : [])->all();
+                            })
                             ->descriptions(fn () => array_map(fn (array $item) => $item['description'], $this->assignableItems()))
-                            ->searchable()
-                            ->bulkToggleable()
+                            ->live()
                             ->required()
-                            ->validationMessages(['required' => 'Tick at least one.']),
+                            ->validationMessages(['required' => 'Scan or type at least one CSN number above.']),
                 ])))
                 ->modalSubmitActionLabel('Assign to lorry')
                 ->action(function (array $data): void {
@@ -357,7 +363,7 @@ class ListConsignmentNotes extends ListRecords
                         $this,
                     );
                 }),
-            Actions\CreateAction::make()->label('New consignment note'),
+            // no "New consignment note" (user, 26 Oct 2026): every CSN comes from an order
         ];
     }
 
@@ -661,6 +667,23 @@ class ListConsignmentNotes extends ListRecords
     }
 
     /** @return list<array{value: string, label: string, title: string, count: int}> */
+    /** The Branch toggle (user, 27 Oct 2026): the CSN location codes (KL, JB, …) with counts; filters by the CSN's branch. */
+    public function branchToggles(): array
+    {
+        $branches = SaLocation::query()->where('is_active', true)->orderBy('csn_prefix')->get();
+        $base = fn () => $this->filteredWithout('saLocation');
+
+        return collect([['value' => '', 'label' => 'All', 'title' => 'Any branch', 'count' => $base()->count()]])
+            ->concat($branches->map(fn (SaLocation $branch): array => [
+                'value' => (string) $branch->id,
+                'label' => (string) $branch->csn_prefix,
+                'title' => $branch->csn_prefix.' — '.$branch->name,
+                'count' => (clone $base())->where('sa_location_id', $branch->id)->count(),
+            ]))
+            ->values()
+            ->all();
+    }
+
     public function transferToggles(): array
     {
         $codes = TransferCode::query()->where('is_active', true)->orderBy('code')->get();

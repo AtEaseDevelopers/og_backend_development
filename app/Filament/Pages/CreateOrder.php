@@ -8,6 +8,7 @@ use App\Domains\MasterData\Models\Customer;
 use App\Domains\MasterData\Models\CustomerPricing;
 use App\Domains\MasterData\Models\CustomerAddress;
 use App\Domains\MasterData\Models\Location;
+use App\Domains\Quotation\Models\Quotation;
 use App\Domains\MasterData\Models\Store;
 use App\Domains\MasterData\Models\Uom;
 use App\Domains\MasterData\Models\UomRateTier;
@@ -133,13 +134,74 @@ class CreateOrder extends Page
      */
     protected ?string $outgoingCustomerId = null;
 
+    /** The order number this new order was prefilled from (the Duplicate icon on the Orders list, user 27 Oct 2026). */
+    public ?string $duplicatedFrom = null;
+
     public function mount(): void
     {
         $this->form = $this->formTemplate();
         $this->pairs = [$this->pairTemplate()];
         $this->payment = $this->paymentTemplate();
+
+        if (($duplicate = (int) request()->query('duplicate')) > 0) {
+            $this->duplicateFrom($duplicate);
+        }
+
         $this->orders = [$this->snapshotActive()];
         $this->activeOrder = 0;
+
+        if ($this->duplicatedFrom !== null) {
+            $this->fillItemKinds();
+        }
+    }
+
+    /**
+     * Prefills the page from an existing order (every record of it, latest versions): customer, salesperson, payment
+     * term, each consignor & consignee block and its products. Nothing is created until Save; the record numbers,
+     * DO numbers, delivery dates, photos and locks are not copied, and the prices are looked up again.
+     */
+    protected function duplicateFrom(int $id): void
+    {
+        $order = Quotation::query()->with('portalEnquiry')->find($id);
+
+        if (! $order || (CurrentCompany::id() && (int) $order->company_id !== (int) CurrentCompany::id())) {
+            return;
+        }
+
+        $enquiry = $order->portalEnquiry;
+        $records = ($enquiry
+            ? Quotation::query()->where('portal_enquiry_id', $enquiry->id)->orderBy('id')->get()
+            : collect([$order]))
+            ->filter(fn (Quotation $q) => $q->status !== \App\Enums\QuotationStatus::Superseded && $q->isLatestVersion())
+            ->values();
+
+        if ($records->isEmpty()) {
+            return;
+        }
+
+        // the Edit order page's loaders build the blocks from the records
+        $loader = new EditOrder();
+        $this->form = array_merge($this->form, $loader->formFrom($enquiry, $records));
+        $this->pairs = array_values(array_map(function (array $pair): array {
+            unset($pair['record_id'], $pair['record_number'], $pair['original_order_type'], $pair['lock_label'], $pair['lock_note'], $pair['existing_prices'], $pair['payload_index'], $pair['pickup_restore'], $pair['legacy_store_branch_id']);
+            $pair['locked'] = false;
+            $pair['existing_photos'] = [];
+            $pair['customer_do_number'] = '';
+            $pair['expected_delivery_date'] = '';
+            $pair['items'] = array_values(array_map(fn (array $item) => array_merge($item, [
+                'unit_price' => null, 'tier' => null, 'source' => null, 'manual_price' => '', 'price_edited' => false, 'photos' => [], 'existing_photos' => [],
+            ]), $pair['items']));
+
+            return array_merge($this->pairTemplate(), $pair);
+        }, $loader->pairsFromRecords($records, $enquiry)));
+
+        foreach ($this->pairs as $i => $pair) {
+            foreach (array_keys($pair['items']) as $j) {
+                $this->refreshItemPrice($i, $j);
+            }
+        }
+
+        $this->duplicatedFrom = (string) ($enquiry?->order_number ?: $order->number);
     }
 
     /** @return array<string, mixed> section 1 of a new order */
@@ -487,7 +549,7 @@ class CreateOrder extends Page
     /** A button of order n (add / remove a block or product, consignor quick actions, remove a photo). */
     public function inOrder(int $index, string $method, mixed ...$arguments): void
     {
-        $allowed = ['addPair', 'removePair', 'addItem', 'removeItem', 'clearConsignor', 'useCustomerAsConsignor', 'removePhoto'];
+        $allowed = ['addPair', 'removePair', 'addItem', 'removeItem', 'clearConsignor', 'useCustomerAsConsignor', 'removePhoto', 'addStop', 'removeStop'];
 
         if (! in_array($method, $allowed, true) || ! isset($this->orders[$index])) {
             return;
@@ -974,6 +1036,20 @@ class CreateOrder extends Page
         return array_values($this->customerOptions());
     }
 
+    /** The Consignor dropdown: the company's active customers by name (searchable, as the Customer field). @return list<string> */
+    public function consignorNames(): array
+    {
+        return Customer::query()
+            ->where('status', 'active')
+            ->when(CurrentCompany::id(), fn ($q, $id) => $q->where('company_id', $id))
+            ->orderBy('company_name')
+            ->distinct()
+            ->pluck('company_name')
+            ->filter()
+            ->values()
+            ->all();
+    }
+
     public function customerName(): ?string
     {
         return filled($this->form['customer_id'] ?? null) ? Customer::query()->whereKey($this->form['customer_id'])->value('company_name') : null;
@@ -1021,9 +1097,17 @@ class CreateOrder extends Page
             'drop_off_preset' => '',
             'drop_off_location' => '',
             'drop_off_type' => DropOffType::Default->value,
+            // Deliver (to the consignee's address) or Store (to one of the company's stores, the customer collects), user 27 Oct 2026
+            'consignee_mode' => 'deliver',
+            'consignee_store_id' => '',
             'customer_do_number' => '',
+            // several pick-up / drop-off locations, each with its own DO number (user, 27 Oct 2026)
+            'multi_stops' => false,
+            'stops' => [],
             'expected_delivery_date' => '',
+            // Driver notes (printed on the CSN) and Admin notes (internal), user 27 Oct 2026
             'instructions' => '',
+            'admin_notes' => '',
             'items' => [$this->itemTemplate()],
         ];
     }
@@ -1150,6 +1234,63 @@ class CreateOrder extends Page
 
     public function updatedPairs($value, string $key): void
     {
+        // consignee Store (user, 27 Oct 2026): the store's address is the drop-off location and its area the To location
+        // "Multiple pick-up / drop-off" switched on: the stops start as this record's pick-up and drop-off (with its DO number)
+        if (preg_match('/^(\d+)\.multi_stops$/', $key, $m)) {
+            $index = (int) $m[1];
+            $pair = &$this->pairs[$index];
+
+            if (! empty($pair['multi_stops']) && empty($pair['stops'])) {
+                $pair['stops'] = [
+                    ['type' => \App\Support\OrderStops::PICKUP, 'location' => (string) ($pair['pickup_location'] ?? ''), 'do_number' => (string) ($pair['customer_do_number'] ?? '')],
+                    ['type' => \App\Support\OrderStops::DROPOFF, 'location' => (string) ($pair['drop_off_location'] ?? ''), 'do_number' => ''],
+                ];
+            } elseif (empty($pair['multi_stops']) && blank($pair['customer_do_number'] ?? null)) {
+                $pair['customer_do_number'] = (string) (\App\Support\OrderStops::doNumbers($pair['stops'] ?? [])[0] ?? '');
+            }
+
+            unset($pair);
+
+            return;
+        }
+
+        if (preg_match('/^(\d+)\.(consignee_mode|consignee_store_id)$/', $key, $m)) {
+            $index = (int) $m[1];
+            $pair = &$this->pairs[$index];
+            $before = OrderFormOptions::storeDefaults($pair['consignee_store_id'] ?? null);
+
+            if (($pair['consignee_mode'] ?? '') !== 'store') {
+                // back to Deliver: what the store filled in is cleared
+                if ($before && trim((string) ($pair['drop_off_location'] ?? '')) === $before['pickup_location']) {
+                    $pair['drop_off_location'] = '';
+                }
+
+                $pair['consignee_store_id'] = '';
+                unset($pair);
+                $this->refreshPairPrices($index);
+
+                return;
+            }
+
+            if (blank($pair['consignee_store_id'] ?? null)) {
+                $stores = Store::query()->active()->where('branch_id', CurrentCompany::branchId())->pluck('id');
+                $pair['consignee_store_id'] = $stores->count() === 1 ? (string) $stores->first() : '';
+            }
+
+            if ($store = OrderFormOptions::storeDefaults($pair['consignee_store_id'] ?? null)) {
+                $pair['drop_off_location'] = $store['pickup_location'];
+
+                if ($store['from_location_id'] !== '') {
+                    $pair['to_location_id'] = $store['from_location_id'];
+                }
+            }
+
+            unset($pair);
+            $this->refreshPairPrices($index);
+
+            return;
+        }
+
         if (preg_match('/^(\d+)\.(service_type|store_id)$/', $key, $m)) {
             $index = (int) $m[1];
             $pair = &$this->pairs[$index];
@@ -1236,6 +1377,11 @@ class CreateOrder extends Page
                 : null;
 
             if (! $party || ! isset($this->pairs[$index])) {
+                // none picked: the block has no consignor / consignee name any more
+                if (blank($value) && isset($this->pairs[$index])) {
+                    $this->pairs[$index][$m[2] === 'consignor_party_id' ? 'consignor_name' : 'consignee_name'] = '';
+                }
+
                 return;
             }
 
@@ -1625,6 +1771,18 @@ class CreateOrder extends Page
         $this->pairs[$index]['items'][] = $this->itemTemplate();
     }
 
+    /** Another stop of a record with several pick-up / drop-off locations (user, 27 Oct 2026). */
+    public function addStop(int $index): void
+    {
+        $this->pairs[$index]['stops'][] = \App\Support\OrderStops::blank();
+    }
+
+    public function removeStop(int $index, int $stopIndex): void
+    {
+        unset($this->pairs[$index]['stops'][$stopIndex]);
+        $this->pairs[$index]['stops'] = array_values($this->pairs[$index]['stops']);
+    }
+
     public function removeItem(int $index, int $itemIndex): void
     {
         if (count($this->pairs[$index]['items']) <= 1) {
@@ -1873,6 +2031,60 @@ class CreateOrder extends Page
             ->modalCancelActionLabel('Close');
     }
 
+    /**
+     * "+ New consignor" / "+ New consignee" (user, 26 Oct 2026, as "+ New customer"): adds it to Master Data →
+     * Consignor / Consignee, tagged to the selected customer, and picks it for the block.
+     */
+    public function createPartyAction(): Action
+    {
+        return Action::make('createParty')
+            ->modalHeading(fn (array $arguments) => 'New '.(($arguments['role'] ?? 'consignor') === 'consignee' ? 'consignee' : 'consignor'))
+            ->modalSubmitActionLabel('Create and select')
+            ->modalWidth(MaxWidth::ThreeExtraLarge)
+            ->form([
+                \Filament\Forms\Components\TextInput::make('name')->label('Name')->required()->maxLength(255),
+                \Filament\Forms\Components\Grid::make(2)->schema([
+                    \Filament\Forms\Components\TextInput::make('pic_name')->label('PIC name')->maxLength(150),
+                    \Filament\Forms\Components\TextInput::make('phone')->label('Telephone number')->tel()->maxLength(50),
+                ]),
+                \Filament\Forms\Components\Textarea::make('address')->label('Address')->rows(2),
+                \Filament\Forms\Components\Select::make('location_id')
+                    ->label('Area (price list location)')
+                    ->options(fn () => Location::query()->orderBy('name')->pluck('name', 'id')->all())
+                    ->searchable(),
+            ])
+            ->action(function (array $data, array $arguments): void {
+                $this->switchToOrder((int) ($arguments['order'] ?? $this->activeOrder));
+                $index = (int) ($arguments['pair'] ?? 0);
+                $role = ($arguments['role'] ?? 'consignor') === 'consignee' ? 'consignee' : 'consignor';
+
+                if (! isset($this->pairs[$index])) {
+                    return;
+                }
+
+                $party = ConsignorConsignee::query()->create([
+                    'company_id' => CurrentCompany::id(),
+                    'name' => trim((string) $data['name']),
+                    'type' => $role,
+                    'pic_name' => $data['pic_name'] ?? null,
+                    'phone' => $data['phone'] ?? null,
+                    'address' => $data['address'] ?? null,
+                    'location_id' => $data['location_id'] ?? null,
+                    'is_active' => true,
+                ]);
+
+                if (filled($this->form['customer_id'] ?? null)) {
+                    $party->customers()->syncWithoutDetaching([(int) $this->form['customer_id']]);
+                }
+
+                $this->savedPartyRows = null;
+                $this->pairs[$index][$role.'_party_id'] = (string) $party->id;
+                $this->updatedPairs((string) $party->id, $index.'.'.$role.'_party_id');
+
+                Notification::make()->title(ucfirst($role).' '.$party->name.' created and selected')->success()->send();
+            });
+    }
+
     public function productHistoryAction(): Action
     {
         return Action::make('productHistory')
@@ -2068,6 +2280,7 @@ class CreateOrder extends Page
             'pairs.*.consignee_name' => 'nullable|string|max:255',
             'pairs.*.service_type' => 'required|in:'.implode(',', array_keys($this->serviceTypeOptions())),
             'pairs.*.store_id' => 'nullable|required_if:pairs.*.service_type,'.ServiceType::Store->value.'|exists:stores,id',
+            'pairs.*.consignee_store_id' => 'nullable|required_if:pairs.*.consignee_mode,store|exists:stores,id',
             'pairs.*.consignor_pic_name' => 'nullable|string|max:255',
             'pairs.*.consignor_pic_phone' => 'nullable|string|max:50',
             'pairs.*.consignee_pic_name' => 'nullable|string|max:255',
@@ -2076,7 +2289,12 @@ class CreateOrder extends Page
             'pairs.*.drop_off_location' => 'nullable|string|max:2000',
             'pairs.*.to_location_id' => 'nullable|exists:locations,id',
             'pairs.*.from_location_id' => 'nullable|exists:locations,id',
-            'pairs.*.customer_do_number' => 'required|string|max:100',
+            // with several stops the DO numbers are on the stops
+            'pairs.*.customer_do_number' => 'required_if:pairs.*.multi_stops,false|nullable|string|max:100',
+            'pairs.*.stops' => 'array',
+            'pairs.*.stops.*.type' => 'nullable|in:pickup,dropoff',
+            'pairs.*.stops.*.location' => 'nullable|string|max:500',
+            'pairs.*.stops.*.do_number' => 'required_if:pairs.*.multi_stops,true|nullable|string|max:100',
             // becomes the CSN date when the record's CSN is created
             // optional free text (a remark, e.g. "Mon 13/10 before noon"); not the CSN date
             'pairs.*.expected_delivery_date' => 'nullable|string|max:255',
@@ -2099,6 +2317,7 @@ class CreateOrder extends Page
             'pairs.*.order_type.required' => 'Choose the payment term.',
             'pairs.*.order_type.in' => 'This payment term is not available for the customer\'s type.',
             'pairs.*.store_id.required_if' => 'Select the store the consignor brings the goods to.',
+            'pairs.*.consignee_store_id.required_if' => 'Select the store the customer collects the goods from.',
             'pairs.*.customer_do_number.required' => 'Enter the DO number for every consignor & consignee block.',
             'pairs.*.items.*.item_name.required' => 'Select a product for every item row.',
         ];
@@ -2142,6 +2361,10 @@ class CreateOrder extends Page
             'customer_do_number' => $text($pair['customer_do_number'] ?? null),
             'expected_delivery_date' => $text($pair['expected_delivery_date'] ?? null),
             'instructions' => $text($pair['instructions'] ?? null),
+            'admin_notes' => $text($pair['admin_notes'] ?? null),
+            'stops' => ! empty($pair['multi_stops']) ? \App\Support\OrderStops::clean((array) ($pair['stops'] ?? [])) : null,
+            'consignee_mode' => ($pair['consignee_mode'] ?? '') === 'store' ? 'store' : 'deliver',
+            'consignee_store_id' => ($pair['consignee_mode'] ?? '') === 'store' ? (($pair['consignee_store_id'] ?? null) ?: null) : null,
             'items' => array_map(fn (array $item) => [
                 'line_type' => ($item['line_type'] ?? null) ?: null,
                 'catalog_key' => ($item['catalog_key'] ?? null) ?: null,

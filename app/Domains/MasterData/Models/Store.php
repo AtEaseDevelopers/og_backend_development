@@ -16,6 +16,7 @@ class Store extends Model
     use BelongsToCompany;
 
     protected $fillable = [
+        'sa_location_id',
         'company_id', 'branch_id', 'code', 'name', 'address', 'pic_name', 'pic_phone', 'location_id', 'is_active',
     ];
 

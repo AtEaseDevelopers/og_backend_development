@@ -88,6 +88,12 @@ class AdminPanelProvider extends PanelProvider
                 // the Quotation pages (QuoteResource, own table, 20 Oct 2026) use /quotations; the order PDF route above stays
                 Route::get('/quotes/{quote}/pdf', \App\Http\Controllers\Admin\QuotePdfController::class)
                     ->name('quotes.pdf');
+                // Purchase Order (PO) PDF in the client's layout (user, 27 Oct 2026)
+                Route::get('/commission-slips/{slip}/pdf', \App\Http\Controllers\Admin\CommissionPoPdfController::class)
+                    ->name('commission-slips.pdf');
+                // Job Sheet print in the client's layout, a page per job sheet code (user, 27 Oct 2026)
+                Route::get('/job-sheets/{jobSheet}/pdf', \App\Http\Controllers\Admin\JobSheetPdfController::class)
+                    ->name('job-sheets.pdf');
                 Route::get('/consignment-notes/{consignmentNote}/pdf', ConsignmentNotePdfController::class)
                     ->name('consignment-notes.pdf');
                 Route::get('/invoices/{invoice}/pdf', InvoicePdfController::class)

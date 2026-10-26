@@ -59,19 +59,19 @@ class ConsignorConsigneeResource extends Resource
                 Forms\Components\Placeholder::make('from_customer')
                     ->label('Customer')
                     ->content(fn (?ConsignorConsignee $record) => trim(($record?->customer?->code ? $record->customer->code.' — ' : '').$record?->customer?->company_name)
-                        .' · the name, address, PIC and telephone come from the customer: change them on the customer.')
+                        .' · made from this customer; its details are its own and can be changed here (the customer is not changed).')
                     ->visible($fromCustomer)
                     ->columnSpanFull(),
-                Forms\Components\TextInput::make('name')->label('Name')->required()->maxLength(255)->disabled($fromCustomer),
+                Forms\Components\TextInput::make('name')->label('Name')->required()->maxLength(255),
                 Forms\Components\Select::make('type')
                     ->label('Used as')
                     ->options(ConsignorConsignee::TYPES)
                     ->default('both')
                     ->selectablePlaceholder(false)
                     ->required(),
-                Forms\Components\TextInput::make('pic_name')->label('PIC name')->maxLength(150)->disabled($fromCustomer),
-                Forms\Components\TextInput::make('phone')->label('Telephone number')->tel()->maxLength(50)->disabled($fromCustomer),
-                Forms\Components\Textarea::make('address')->label('Address')->rows(2)->columnSpanFull()->disabled($fromCustomer),
+                Forms\Components\TextInput::make('pic_name')->label('PIC name')->maxLength(150),
+                Forms\Components\TextInput::make('phone')->label('Telephone number')->tel()->maxLength(50),
+                Forms\Components\Textarea::make('address')->label('Address')->rows(2)->columnSpanFull(),
                 Forms\Components\Select::make('location_id')
                     ->label('Area (price list location)')
                     ->helperText('Optional: filled as From (consignor) or To (consignee) on Create order, so the price follows.')

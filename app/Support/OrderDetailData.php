@@ -151,7 +151,8 @@ class OrderDetailData
                 : $this->b('customer', 'Awaiting customer confirmation', 'Quotation sent · customer has not confirmed. Record the confirmation if it arrives by WhatsApp or email.', 'Record customer confirmation', 'action', 'accept'),
             'confirmation' => $order?->status === QuotationStatus::PendingApproval
                 ? $this->b('warning', 'Credit approval required', 'Customer confirmed. This term order awaits branch manager credit approval.', 'Review credit approval →', 'action', 'creditDecision')
-                : $this->b('info', 'Customer confirmed', 'Confirmation recorded · the proforma invoice is being issued.', 'Open payment summary →', 'tab', 'payment'),
+                : $this->b('customer', 'Pending payment', $stage['hint'].' · Payments appear under Payment summary.', 'Review payment →', 'tab', 'payment'),
+            'item' => $this->b('warning', 'Pending item', 'Paid · waiting for the goods at the store. Confirm when they are in to create the CSN.', 'Ready for CSN →', 'action', 'readyForCsn'),
             'payment' => match ($stage['color']) {
                 'issue' => $order?->cod_blocked
                     ? $this->b('danger', 'COD order blocked', $stage['hint'], 'Unblock COD →', 'action', 'unblockCod')

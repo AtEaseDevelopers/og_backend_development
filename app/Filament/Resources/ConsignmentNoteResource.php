@@ -69,6 +69,13 @@ class ConsignmentNoteResource extends Resource
                     ->sortable()
                     ->description(fn (ConsignmentNote $record) => static::numberColumnNotes($record))
                     ->toggleable(),
+                // the CSN's branch code as a coloured tag (user, 27 Oct 2026): the same colour for the same branch
+                Tables\Columns\TextColumn::make('sa_prefix')
+                    ->label('Branch')
+                    ->badge()
+                    ->color(fn (?string $state) => static::branchColor($state))
+                    ->placeholder('—')
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('issued_at')
                     ->label('CSN date')
                     ->date('d M Y')
@@ -457,6 +464,18 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
             DeliveryOrderStatus::Cancelled => ['label' => 'DO cancelled', 'color' => 'gray', 'note' => null],
             default => ['label' => ucfirst(str_replace('_', ' ', (string) ($status?->value ?? $main->status))), 'color' => 'gray', 'note' => null],
         };
+    }
+
+    /** A steady colour per branch code (KL, JB, …), for the Branch tag. */
+    public static function branchColor(?string $prefix): string
+    {
+        if (blank($prefix)) {
+            return 'gray';
+        }
+
+        $palette = ['info', 'success', 'warning', 'danger', 'primary', 'purple'];
+
+        return $palette[crc32(strtoupper($prefix)) % count($palette)];
     }
 
     /** Under the CSN number: customer DO / SA prefix, the transfer code(s) and Subsheet / Break bulk tags. */
@@ -1139,14 +1158,29 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
         }
 
         $created = 0;
+        $skipped = [];
 
         foreach (Lorry::query()->whereIn('id', $lorryIds->all())->get() as $lorry) {
-            if ((int) $lorry->id === (int) $record->deliveryOrder?->lorry_id || $record->subsheets()->where('sub_lorry_id', $lorry->id)->exists()) {
+            // the CSN's own lorry carries it already; a lorry with a subsheet of this CSN has one
+            if ((int) $lorry->id === (int) $record->deliveryOrder?->lorry_id) {
+                $skipped[] = $lorry->registration_no.' already carries this CSN (its main lorry)';
+
+                continue;
+            }
+
+            if ($record->subsheets()->where('sub_lorry_id', $lorry->id)->exists()) {
+                $skipped[] = $lorry->registration_no.' already has a subsheet of this CSN';
+
                 continue;
             }
 
             DB::transaction(fn () => $action->assignToLorry($action->forCsn($record, $payload), $lorry, $payload));
             $created++;
+        }
+
+        // nothing created: say why (user, 27 Oct 2026: "0 subsheets" gave no reason)
+        if ($created === 0 && $skipped !== []) {
+            throw new \InvalidArgumentException('No subsheet created: '.implode('; ', $skipped).'. Pick another lorry, or leave Lorries empty to assign one later.');
         }
 
         return $created;
@@ -1165,6 +1199,12 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
         return [
             RelationManagers\SubsheetsRelationManager::class,
         ];
+    }
+
+    // every CSN comes from an order (user, 26 Oct 2026): no CSN is made by hand, the create page is closed too
+    public static function canCreate(): bool
+    {
+        return false;
     }
 
     public static function getPages(): array

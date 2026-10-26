@@ -41,11 +41,11 @@ class Quotation extends Model
         'consignee_address', 'drop_off_location', 'customer_address',
         // consignor picked up or brought to a store (service_type + store_id; store_branch_id = the store's branch);
         // person in charge per side
-        'store_branch_id', 'store_id', 'consignor_pic_name', 'consignor_pic_phone', 'consignee_pic_name', 'consignee_pic_phone',
+        'store_branch_id', 'store_id', 'consignee_store_id', 'consignor_pic_name', 'consignor_pic_phone', 'consignee_pic_name', 'consignee_pic_phone',
         // the customer's person in charge (attention) and contact number
         'attention', 'customer_pic_phone', 'customer_fax', 'customer_phone_alt', 'issued_by_name', 'terms_of_payment',
         'pricing_source', 'subtotal', 'tax_amount',
-        'total_amount', 'notes', 'rejection_reason', 'sent_at', 'confirmed_at',
+        'total_amount', 'notes', 'admin_notes', 'stops', 'rejection_reason', 'sent_at', 'confirmed_at',
         'converted_at', 'created_by',
         // order-flow (sections A–G)
         'version', 'root_quotation_id', 'revision_of_id', 'accepted_version',
@@ -70,6 +70,7 @@ class Quotation extends Model
             'order_type' => OrderType::class,
             'service_type' => \App\Enums\ServiceType::class,
             'item_received_at' => 'datetime',
+            'stops' => 'array',
             'price_overrides' => 'array',
             'billing_status' => BillingStatus::class,
             'attachments' => 'array',
@@ -134,6 +135,12 @@ class Quotation extends Model
     public function store(): BelongsTo
     {
         return $this->belongsTo(\App\Domains\MasterData\Models\Store::class);
+    }
+
+    /** The store (a branch) the goods go to for the customer to collect (consignee \"Store\", user 27 Oct 2026). */
+    public function consigneeStore(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\MasterData\Models\Store::class, 'consignee_store_id');
     }
 
     public function salesperson(): BelongsTo

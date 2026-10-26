@@ -153,6 +153,29 @@ class CashBillCalculator extends Page
         $this->allocations = [];
     }
 
+    /**
+     * A Paying amount edited (user, 27 Oct 2026): the amount received follows the list — it becomes the sum of the
+     * Paying amounts, so the summary reflects the edit (before, the received amount stayed and the difference was
+     * only noted as "still to give").
+     */
+    public function updatedAllocations(): void
+    {
+        $entered = array_filter($this->allocations, fn ($value) => is_numeric($value));
+
+        if ($entered === []) {
+            return;
+        }
+
+        $dues = $this->itemDues();
+        $sum = 0.0;
+
+        foreach ($dues as $key => $due) {
+            $sum += isset($entered[$key]) ? min((float) $entered[$key], (float) $due) : 0.0;
+        }
+
+        $this->amountReceived = number_format(round(max(0, $sum), 2), 2, '.', '');
+    }
+
     /** The split shown in the Paying column: the amounts entered, the missing ones filled in list order. */
     public function dehydrate(): void
     {

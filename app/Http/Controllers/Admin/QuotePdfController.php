@@ -112,15 +112,13 @@ class QuotePdfController
         return $blocks;
     }
 
-    /** How a product's quantity is counted on the rate card (CTN for cartons, …). */
-    private const UNITS = ['carton' => 'CTN', 'pallet' => 'PALLET', 'bundle' => 'BUNDLE', 'case' => 'CASE'];
-
     /**
-     * The rate tables. A product with quantity ranges: one table, its ranges as rows against its destinations. Products
-     * with one price each (chartered lorries, most items): one table per type, products as rows against destinations.
-     * A drop-off type other than Default is named in the table title.
+     * The quotation body, as the client's quotation (user, 26 Oct 2026): ITEM | CHARGES (RM) | QUANTITY, a product
+     * with quantity ranges taking a line per range ("15.00 · Carton 2-9"), one with a single price just its charge;
+     * only the chartered lorries have destination columns (a table at the end). Non-lorry products to more than one
+     * destination are listed under a heading per destination.
      *
-     * @return list<array{title: string, columns: list<string>, rows: list<array{label: string, prices: list<?string>}>}>
+     * @return array{groups: list<array{destination: ?string, products: list<array{name: string, lines: list<array{charge: ?string, quantity: string}>}>}>, lorry: ?array{columns: list<string>, rows: list<array{label: string, prices: list<?string>}>}}
      */
     private function rateTables(Quote $quote): array
     {
@@ -129,8 +127,8 @@ class QuotePdfController
             ->whereIn('id', collect($quote->pairs)->flatMap(fn ($pair) => collect($pair['items'] ?? [])->pluck('catalog_key'))
                 ->map(fn ($key) => (int) (explode(':', (string) $key, 2)[1] ?? 0))->filter()->all())
             ->get(['id', 'name', 'category', 'sub_category'])->keyBy('id');
-        $ranged = [];
-        $flat = [];
+        $groups = [];
+        $lorry = ['columns' => [], 'rows' => []];
 
         foreach ((array) $quote->pairs as $pair) {
             $destination = strtoupper((string) ($locations[$pair['to_location_id'] ?? 0] ?? '-'));
@@ -138,7 +136,7 @@ class QuotePdfController
             $dropLabel = $dropOff !== 'default' ? strtoupper((string) (\App\Enums\DropOffType::tryFrom($dropOff)?->getLabel() ?? $dropOff)) : null;
 
             foreach ($pair['items'] ?? [] as $item) {
-                // Courier (the rate card's font) has no ≤ or –: written as the original does (< and -)
+                // Courier (the quotation's font) has no ≤ or –: written as the original does (< and -)
                 $name = strtr(trim((string) ($item['item_name'] ?? '')), ['≤' => '<', '≥' => '>', '–' => '-', '—' => '-', '·' => '-']);
 
                 if ($name === '') {
@@ -153,64 +151,63 @@ class QuotePdfController
                     $ranges = [[1.0, null, $price]];
                 }
 
-                $type = $uom?->category === \App\Domains\MasterData\Models\Uom::LORRY ? 'CHARTERED LORRY' : strtoupper((string) ($uom?->sub_category ?: ($uom?->category === 'item' ? 'Item' : 'Product')));
-
-                // one price from 1 up: a row of its type's table
-                if (count($ranges) === 1 && (float) $ranges[0][0] <= 1 && $ranges[0][1] === null) {
-                    $key = $type.'|'.$dropLabel;
-                    $flat[$key] ??= ['title' => $type.($dropLabel ? ' - '.$dropLabel : ''), 'columns' => [], 'rows' => []];
-                    $flat[$key]['columns'][$destination] = true;
-                    $flat[$key]['rows'][strtoupper($name)][$destination] = $ranges[0][2];
+                // chartered lorries: rows of the lorry table, a column per destination
+                if ($uom?->category === \App\Domains\MasterData\Models\Uom::LORRY) {
+                    $lorry['columns'][$destination] = true;
+                    $lorry['rows'][strtoupper($name)][$destination] = $ranges[0][2];
 
                     continue;
                 }
 
-                $unit = self::UNITS[strtolower((string) $uom?->sub_category)] ?? '';
-                $key = $name.'|'.$dropLabel;
-                $ranged[$key] ??= ['title' => strtoupper($name).($dropLabel ? ' - '.$dropLabel : ''), 'columns' => [], 'rows' => []];
-                $ranged[$key]['columns'][$destination] = true;
+                $label = strtoupper($name).($dropLabel ? ' ('.$dropLabel.')' : '');
+                $unit = $uom?->category === \App\Domains\MasterData\Models\Uom::MEASUREMENT ? ucfirst(strtolower((string) $uom->sub_category)) : null;
+                $single = count($ranges) === 1 && (float) $ranges[0][0] <= 1 && $ranges[0][1] === null;
 
-                foreach ($ranges as [$from, $to, $price]) {
-                    $label = match (true) {
-                        $to === null => $this->qty($from).' '.$unit.' & ABOVE',
-                        $to === $from => $this->qty($from).' '.$unit,
-                        default => $this->qty($from).' - '.$this->qty($to).' '.$unit,
-                    };
-                    $ranged[$key]['order'][trim($label)] = $from;
-                    $ranged[$key]['rows'][trim($label)][$destination] = $price;
-                }
+                $groups[$destination][$label] = array_map(fn (array $range) => [
+                    'charge' => $range[2] !== null ? number_format((float) $range[2], 2, '.', '') : null,
+                    'quantity' => $single ? '' : $this->quantityLabel($range[0], $range[1], $unit),
+                ], $ranges);
             }
         }
 
-        $tables = [];
-        $all = [...array_values($ranged), ...array_values($flat)];
-        // the same destination columns in every table, so JOHOR sits under JOHOR (user, 26 Oct 2026); a quotation to
-        // many destinations (over 5) keeps each table's own columns
-        $shared = array_keys(array_merge(...array_map(fn (array $table) => $table['columns'], $all ?: [['columns' => []]])));
+        $columns = array_keys($lorry['columns']);
 
-        foreach ($all as $table) {
-            $columns = count($shared) <= 5 ? $shared : array_keys($table['columns']);
-            $rows = $table['rows'];
-
-            if (isset($table['order'])) {
-                uksort($rows, fn ($a, $b) => $table['order'][$a] <=> $table['order'][$b]);
-            }
-
-            // amounts lined up as on the rate card: RM 14-00 over RM  9-00 (the ringgit padded to the table's widest)
-            $width = collect($rows)->flatten()->filter(fn ($price) => $price !== null)->map(fn ($price) => strlen((string) intdiv((int) round((float) $price * 100), 100)))->max() ?? 1;
-
-            $tables[] = [
-                'title' => $table['title'],
+        return [
+            'groups' => array_map(
+                fn (string $destination, array $products) => [
+                    'destination' => count($groups) > 1 ? $destination : null,
+                    'products' => array_map(fn (string $name, array $lines) => ['name' => $name, 'lines' => $lines], array_keys($products), array_values($products)),
+                ],
+                array_keys($groups),
+                array_values($groups),
+            ),
+            'lorry' => $lorry['rows'] === [] ? null : [
                 'columns' => $columns,
                 'rows' => array_map(
-                    fn (string $label, array $prices) => ['label' => $label, 'prices' => array_map(fn (string $column) => isset($prices[$column]) && $prices[$column] !== null ? $this->rm((float) $prices[$column], $width) : null, $columns)],
-                    array_keys($rows),
-                    array_values($rows),
+                    fn (string $label, array $prices) => ['label' => $label, 'prices' => array_map(fn (string $column) => isset($prices[$column]) && $prices[$column] !== null ? number_format((float) $prices[$column], 2, '.', '') : null, $columns)],
+                    array_keys($lorry['rows']),
+                    array_values($lorry['rows']),
                 ),
-            ];
+            ],
+        ];
+    }
+
+    /** The QUANTITY column, as the client writes it: "Carton 2-9", "Carton 20 & above", "1 - 9 UNITS", "10 & above". */
+    private function quantityLabel(float $from, ?float $to, ?string $unit): string
+    {
+        if ($unit !== null) {
+            return $unit.' '.match (true) {
+                $to === null => $this->qty($from).' & above',
+                $to === $from => $this->qty($from),
+                default => $this->qty($from).'-'.$this->qty($to),
+            };
         }
 
-        return $tables;
+        return match (true) {
+            $to === null => $this->qty($from).' & above',
+            $to === $from => $this->qty($from).' UNIT'.($from == 1 ? '' : 'S'),
+            default => $this->qty($from).' - '.$this->qty($to).' UNITS',
+        };
     }
 
     /**
@@ -251,7 +248,7 @@ class QuotePdfController
 
         foreach (['pickup' => 'Minimum charge Door To Door Service is %s per trip', 'construction' => 'Minimum charge to construction site is %s per trip', 'drop_off' => 'Minimum charge per drop-off is %s'] as $key => $text) {
             if (! empty($notes[$key])) {
-                $lines[] = sprintf($text, $this->rm(max($notes[$key])));
+                $lines[] = sprintf($text, 'RM '.number_format(max($notes[$key]), 2, '.', ''));
             }
         }
 

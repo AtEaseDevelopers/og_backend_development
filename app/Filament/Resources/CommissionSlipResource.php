@@ -114,6 +114,7 @@ class CommissionSlipResource extends Resource
             ])
             ->defaultSort('id', 'desc')
             ->actions([
+                Tables\Actions\Action::make('pdf')->label('PDF')->icon('heroicon-o-document-text')->url(fn (CommissionSlip $record) => static::pdfUrl($record))->openUrlInNewTab(),
                 Tables\Actions\ViewAction::make(),
                 Tables\Actions\Action::make('adjust')
                     ->icon('heroicon-o-pencil-square')
@@ -170,6 +171,12 @@ class CommissionSlipResource extends Resource
     public static function canCreate(): bool
     {
         return false;
+    }
+
+    /** The PO PDF (the client's layout) of a slip. */
+    public static function pdfUrl(CommissionSlip $slip): string
+    {
+        return route('filament.admin.commission-slips.pdf', ['tenant' => \Filament\Facades\Filament::getTenant(), 'slip' => $slip->id]);
     }
 
 

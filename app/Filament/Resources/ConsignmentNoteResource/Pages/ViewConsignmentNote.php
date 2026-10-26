@@ -33,7 +33,7 @@ class ViewConsignmentNote extends ViewRecord
                 ->icon('heroicon-o-document-arrow-down')
                 ->url(fn (): string => ConsignmentNoteResource::pdfUrl($record))
                 ->openUrlInNewTab(),
-            Actions\EditAction::make(),
+            // no Edit on the CSN view (user, 27 Oct 2026): a CSN follows its order
             Actions\Action::make('assignLorry')
                 ->label('Assign to Lorry')
                 ->icon('heroicon-o-truck')

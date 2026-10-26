@@ -4,7 +4,7 @@
 > what is done, what is left, and the rules the user has set. Update it whenever an item changes status,
 > and refresh "Last updated" with the output of plain `date` (local Malaysia time).
 
-**Last updated:** Mon Oct 26 02:40:00 MPST 2026 · Round 6 committed and pushed (8eec124)
+**Last updated:** Tue Oct 27 02:55:00 MPST 2026 · Round 7 committed and pushed
 
 **Previous round:** finished and pushed as commit `a29b179` on `main` (8 Oct 2026: orders, order details,
 billing / COD / Term, CSN bulk actions, QR codes, returned-CSN scanning, cash bill calculator). Its details are
@@ -364,6 +364,37 @@ Legend: [x] done · [~] done in code, not yet browser-checked · [ ] not started
 | 6.20 | Order stages: "Rejected / closed" split into **Rejected** (customer rejected; "Edit & send new version" → new version, Preparing quotation) and **Closed**; "Close order" by hand for Rejected / Awaiting customer; nightly auto-close of Rejected too (days in Settings: "Auto-close rejected / awaiting customer orders after (days)", default 7) | Done, tested (rolled back) |
 | 6.21 | Quotation letterhead: company Fax and SST No. fields (Master Data → Company, migration `2026_10_26_100000`, fills KL's address, tel, fax, email, SST no. where empty); Tel and Fax on one line | Done |
 | 6.22 | Local sample quotations Q00005 (measurement), Q00006 (items), Q00007 (chartered lorry), Q00008 (mixed) for A GOODWAY TRADING | Done (local only) |
+
+## Round 7 (user, 26–27 Oct) — committed and pushed 27 Oct
+
+| # | Change | Status |
+|---|---|---|
+| 7.1 | Quotation PDF body as the client's quotation: ITEM / CHARGES (RM) / QUANTITY, a line per quantity range ("Carton 2-9"), destination headings when more than one; Chartered Lorry table with destinations, 4 per table; "Quotation of Transportation Charges" | Done, rendered Q00005/7/8 |
+| 7.2 | CSN number format XX-YYMM##### (e.g. KL-261000001): XX = branch CSN code, YYMM = month the order was placed, 5-digit number restarting monthly per code. Migration `2026_10_26_110000` sets KLS→KL, JBS→JB, KLGS→KG (PGS left for the user). Existing CSNs keep their numbers | Done, tested (rolled back) |
+| 7.3 | Purchase Order (PO) PDF in the client's layout: company name, Supplier (the lorry's driver's lorry company) with P/O No, Date, Lorry Group, Supplier code, GST ID No., Page No.; a Job No. / Job Date / Description / Amount table per lorry with Sub Total RM; Total RM. One PO = every slip of the batch with the same lorry company. PDF action on the PO list and view page | Done, rendered |
+| 7.4 | CSN page: "New consignment note" removed and the create page closed (every CSN comes from an order) | Done, tested |
+| 7.5 | Create order: Consignor is a searchable dropdown of the customers (as Customer); "(optional)" removed from Consignor and Consignee; Edit store / New store links removed | Done, tested |
+| 7.6 | Create order: one Consignor and one Consignee field each (the saved list, customers included), "+ New consignor" / "+ New consignee" (modal, saved to Master Data, tagged to the customer, selected) | Done, tested (rolled back) |
+| 7.7 | Consignor / Consignee is separate from the customer: name, PIC, telephone and address all editable; a customer only fills what is still empty (never overwrites) | Done, tested (rolled back) |
+| 7.8 | Create order: Pickup location and Drop-off location are text boxes (filled from the consignor / consignee address, editable); "Consignee (drop-off)" → "Consignee" | Done, tested (rolled back) |
+| 7.9 | The Store of a Store order is a Branch (Master Data → Branches): each branch keeps a store row in step (`stores.sa_location_id`, migration `2026_10_26_120000`; the old seeded store of each company became its branch's, other old stores deactivated); the branch address is the pickup location; Stores card removed from Master Data | Done, tested (rolled back) |
+| 7.10 | Create order: Instructions → two text areas side by side, Driver notes (the record's instructions, printed on the CSN) and Admin notes (new column `quotations.admin_notes`, internal; migration `2026_10_27_100000`) | Done, tested |
+| 7.11 | Orders page: search by several order numbers — Enter pins the text as a tag, the list matches any tag; Reset clears the tags | Done, tested |
+| 7.12 | Orders page: copy icon beside each order no. (clipboard), Duplicate icon → Create order prefilled from that order (`?duplicate=`; customer, salesperson, term, every block and product; prices looked up again; no record / DO numbers, dates, photos) | Done, tested |
+| 7.13 | CSN view page: Edit button removed | Done, tested |
+| 7.14 | Cash Bill Calculator: editing a Paying amount updates the Amount received (sum of the Paying amounts); the note under the slips now lists which CSNs / orders are not fully paid and how much is left | Done, tested |
+| 7.15 | Create order consignee: Deliver / Store toggle; Store = one of the company's stores (branches), its address becomes the drop-off and its area the To location; `quotations.consignee_store_id` (migration `2026_10_27_110000`) | Done, tested |
+| 7.16 | A consignee-Store order's CSN gets a subsheet with transfer code **O** (own collection) automatically; the client's job sheet codes A, C, E, J, K, L, O, P, S, T entered as transfer codes (Master Data → Transfer Codes) | Done, tested |
+| 7.17 | Cash bill note: yellow while any item is still outstanding, green only when all are fully paid | Done |
+| 7.18 | Order stages: Awaiting customer → **Pending payment** (was Confirmation; covers customer confirmed, credit approval, waiting for payment) → **Payment verification** (payment proof / admin release / billing) → **Pending item** (Store order waiting for goods, own tag) → CSN created; step strip relabelled; Ready for CSN button on the order page | Done, tested |
+| 7.19 | Payments: no second approver — a payment recorded with its slip is approved at once and the order moves on (Cash / Pay-at-Counter needed a verify + an approve by another user) | Done, tested |
+| 7.20 | Create order: "Multiple pick-up / drop-off locations" tick per record → a stops table (Pick-up / Drop-off, location, DO number each; the single DO field hides); kept as JSON `quotations.stops` and copied to `consignment_notes.stops` (migration `2026_10_27_120000`); the CSN page shows a Stops table. Driver scanning per DO not built (user: keep for a future change) | Done, tested |
+| 7.21 | Consignor store field labelled "(Pick Up) Store"; consignee's "(Drop Off) Store" | Done |
+| 7.22 | CSN list: a Branch toggle row (the CSN location codes with counts, filters by the CSN's branch) and a coloured Branch tag column per CSN (same colour per code) | Done, tested |
+| 7.23 | Job Sheet print in the client's layout ("Print job sheet" on the job sheet page): one PDF, a page per job sheet code — Self (the lorry's own deliveries, Job No. as is) then one per transfer code of its subsheets (Job No. + code, e.g. …O own collection, …J transfer to small lorry); No. / CSM No. / Bill No. / From / To / Consignor / Consignee / Qty U/M / Advance Taken, totals, signature | Done, rendered |
+| 7.24 | Assign to lorry: a slide-over (the Assign button stays in view, the body scrolls); the long CSN list with Select all removed — the list shows only the scanned / typed CSNs (untick to drop one) | Done |
+| 7.25 | Pickup subsheet "0 created": not a bug — the chosen lorry was the CSN's own main lorry (skipped on purpose); now the action says why ("JCM 6456 already carries this CSN… pick another lorry, or leave Lorries empty") | Done, tested |
+| 7.26 | CSN list filter bar: Search and CSN date on top; Customer, Order type and Payment status moved under "Filters +" | Done |
 
 ## Open questions for the user
 - Round 6: truncating customers resets IDs, so old orders / CSNs / invoices would show the new customer that gets their old ID. Kept IDs instead (unused customers removed, used ones inactive). Clean slate (clear old test orders too) only if the user confirms. Role name "Branch Manager" and data names like "KL Branch" were left unchanged; customer portal wording left as branch/company.

@@ -367,7 +367,7 @@ class OrderListingData
             'next_step' => $stage['next'],
             'next_url' => $nextUrl,
             // a Store order paid / released waiting for its goods: "Ready for CSN" on the row
-            'ready_for_csn' => $stage['key'] === 'payment' && $stage['next'] === 'Ready for CSN',
+            'ready_for_csn' => $stage['key'] === 'item' && $stage['next'] === 'Ready for CSN',
             'is_closed' => $stage['closed'],
             'attention' => $stage['attention'],
             'ready_to_bill' => $stage['ready_to_bill'],
@@ -397,6 +397,28 @@ class OrderListingData
 
     private function applyCommonFilters(Builder $query, array $filters, string $table): void
     {
+        // the search tags (user, 27 Oct 2026): an order matching any of the pinned order numbers / texts
+        $tags = array_values(array_filter(array_map('trim', (array) ($filters['search_tags'] ?? [])), 'strlen'));
+
+        if ($tags !== []) {
+            $query->where(function (Builder $builder) use ($tags, $table): void {
+                foreach ($tags as $tag) {
+                    $builder->orWhere(function (Builder $one) use ($tag, $table): void {
+                        if ($table === 'quotations') {
+                            $one->where('number', 'like', '%'.$tag.'%')
+                                ->orWhere('consignee_name', 'like', '%'.$tag.'%')
+                                ->orWhereHas('portalEnquiry', fn (Builder $e) => $e->where('reference_no', 'like', '%'.$tag.'%')->orWhere('order_number', 'like', '%'.$tag.'%'));
+                        } else {
+                            $one->where('reference_no', 'like', '%'.$tag.'%')->orWhere('order_number', 'like', '%'.$tag.'%');
+                        }
+
+                        $one->orWhere('customer_do_number', 'like', '%'.$tag.'%')
+                            ->orWhereHas('customer', fn (Builder $c) => $c->where('company_name', 'like', '%'.$tag.'%')->orWhere('code', 'like', '%'.$tag.'%'));
+                    });
+                }
+            });
+        }
+
         if (filled($filters['search'] ?? null)) {
             $needle = trim((string) $filters['search']);
             $query->where(function (Builder $builder) use ($needle, $table): void {

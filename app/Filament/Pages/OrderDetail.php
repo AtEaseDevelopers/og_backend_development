@@ -1438,6 +1438,27 @@ class OrderDetail extends Page
             });
     }
 
+    /** Pending item (a Store order paid, user 27 Oct 2026): the goods are at the store → the CSN is created. */
+    public function readyForCsnAction(): Action
+    {
+        return Action::make('readyForCsn')
+            ->label('Ready for CSN')
+            ->requiresConfirmation()
+            ->modalIcon('heroicon-o-archive-box-arrow-down')
+            ->modalHeading(fn () => 'Goods of '.($this->order()?->orderNumber() ?? 'this order').' at the store?')
+            ->modalDescription("Confirm the customer's goods are at the store and ready to send: the CSN is created and the order moves to CSN created.")
+            ->modalSubmitActionLabel('Ready for CSN')
+            ->action(function (): void {
+                try {
+                    $csns = app(\App\Domains\Quotation\Actions\MarkStoreItemReady::class)->execute($this->order(), auth()->user());
+                    Notification::make()->title('CSN created')->body($csns->pluck('number')->implode(', ') ?: null)->success()->send();
+                    $this->refreshDetail();
+                } catch (Throwable $e) {
+                    Notification::make()->title($e->getMessage())->danger()->send();
+                }
+            });
+    }
+
     public function reopenAction(): Action
     {
         return Action::make('reopen')

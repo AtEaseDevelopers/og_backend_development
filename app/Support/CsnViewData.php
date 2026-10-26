@@ -135,6 +135,7 @@ class CsnViewData
             'advance_taken' => (bool) $csn->advance_taken,
             'issue_invoice' => (bool) $csn->issue_invoice,
             'other_do_numbers' => $csn->other_do_numbers ?? [],
+            'stops' => $csn->stops ?? [],
             'marking' => $csn->marking,
             'destinations' => $matrixState['matrix_columns'] ?? [],
             'charge_column' => $chargeColumn,

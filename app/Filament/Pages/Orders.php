@@ -38,6 +38,9 @@ class Orders extends Page
     #[Url(as: 'q', except: '')]
     public string $search = '';
 
+    /** Order numbers pinned as tags in the search box (user, 27 Oct 2026): the list shows orders matching any of them. @var list<string> */
+    public array $searchTags = [];
+
     #[Url(as: 'card', except: '')]
     public string $card = '';
 
@@ -158,6 +161,7 @@ class Orders extends Page
     {
         return [
             'search' => $this->search,
+            'search_tags' => $this->searchTags,
             'card' => $this->card ?? '',
             'stage' => $this->stage ?? '',
             'customer_id' => $this->customer,
@@ -448,12 +452,31 @@ class Orders extends Page
         $this->filtersOpen = ! $this->filtersOpen;
     }
 
+    /** Enter in the search box: the text becomes a tag (searched together with the others) and the box clears. */
+    public function addSearchTag(): void
+    {
+        $tag = trim($this->search);
+
+        if ($tag !== '' && ! in_array($tag, $this->searchTags, true)) {
+            $this->searchTags[] = $tag;
+        }
+
+        $this->search = '';
+    }
+
+    public function removeSearchTag(int $index): void
+    {
+        unset($this->searchTags[$index]);
+        $this->searchTags = array_values($this->searchTags);
+    }
+
     public function resetFilters(): void
     {
         foreach (['search', 'card', 'stage', 'customer', 'customerType', 'orderType', 'serviceType', 'salesperson', 'paymentStatus', 'paymentMethod', 'saLocation', 'pricingSource', 'quotationStatus', 'dropOffType', 'createdFrom', 'createdTo', 'validFrom', 'validTo', 'amountMin', 'amountMax', 'sort'] as $property) {
             $this->{$property} = '';
         }
 
+        $this->searchTags = [];
         $this->dir = 'asc';
         $this->colFilters = [];
         $this->centreStrip();

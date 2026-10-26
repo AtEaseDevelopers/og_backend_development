@@ -55,12 +55,19 @@
             <div class="ow-filters">
                 <div class="ow-filter-top">
                     <div class="ow-field ow-search">
-                        <label for="ow-search">Search</label>
-                        <input type="search"
-                               id="ow-search"
-                               wire:model.live.debounce.400ms="search"
-                               class="ow-input"
-                               placeholder="Search order, enquiry, customer or DO…">
+                        <label for="ow-search">Search <span class="ow-note">· Enter pins an order no. as a tag</span></label>
+                        {{-- several order numbers at once (user, 27 Oct 2026): each Enter pins the text as a tag; the list matches any tag --}}
+                        <div class="ow-search-box">
+                            @foreach ($searchTags as $ti => $tag)
+                                <span class="ow-search-tag" wire:key="ow-search-tag-{{ $ti }}">{{ $tag }}<button type="button" wire:click="removeSearchTag({{ $ti }})" aria-label="Remove {{ $tag }}">×</button></span>
+                            @endforeach
+                            <input type="search"
+                                   id="ow-search"
+                                   wire:model.live.debounce.400ms="search"
+                                   x-on:keydown.enter.prevent="$wire.addSearchTag()"
+                                   class="ow-input"
+                                   placeholder="{{ $searchTags === [] ? 'Search order, enquiry, customer or DO…' : 'Add another…' }}">
+                        </div>
                     </div>
                     {{-- The two date ranges are used most, so they are always shown (not behind "Filters +") --}}
                     <div class="ow-field">
@@ -355,6 +362,17 @@
                                 x-on:click="if (! $event.target.closest('a, button')) window.location.href = @js($row['url'])">
                                 <td>
                                     <a href="{{ $row['url'] }}" class="ow-order-no">{{ $row['order_number'] }}</a>
+                                    {{-- copy the order no. (user, 27 Oct 2026): selecting the text by hand opened the row --}}
+                                    <button type="button" class="ow-copy" x-data="{ ok: false }" x-on:click.stop="navigator.clipboard.writeText(@js($row['order_number'])).then(() => { ok = true; setTimeout(() => ok = false, 1200) })" :title="ok ? 'Copied' : 'Copy order no.'" aria-label="Copy order no.">
+                                        <svg x-show="! ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                        <svg x-show="ok" x-cloak viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                                    </button>
+                                    @if (($row['kind'] ?? '') === 'order')
+                                        {{-- a new order prefilled from this one (user, 27 Oct 2026) --}}
+                                        <a href="{{ \App\Filament\Pages\CreateOrder::getUrl().'?duplicate='.$row['id'] }}" class="ow-copy ow-dup" title="Duplicate: a new order with the same details" aria-label="Duplicate order">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4h9a2 2 0 0 1 2 2v12"/><rect x="4" y="8" width="12" height="12" rx="2"/><path d="M10 12v4M8 14h4"/></svg>
+                                        </a>
+                                    @endif
                                     <div class="ow-l2">
                                         {{ $row['customer'] }}
                                         @if ($row['customer_type'])

@@ -49,6 +49,8 @@ class UpdateOrderRecords
      */
     private const PAIR_FIELDS = [
         'consignor_name' => 'consignor',
+        'admin_notes' => 'admin notes',
+        'consignee_store_id' => 'collection store',
         'store_id' => 'store',
         'from_location_id' => 'from',
         'consignor_pic_name' => 'consignor PIC',
@@ -941,6 +943,9 @@ class UpdateOrderRecords
         $fields['store_branch_id'] = $serviceType === ServiceType::Store->value && filled($pair['store_branch_id'] ?? null) ? (int) $pair['store_branch_id'] : null;
         $fields['destination_types'] = [['column' => $column, 'drop_off_type' => $dropOffType, 'service_type' => $serviceType]];
         $fields['notes'] = static::notesWithInstructions($order->notes, $pair['instructions'] ?? null);
+        $fields['admin_notes'] = $this->clean($pair['admin_notes'] ?? null);
+        $fields['stops'] = ! empty($pair['multi_stops']) && is_array($pair['stops'] ?? null) ? (\App\Support\OrderStops::clean($pair['stops']) ?: null) : null;
+        $fields['consignee_store_id'] = ($pair['consignee_mode'] ?? '') === 'store' && filled($pair['consignee_store_id'] ?? null) ? (int) $pair['consignee_store_id'] : null;
 
         if ($headerEditable) {
             // the block's own payment term (Edit order); older callers: the order form's
@@ -1319,6 +1324,11 @@ class UpdateOrderRecords
             'service_type' => $this->clean($pair['service_type'] ?? null) ?? $this->clean($data['service_type'] ?? null),
             'store_branch_id' => $this->clean($pair['store_branch_id'] ?? null),
             'store_id' => $this->clean($pair['store_id'] ?? null),
+            'admin_notes' => $this->clean($pair['admin_notes'] ?? null),
+            'multi_stops' => ! empty($pair['multi_stops']),
+            'stops' => is_array($pair['stops'] ?? null) ? $pair['stops'] : [],
+            'consignee_mode' => $this->clean($pair['consignee_mode'] ?? null),
+            'consignee_store_id' => $this->clean($pair['consignee_store_id'] ?? null),
             'consignor_pic_name' => $this->clean($pair['consignor_pic_name'] ?? null),
             'consignor_pic_phone' => $this->clean($pair['consignor_pic_phone'] ?? null),
             'consignee_pic_name' => $this->clean($pair['consignee_pic_name'] ?? null),
@@ -1491,6 +1501,11 @@ class UpdateOrderRecords
             'consignor_name' => $this->clean($pair['consignor_name'] ?? null),
             'store_branch_id' => $serviceType === ServiceType::Store->value ? $this->clean($pair['store_branch_id'] ?? null) : null,
             'store_id' => $serviceType === ServiceType::Store->value ? $this->clean($pair['store_id'] ?? null) : null,
+            'admin_notes' => $this->clean($pair['admin_notes'] ?? null),
+            'multi_stops' => ! empty($pair['multi_stops']),
+            'stops' => is_array($pair['stops'] ?? null) ? $pair['stops'] : [],
+            'consignee_mode' => $this->clean($pair['consignee_mode'] ?? null),
+            'consignee_store_id' => ($pair['consignee_mode'] ?? '') === 'store' ? $this->clean($pair['consignee_store_id'] ?? null) : null,
             'from_location_id' => $this->clean($pair['from_location_id'] ?? null),
             'consignor_pic_name' => $this->clean($pair['consignor_pic_name'] ?? null),
             'consignor_pic_phone' => $this->clean($pair['consignor_pic_phone'] ?? null),
@@ -1531,6 +1546,11 @@ class UpdateOrderRecords
             'expected_delivery_date' => $order->expected_delivery_date,
             'store_branch_id' => $order->store_branch_id,
             'store_id' => $order->store_id,
+            'admin_notes' => $order->admin_notes,
+            'multi_stops' => ! empty($order->stops),
+            'stops' => $order->stops ?? [],
+            'consignee_mode' => $order->consignee_store_id ? 'store' : 'deliver',
+            'consignee_store_id' => $order->consignee_store_id,
             'consignor_pic_name' => $order->consignor_pic_name,
             'consignor_pic_phone' => $order->consignor_pic_phone,
             'consignee_pic_name' => $order->consignee_pic_name,

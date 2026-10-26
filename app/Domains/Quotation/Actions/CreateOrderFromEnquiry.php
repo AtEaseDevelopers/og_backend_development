@@ -108,6 +108,9 @@ class CreateOrderFromEnquiry
                     'service_type' => $serviceType,
                     'store_branch_id' => $storeBranchId,
                     'store_id' => $storeId,
+                    'consignee_store_id' => ($pair['consignee_mode'] ?? '') === 'store' && filled($pair['consignee_store_id'] ?? null) ? (int) $pair['consignee_store_id'] : null,
+                    'admin_notes' => filled($pair['admin_notes'] ?? null) ? trim((string) $pair['admin_notes']) : null,
+                    'stops' => is_array($pair['stops'] ?? null) && $pair['stops'] !== [] ? \App\Support\OrderStops::clean($pair['stops']) : null,
                     // the customer's person in charge and contact number of the order page (blank stays blank);
                     // a pair without them (portal / older callers): the customer's default
                     'attention' => array_key_exists('attention', $pair) ? (filled($pair['attention']) ? trim((string) $pair['attention']) : null) : ($consignor['attention'] ?? null),
@@ -233,6 +236,8 @@ class CreateOrderFromEnquiry
                 // Store block: the store the consignor brings the goods to (and its branch); person in charge on each side
                 'store_branch_id' => $stored('store_branch_id'),
                 'store_id' => $stored('store_id'),
+                'consignee_mode' => $stored('consignee_mode'),
+                'consignee_store_id' => $stored('consignee_store_id'),
                 // the customer's person in charge and contact number saved on the order form (when it has them)
                 ...array_intersect_key($destination, ['attention' => true, 'customer_pic_phone' => true]),
                 'consignor_pic_name' => $stored('consignor_pic_name'),
@@ -252,6 +257,8 @@ class CreateOrderFromEnquiry
                 'expected_delivery_date' => $destination['expected_delivery_date'] ?? null,
                 'customer_do_number' => $destination['customer_do_number'] ?? null,
                 'instructions' => $edited ? $stored('instructions') : null,
+                'admin_notes' => $stored('admin_notes'),
+                'stops' => $destination['stops'] ?? null,
                 // photos uploaded for this consignor & consignee block
                 'attachments' => array_values(array_filter($destination['attachments'] ?? [], 'is_array')),
                 'items' => $own->map(fn (array $item) => [

@@ -311,9 +311,34 @@
 
         {{-- received less than due: the user splits it over the list (Paying column); less than an item's due = partial --}}
         @if ($listCount > 0 && $splitting)
-            <div @class(['cb-balance', 'cb-balance-ok' => $plan['ok']])>
+            {{-- plain words (user, 27 Oct 2026): which items the Paying amounts leave not fully paid --}}
+            @php
+                $dues = $this->itemDues();
+                $notFull = [];
+                foreach ($this->selectedCsns as $csn) {
+                    $paying = (float) ($plan['amounts']['csn_'.$csn->id] ?? 0);
+                    if ($paying + 0.005 < (float) ($dues['csn_'.$csn->id] ?? 0)) {
+                        $notFull[] = $csn->number.' · RM '.number_format($dues['csn_'.$csn->id] - $paying, 2).' left';
+                    }
+                }
+                foreach ($this->selectedOrders as $order) {
+                    $paying = (float) ($plan['amounts']['order_'.$order->id] ?? 0);
+                    if ($paying + 0.005 < (float) ($dues['order_'.$order->id] ?? 0)) {
+                        $notFull[] = $order->number.' · RM '.number_format($dues['order_'.$order->id] - $paying, 2).' left';
+                    }
+                }
+            @endphp
+            {{-- green only when every item is fully paid; yellow while something is still outstanding (user, 27 Oct 2026) --}}
+            <div @class(['cb-balance', 'cb-balance-ok' => $plan['ok'] && $notFull === []])>
                 <span>
-                    Received <strong>RM {{ $lcd($received) }}</strong> of RM {{ $lcd($totalDue) }}: enter in <strong>Paying</strong> how much goes to each item (all to one, or split). An item paid less than its due is a partial payment.
+                    @if ($notFull === [])
+                        Every item in the list is fully paid.
+                    @else
+                        Not fully paid:
+                        @foreach ($notFull as $line)
+                            <br><strong>{{ $line }}</strong>
+                        @endforeach
+                    @endif
                 </span>
                 <span class="cb-balance-sum">
                     Given RM {{ $lcd($plan['allocated']) }}

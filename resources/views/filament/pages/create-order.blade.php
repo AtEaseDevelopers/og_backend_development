@@ -119,13 +119,15 @@
         @endif
     </div>
 
-    <datalist id="ow-consignor-list">
-        @foreach ($this->consignorSuggestions() as $suggestion)
-            <option value="{{ $suggestion }}"></option>
-        @endforeach
-    </datalist>
+    {{-- the consignor is picked from the customers, as the Customer field (searchable, user 26 Oct 2026) --}}
+    @php $consignorNames = $this->consignorNames(); @endphp
 
     <div class="ow-stack">
+        @if ($this->duplicatedFrom)
+            <div class="ow-callout ow-callout-info">
+                <strong>Prefilled from {{ $this->duplicatedFrom }}</strong> · the customer, consignors &amp; consignees and products are copied; the prices are today's. Check the details, then create the order.
+            </div>
+        @endif
         @if ($editing)
             <div class="ow-callout ow-callout-info">
                 @if ($this->enquiryOnly)
@@ -357,35 +359,13 @@
                                 @endforeach
                             </div>
                         </div>
-                        @include('filament.pages.partials.saved-party-select', ['role' => 'consignor', 'parties' => $savedConsignors, 'model' => "orders.{$oi}.pairs.{$i}.consignor_party_id"])
-                        <div class="ow-field">
-                            <div class="ow-label-row">
-                                <label for="{{ $fieldId }}-consignor">Consignor (optional)</label>
-                                @if (! $locked)
-                                    <span class="ow-quick">
-                                        @if (filled($pair['consignor_name'] ?? null))
-                                            <button type="button" wire:click="inOrder({{ $oi }}, 'clearConsignor', {{ $i }})" class="ow-btn-link">Clear</button>
-                                        @endif
-                                        @if ($customerName && trim((string) ($pair['consignor_name'] ?? '')) !== $customerName)
-                                            <button type="button" wire:click="inOrder({{ $oi }}, 'useCustomerAsConsignor', {{ $i }})" class="ow-btn-link">Use customer</button>
-                                        @endif
-                                    </span>
-                                @endif
-                            </div>
-                            <input id="{{ $fieldId }}-consignor" type="text" wire:model.blur="orders.{{ $oi }}.pairs.{{ $i }}.consignor_name" list="ow-consignor-list" class="ow-input" autocomplete="off">
-                            @error($ep.'pairs.'.$i.'.consignor_name')<div class="ow-field-error">{{ $message }}</div>@enderror
-                        </div>
+                        @include('filament.pages.partials.saved-party-select', ['role' => 'consignor', 'parties' => $savedConsignors, 'model' => "orders.{$oi}.pairs.{$i}.consignor_party_id", 'oi' => $oi, 'pi' => $i, 'current' => $pair['consignor_name'] ?? '', 'partyId' => $pair['consignor_party_id'] ?? ''])
+                        @error($ep.'pairs.'.$i.'.consignor_name')<div class="ow-field-error">{{ $message }}</div>@enderror
                         @if ($isStore)
                             @php $storeInfo = $this->storeInfo($pair['store_id'] ?? null); @endphp
                             <div class="ow-field" wire:key="ow-o{{ $oi }}-pair-{{ $i }}-store">
                                 <div class="ow-label-row">
-                                    <label for="{{ $fieldId }}-store">Store <span class="ow-req">*</span></label>
-                                    <span class="ow-quick">
-                                        @if ($storeInfo && $storeInfo['edit_url'])
-                                            <a href="{{ $storeInfo['edit_url'] }}" target="_blank" rel="noopener" class="ow-btn-link">Edit store</a>
-                                        @endif
-                                        <a href="{{ \App\Filament\Resources\StoreResource::getUrl('create') }}" target="_blank" rel="noopener" class="ow-btn-link">New store</a>
-                                    </span>
+                                    <label for="{{ $fieldId }}-store">(Pick Up) Store <span class="ow-req">*</span></label>
                                 </div>
                                 <select id="{{ $fieldId }}-store" wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.store_id" class="ow-select" @disabled($locked)>
                                     <option value="">— Select store —</option>
@@ -443,33 +423,43 @@
                         @else
                             <div class="ow-field" wire:key="ow-o{{ $oi }}-pair-{{ $i }}-pickup">
                                 <label for="{{ $fieldId }}-pickup">Pickup location</label>
-                                <select id="{{ $fieldId }}-pickup" wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.pickup_preset" class="ow-select">
-                                    <option value="">— Select —</option>
-                                    @foreach ($addresses as $id => $label)
-                                        <option value="{{ $id }}">{{ $label }}</option>
-                                    @endforeach
-                                    <option value="{{ $newAddress }}">+ New address…</option>
-                                </select>
-                                @if (($pair['pickup_preset'] ?? '') === $newAddress)
-                                    <textarea wire:model="orders.{{ $oi }}.pairs.{{ $i }}.pickup_location" rows="2" class="ow-textarea" style="margin-top:.4rem;resize:vertical" placeholder="Type the pickup address" aria-label="New pickup address"></textarea>
-                                @elseif (filled($pair['pickup_location'] ?? null))
-                                    <div class="ow-note" style="margin-top:.25rem;white-space:pre-line">{{ $pair['pickup_location'] }}</div>
-                                @endif
+                                {{-- a text box (user, 26 Oct 2026): filled from the consignor's address, still editable --}}
+                                <textarea id="{{ $fieldId }}-pickup" wire:model.blur="orders.{{ $oi }}.pairs.{{ $i }}.pickup_location" rows="2" class="ow-textarea" style="resize:vertical" placeholder="Filled from the consignor · or type the pickup address" @disabled($locked)></textarea>
                                 @error($ep.'pairs.'.$i.'.pickup_location')<div class="ow-field-error">{{ $message }}</div>@enderror
                             </div>
                         @endif
                     </div>
 
                     <div class="ow-party">
+                        @php $consigneeStore = ($pair['consignee_mode'] ?? '') === 'store'; @endphp
                         <div class="ow-party-head">
-                            <div class="ow-party-title">Consignee (drop-off)</div>
+                            <div class="ow-party-title" id="{{ $fieldId }}-consignee-title">Consignee</div>
+                            {{-- Deliver (to the consignee) or Store (to one of the company's stores, the customer collects there), user 27 Oct 2026 --}}
+                            <div class="ow-seg" role="radiogroup" aria-labelledby="{{ $fieldId }}-consignee-title">
+                                @foreach (['deliver' => 'Deliver', 'store' => 'Store'] as $value => $label)
+                                    <label>
+                                        <input type="radio" name="{{ $fieldId }}-consignee-mode" value="{{ $value }}" wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.consignee_mode" @disabled($locked)>
+                                        <span>{{ $label }}</span>
+                                    </label>
+                                @endforeach
+                            </div>
                         </div>
-                        @include('filament.pages.partials.saved-party-select', ['role' => 'consignee', 'parties' => $savedConsignees, 'model' => "orders.{$oi}.pairs.{$i}.consignee_party_id"])
-                        <div class="ow-field">
-                            <label for="{{ $fieldId }}-consignee">Consignee (optional)</label>
-                            <input id="{{ $fieldId }}-consignee" type="text" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.consignee_name" class="ow-input" autocomplete="off">
-                            @error($ep.'pairs.'.$i.'.consignee_name')<div class="ow-field-error">{{ $message }}</div>@enderror
-                        </div>
+                        @include('filament.pages.partials.saved-party-select', ['role' => 'consignee', 'parties' => $savedConsignees, 'model' => "orders.{$oi}.pairs.{$i}.consignee_party_id", 'oi' => $oi, 'pi' => $i, 'current' => $pair['consignee_name'] ?? '', 'partyId' => $pair['consignee_party_id'] ?? ''])
+                        @error($ep.'pairs.'.$i.'.consignee_name')<div class="ow-field-error">{{ $message }}</div>@enderror
+                        @if ($consigneeStore)
+                            @php $collectInfo = $this->storeInfo($pair['consignee_store_id'] ?? null); @endphp
+                            <div class="ow-field" wire:key="ow-o{{ $oi }}-pair-{{ $i }}-consignee-store">
+                                <label for="{{ $fieldId }}-consignee-store">(Drop Off) Store <span class="ow-req">*</span></label>
+                                <select id="{{ $fieldId }}-consignee-store" wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.consignee_store_id" class="ow-select" @disabled($locked)>
+                                    <option value="">— Select store —</option>
+                                    @foreach ($stores as $id => $store)
+                                        <option value="{{ $id }}" @if ($store['sub'] !== '') data-og-sub="{{ $store['sub'] }}" @endif>{{ $store['label'] }}</option>
+                                    @endforeach
+                                </select>
+                                @error($ep.'pairs.'.$i.'.consignee_store_id')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                <div class="ow-note" style="margin-top:.3rem">The customer collects the goods at this store. A subsheet with transfer code <strong>O</strong> (own collection) is created with the CSN.</div>
+                            </div>
+                        @endif
                         <div class="ow-field">
                             <label for="{{ $fieldId }}-to">To (price list location)</label>
                             <select id="{{ $fieldId }}-to" wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.to_location_id" class="ow-select">
@@ -491,21 +481,10 @@
                                 @error($ep.'pairs.'.$i.'.consignee_pic_phone')<div class="ow-field-error">{{ $message }}</div>@enderror
                             </div>
                         </div>
-                        {{-- same picker as the pickup location: a saved address, or "New address…" typed right below --}}
                         <div class="ow-field" wire:key="ow-o{{ $oi }}-pair-{{ $i }}-dropoff">
                             <label for="{{ $fieldId }}-dropoff">Drop-off location</label>
-                            <select id="{{ $fieldId }}-dropoff" wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.drop_off_preset" class="ow-select">
-                                <option value="">— Select —</option>
-                                @foreach ($addresses as $id => $label)
-                                    <option value="{{ $id }}">{{ $label }}</option>
-                                @endforeach
-                                <option value="{{ $newAddress }}">+ New address…</option>
-                            </select>
-                            @if (($pair['drop_off_preset'] ?? '') === $newAddress)
-                                <textarea wire:model="orders.{{ $oi }}.pairs.{{ $i }}.drop_off_location" rows="2" class="ow-textarea" style="margin-top:.4rem;resize:vertical" placeholder="Type the drop-off address" aria-label="New drop-off address"></textarea>
-                            @elseif (filled($pair['drop_off_location'] ?? null))
-                                <div class="ow-note" style="margin-top:.25rem;white-space:pre-line">{{ $pair['drop_off_location'] }}</div>
-                            @endif
+                            {{-- a text box (user, 26 Oct 2026): filled from the consignee's address, still editable --}}
+                            <textarea id="{{ $fieldId }}-dropoff" wire:model.blur="orders.{{ $oi }}.pairs.{{ $i }}.drop_off_location" rows="2" class="ow-textarea" style="resize:vertical" placeholder="Filled from the consignee · or type the drop-off address" @disabled($locked)></textarea>
                             @error($ep.'pairs.'.$i.'.drop_off_location')<div class="ow-field-error">{{ $message }}</div>@enderror
                         </div>
                         <div class="ow-field">
@@ -519,12 +498,47 @@
                     </div>
                 </div>
 
+                @php $multiStops = ! empty($pair['multi_stops']); @endphp
+                @unless ($isQuote)
+                    {{-- several pick-up / drop-off locations on this record, each with its own DO number (user, 27 Oct 2026) --}}
+                    <label class="ow-check" style="margin-top:.85rem;display:inline-flex;align-items:center;gap:.4rem">
+                        <input type="checkbox" wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.multi_stops" @disabled($locked)>
+                        <span>Multiple pick-up / drop-off locations <span class="ow-note">· each with its own DO number</span></span>
+                    </label>
+                @endunless
+                @if ($multiStops)
+                    <div class="ow-table-scroll" style="margin-top:.5rem">
+                        <table class="ow-price-table ow-stops">
+                            <thead><tr><th style="width:9rem">Stop</th><th>Location</th><th style="width:14rem">DO number <span class="ow-req">*</span></th><th style="width:3rem"></th></tr></thead>
+                            <tbody>
+                                @foreach ($pair['stops'] ?? [] as $si => $stop)
+                                    <tr wire:key="ow-o{{ $oi }}-pair-{{ $i }}-stop-{{ $si }}">
+                                        <td>
+                                            <select wire:model="orders.{{ $oi }}.pairs.{{ $i }}.stops.{{ $si }}.type" class="ow-select" aria-label="Stop type" @disabled($locked)>
+                                                @foreach (\App\Support\OrderStops::TYPES as $value => $label)<option value="{{ $value }}">{{ $label }}</option>@endforeach
+                                            </select>
+                                        </td>
+                                        <td><textarea wire:model="orders.{{ $oi }}.pairs.{{ $i }}.stops.{{ $si }}.location" rows="1" class="ow-textarea" style="resize:vertical" placeholder="Address" @disabled($locked)></textarea></td>
+                                        <td>
+                                            <input type="text" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.stops.{{ $si }}.do_number" class="ow-input" placeholder="DO number" @disabled($locked)>
+                                            @error($ep.'pairs.'.$i.'.stops.'.$si.'.do_number')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                        </td>
+                                        <td style="white-space:nowrap">@if (! $locked && count($pair['stops']) > 1)<button type="button" wire:click="inOrder({{ $oi }}, 'removeStop', {{ $i }}, {{ $si }})" class="ow-icon-btn" title="Remove stop" aria-label="Remove stop">✕</button>@endif</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                    @unless ($locked)<button type="button" wire:click="inOrder({{ $oi }}, 'addStop', {{ $i }})" class="ow-btn-link" style="margin-top:.35rem">+ Add stop</button>@endunless
+                @endif
                 <div class="ow-fgrid ow-fgrid-do">
+                    @unless ($multiStops)
                     <div class="ow-field">
                         <label for="{{ $fieldId }}-do">DO number @unless ($isQuote)<span class="ow-req">*</span>@endunless</label>
                         <input id="{{ $fieldId }}-do" type="text" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.customer_do_number" class="ow-input" placeholder="Customer's DO number">
                         @error($ep.'pairs.'.$i.'.customer_do_number')<div class="ow-field-error">{{ $message }}</div>@enderror
                     </div>
+                    @endunless
                     <div class="ow-field">
                         <label for="{{ $fieldId }}-delivery">Expected delivery date</label>
                         <input id="{{ $fieldId }}-delivery" type="text" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.expected_delivery_date" class="ow-input" maxlength="255" autocomplete="off" placeholder="Optional · e.g. 13/10 before noon">
@@ -749,9 +763,16 @@
                 </div>
                 @endif
 
-                <div class="ow-field" style="margin-top:.85rem">
-                    <label>Instructions</label>
-                    <input type="text" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.instructions" class="ow-input" placeholder="e.g. Call before delivery">
+                {{-- notes (user, 27 Oct 2026): the driver's go on the CSN, the admin's stay internal --}}
+                <div class="ow-fgrid ow-fgrid-2" style="margin-top:.85rem">
+                    <div class="ow-field">
+                        <label>Driver notes</label>
+                        <textarea wire:model="orders.{{ $oi }}.pairs.{{ $i }}.instructions" rows="2" class="ow-textarea" style="resize:vertical" placeholder="e.g. Call before delivery"></textarea>
+                    </div>
+                    <div class="ow-field">
+                        <label>Admin notes</label>
+                        <textarea wire:model="orders.{{ $oi }}.pairs.{{ $i }}.admin_notes" rows="2" class="ow-textarea" style="resize:vertical" placeholder="For the office only"></textarea>
+                    </div>
                 </div>
                 @if ($editing)</fieldset>@endif
             </div>

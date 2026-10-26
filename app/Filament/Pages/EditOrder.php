@@ -351,6 +351,11 @@ class EditOrder extends CreateOrder
                 'drop_off_type' => DropOffType::tryFrom((string) $type)?->value ?? DropOffType::Default->value,
                 'existing_photos' => $this->recordPhotos($q, $enquiry),
                 'instructions' => UpdateOrderRecords::instructionsFromNotes($q->notes),
+                'admin_notes' => (string) ($q->admin_notes ?? ''),
+                'multi_stops' => ! empty($q->stops),
+                'stops' => array_values(array_map(fn (array $stop) => $stop + \App\Support\OrderStops::blank(), $q->stops ?? [])),
+                'consignee_mode' => $q->consignee_store_id ? 'store' : 'deliver',
+                'consignee_store_id' => (string) ($q->consignee_store_id ?? ''),
                 'items' => $items !== [] ? $items : [$this->itemTemplate()],
             ];
         })->all();

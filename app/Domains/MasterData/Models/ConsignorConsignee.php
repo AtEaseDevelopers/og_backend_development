@@ -60,13 +60,20 @@ class ConsignorConsignee extends Model
             : $customer->addresses()->orderByDesc('is_default')->orderBy('id')->value('address');
         $pic = $customer->pics()->orderByDesc('is_default')->orderBy('id')->first(['name', 'phone']);
 
-        $party->fill([
-            'company_id' => $customer->company_id,
+        // the consignor / consignee is separate from the customer (user, 26 Oct 2026): made from it once, then its
+        // name, PIC, telephone and address are its own; the customer only fills what is still empty
+        $party->company_id ??= $customer->company_id;
+
+        foreach ([
             'name' => $customer->company_name,
             'address' => filled($address) ? $address : null,
             'pic_name' => filled($customer->attention) ? $customer->attention : $pic?->name,
             'phone' => filled($customer->phone) ? $customer->phone : $pic?->phone,
-        ]);
+        ] as $field => $fromCustomer) {
+            if (blank($party->{$field}) && filled($fromCustomer)) {
+                $party->{$field} = $fromCustomer;
+            }
+        }
 
         if (! $party->exists) {
             $party->type = 'both';
