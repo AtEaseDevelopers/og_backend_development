@@ -61,8 +61,8 @@
             <table class="rows">
                 <thead>
                     <tr>
-                        <th style="width:5%" class="num">No.</th>
-                        <th style="width:15%">CSM No.</th>
+                        <th style="width:5%" class="num"></th>
+                        <th style="width:15%">CSN No.</th>
                         <th style="width:14%">Bill No.</th>
                         <th style="width:9%">From</th>
                         <th style="width:9%">To</th>

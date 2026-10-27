@@ -35,7 +35,7 @@ use Throwable;
 class EditRecordedPayment
 {
     /** The roles that may review (approve) payments may also correct them — see ReviewPaymentSubmission::assertReviewer. */
-    public const ROLES = ['hq_admin', 'branch_manager', 'finance', 'counter'];
+    public const ROLES = ['super_admin', 'branch_admin', 'branch_manager', 'finance', 'counter'];
 
     public function __construct(
         private ReviewPaymentSubmission $review,

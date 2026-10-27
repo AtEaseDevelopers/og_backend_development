@@ -174,7 +174,7 @@ class TransferJobSheetTask
     /** Flowchart: lorry / driver changes while in route are allowed only to authorised Admin. */
     public static function canTransfer(?User $user): bool
     {
-        return (bool) ($user?->is_hq || $user?->hasAnyRole(['hq_admin', 'branch_manager', 'dispatcher']));
+        return (bool) ($user?->is_hq || $user?->hasAnyRole(['super_admin', 'branch_admin', 'branch_manager', 'dispatcher']));
     }
 
     private static function assertAuthorised(User $actor): void

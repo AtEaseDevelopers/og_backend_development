@@ -16,4 +16,15 @@ class ViewCustomer extends ViewRecord
     {
         return [];
     }
+
+    // no page header (breadcrumbs + "View …" title) on the customer page (user, 28 Oct 2026): the cards start at the top
+    public function getBreadcrumbs(): array
+    {
+        return [];
+    }
+
+    public function getHeading(): string
+    {
+        return '';
+    }
 }

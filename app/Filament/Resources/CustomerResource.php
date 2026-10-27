@@ -210,16 +210,27 @@ class CustomerResource extends Resource
             return [];
         }
 
-        return $cache[$code] ??= collect(UomPriceRows::fromTiers(
-            UomRateTier::query()->where('customer_code', $code)->with(['uom:id,name,category', 'location:id,name'])->get()
-        ))->map(function (array $row): array {
-            $uom = Uom::query()->find($row['uom_id'], ['id', 'category']);
+        return $cache[$code] ??= static::priceRows(UomRateTier::query()->where('customer_code', $code)->with(['uom:id,name,category', 'location:id,name'])->get());
+    }
+
+    /** The company's default prices (every product), laid out as the special prices. @return list<array<string, mixed>> */
+    public static function defaultPrices(): array
+    {
+        return static::priceRows(UomRateTier::query()->whereNull('customer_code')->whereHas('uom')->with(['uom:id,name,category', 'location:id,name'])->get());
+    }
+
+    /** Price rows (one per product and condition) from rate tiers, as the price list template lays them out. */
+    public static function priceRows(\Illuminate\Support\Collection $tiers): array
+    {
+        return collect(UomPriceRows::fromTiers($tiers))->map(function (array $row): array {
+            $uom = Uom::query()->find($row['uom_id'], ['id', 'category', 'sub_category']);
             $category = $uom?->category ?: Uom::MEASUREMENT;
             $money = fn ($value) => 'RM '.number_format((float) $value, 2);
 
             return $row + [
                 'category' => $category,
                 'category_label' => Uom::CATEGORIES[$category] ?? 'Measurement',
+                'sub_category' => (string) ($uom?->sub_category ?? ''),
                 'drop_off' => DropOffType::tryFrom((string) $row['drop_off_type'])?->getLabel() ?? DropOffType::Default->getLabel(),
                 'ranges' => UomPriceRows::rangeLines($row),
                 'minimums' => array_values(array_filter([

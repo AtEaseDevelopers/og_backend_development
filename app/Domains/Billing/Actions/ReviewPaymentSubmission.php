@@ -211,7 +211,7 @@ class ReviewPaymentSubmission
 
     private function assertReviewer(User $actor): void
     {
-        if ($actor->is_hq || $actor->hasAnyRole(['hq_admin', 'branch_manager', 'finance', 'counter'])) {
+        if ($actor->is_hq || $actor->hasAnyRole(['super_admin', 'branch_admin', 'branch_manager', 'finance', 'counter'])) {
             return;
         }
 

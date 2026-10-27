@@ -16,6 +16,19 @@ class BranchResource extends Resource
 
     protected static bool $isScopedToTenant = false;
 
+    // Master Data → Company pages (user, 28 Oct 2026): super_admin every company, branch_admin their companies only
+    public static function canViewAny(): bool
+    {
+        return auth()->user()?->canManageStaff() ?? false;
+    }
+
+    public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
+    {
+        $user = auth()->user();
+
+        return parent::getEloquentQuery()->when($user?->isBranchAdmin(), fn ($q) => $q->whereIn('id', $user->accessibleBranchIds()));
+    }
+
 
     protected static ?string $navigationIcon = 'heroicon-o-building-office-2';
 

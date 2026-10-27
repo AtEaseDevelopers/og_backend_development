@@ -21,7 +21,8 @@ class CreateBreakBulk extends CreateRecord
 
     public function getSubheading(): ?string
     {
-        return 'Manually create a Break-Bulk record for reassignment at an intermediate location.';
+        // no text under the page title (user, 28 Oct 2026)
+        return null;
     }
 
     protected function handleRecordCreation(array $data): Model

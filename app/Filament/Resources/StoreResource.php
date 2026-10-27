@@ -48,6 +48,15 @@ class StoreResource extends Resource
                     ->label('Company')
                     ->options(fn () => Branch::query()->where('is_active', true)->orderBy('code')->get()->mapWithKeys(fn (Branch $b) => [$b->id => $b->code.' — '.$b->name]))
                     ->default(fn () => CurrentCompany::branchId())
+                    ->live()
+                    ->required(),
+                // a branch has several stores (user, 28 Oct 2026)
+                Forms\Components\Select::make('sa_location_id')
+                    ->label('Branch')
+                    ->options(fn (Forms\Get $get) => \App\Domains\MasterData\Models\SaLocation::query()->where('is_active', true)
+                        ->when($get('branch_id'), fn ($q, $id) => $q->where('branch_id', $id))
+                        ->orderBy('code')->get()->mapWithKeys(fn ($l) => [$l->id => $l->csn_prefix.' — '.$l->name]))
+                    ->searchable()
                     ->required(),
                 Forms\Components\TextInput::make('code')->maxLength(30)->helperText('Optional short code'),
                 Forms\Components\TextInput::make('name')->label('Store name')->required()->maxLength(255),
@@ -68,7 +77,8 @@ class StoreResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('name')->label('Store')->description(fn (Store $s) => $s->code)->searchable(['name', 'code'])->sortable(),
-                Tables\Columns\TextColumn::make('branch.name')->label('Company')->badge()->sortable(),
+                Tables\Columns\TextColumn::make('saLocation.name')->label('Branch')->badge()->sortable()->placeholder('—'),
+                Tables\Columns\TextColumn::make('branch.name')->label('Company')->badge()->sortable()->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('address')->wrap()->limit(80)->placeholder('—'),
                 Tables\Columns\TextColumn::make('pic_name')->label('PIC')->placeholder('—')->sortable(),
                 Tables\Columns\TextColumn::make('pic_phone')->label('Contact number')->placeholder('—'),

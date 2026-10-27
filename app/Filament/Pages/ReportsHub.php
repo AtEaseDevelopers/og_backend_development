@@ -52,6 +52,6 @@ class ReportsHub extends Page
         $user = auth()->user();
 
         return $user?->is_hq
-            || $user?->hasAnyRole(['hq_admin', 'branch_manager', 'finance', 'dispatcher']);
+            || $user?->hasAnyRole(['super_admin', 'branch_admin', 'branch_manager', 'finance', 'dispatcher']);
     }
 }

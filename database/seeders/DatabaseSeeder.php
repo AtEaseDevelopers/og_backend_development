@@ -30,7 +30,7 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $roles = [
-            'hq_admin', 'branch_manager', 'counter', 'finance',
+            'super_admin', 'branch_admin', 'branch_manager', 'counter', 'finance',
             'dispatcher', 'salesperson', 'storekeeper', 'driver', 'customer',
         ];
 
@@ -87,7 +87,7 @@ class DatabaseSeeder extends Seeder
             'is_hq' => true,
             'is_active' => true,
         ]);
-        $hq->assignRole('hq_admin');
+        $hq->assignRole('super_admin');
         $hq->branches()->attach($branches->pluck('id'), ['is_default' => true]);
         $hq->companies()->attach($companies->pluck('id'), ['is_default' => true]);
 

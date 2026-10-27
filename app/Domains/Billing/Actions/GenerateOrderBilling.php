@@ -46,7 +46,7 @@ class GenerateOrderBilling
      */
     public function createCsns(Quotation $quotation, ?User $actor = null, ?Collection $invoices = null): Collection
     {
-        $actor ??= User::query()->role('hq_admin')->first();
+        $actor ??= User::query()->role('super_admin')->first();
         $quotation->loadMissing(['invoices', 'proformaInvoice']);
         $invoices ??= $quotation->invoices;
 
@@ -84,7 +84,7 @@ class GenerateOrderBilling
     public function execute(Quotation $quotation, ?User $actor = null): array
     {
         $quotation->loadMissing(['customer', 'branch', 'lines', 'destinations', 'invoices', 'proformaInvoice']);
-        $actor ??= User::query()->role('hq_admin')->first();
+        $actor ??= User::query()->role('super_admin')->first();
 
         if ($quotation->status === QuotationStatus::Converted && $quotation->billingStatus() === BillingStatus::Generated) {
             return ['ok' => true, 'error' => null, 'invoices' => $quotation->invoices, 'csns' => $quotation->consignmentNotes()->get()];

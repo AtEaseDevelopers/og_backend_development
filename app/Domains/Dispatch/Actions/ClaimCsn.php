@@ -135,13 +135,13 @@ class ClaimCsn
 
         $permitted = $user->is_hq
             || $user->driver_id
-            || $user->hasAnyRole(['hq_admin', 'branch_manager', 'dispatcher', 'storekeeper', 'counter']);
+            || $user->hasAnyRole(['super_admin', 'branch_admin', 'branch_manager', 'dispatcher', 'storekeeper', 'counter']);
 
         if (! $permitted) {
             throw new InvalidArgumentException('You are not permitted to claim consignment notes.');
         }
 
-        if ($user->is_hq || $user->hasRole('hq_admin')) {
+        if ($user->is_hq || $user->hasRole('super_admin')) {
             return;
         }
 

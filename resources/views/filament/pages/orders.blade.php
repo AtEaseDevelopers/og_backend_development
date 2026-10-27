@@ -15,10 +15,11 @@
     {{-- Header --}}
     <div class="ow-head">
         <div>
-            <div class="ow-crumb">Operations / Orders</div>
             <h1 class="ow-title">Order management</h1>
         </div>
         <div class="ow-actions">
+            {{-- Bulk order processing (user, 28 Oct 2026): Pending item orders verified, CSNs created and put on a lorry in one go --}}
+            <button type="button" class="ow-btn" wire:click="mountAction('bulkProcess')">Bulk order processing</button>
             {{-- OCR quotation processing (no menu item since 10 Oct 2026) --}}
             <a href="{{ \App\Filament\Resources\OcrUploadResource::getUrl('index') }}" class="ow-btn">OCR quotation processing</a>
             {{-- the counter's cash bill payment page (user, 20 Oct 2026) --}}
@@ -363,15 +364,13 @@
                                 <td>
                                     <a href="{{ $row['url'] }}" class="ow-order-no">{{ $row['order_number'] }}</a>
                                     {{-- copy the order no. (user, 27 Oct 2026): selecting the text by hand opened the row --}}
-                                    <button type="button" class="ow-copy" x-data="{ ok: false }" x-on:click.stop="navigator.clipboard.writeText(@js($row['order_number'])).then(() => { ok = true; setTimeout(() => ok = false, 1200) })" :title="ok ? 'Copied' : 'Copy order no.'" aria-label="Copy order no.">
+                                    <button type="button" class="ow-copy" x-data="{ ok: false }" x-on:click.stop="ogCopyText(@js($row['order_number'])).then(() => { ok = true; setTimeout(() => ok = false, 1200) })" :title="ok ? 'Copied' : 'Copy order no.'" aria-label="Copy order no.">
                                         <svg x-show="! ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                                         <svg x-show="ok" x-cloak viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
                                     </button>
                                     @if (($row['kind'] ?? '') === 'order')
                                         {{-- a new order prefilled from this one (user, 27 Oct 2026) --}}
-                                        <a href="{{ \App\Filament\Pages\CreateOrder::getUrl().'?duplicate='.$row['id'] }}" class="ow-copy ow-dup" title="Duplicate: a new order with the same details" aria-label="Duplicate order">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4h9a2 2 0 0 1 2 2v12"/><rect x="4" y="8" width="12" height="12" rx="2"/><path d="M10 12v4M8 14h4"/></svg>
-                                        </a>
+                                        <a href="{{ \App\Filament\Pages\CreateOrder::getUrl().'?duplicate='.$row['id'] }}" class="ow-dup" title="A new order with the same details">Duplicate</a>
                                     @endif
                                     <div class="ow-l2">
                                         {{ $row['customer'] }}
@@ -526,4 +525,31 @@
             };
         };
     </script>
+<script>
+    // copy to the clipboard (user, 28 Oct 2026: the copy icon did nothing): the clipboard API needs a secure page,
+    // so a hidden text box and the old copy command do the job elsewhere
+    window.ogCopyText = function (text) {
+        if (navigator.clipboard && window.isSecureContext) {
+            return navigator.clipboard.writeText(text).catch(() => ogCopyFallback(text));
+        }
+
+        return ogCopyFallback(text);
+    };
+
+    function ogCopyFallback(text) {
+        return new Promise((resolve, reject) => {
+            const box = document.createElement('textarea');
+            box.value = text;
+            box.setAttribute('readonly', '');
+            box.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+            document.body.appendChild(box);
+            box.select();
+            box.setSelectionRange(0, text.length);
+            let ok = false;
+            try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+            box.remove();
+            ok ? resolve() : reject(new Error('copy failed'));
+        });
+    }
+</script>
 </x-filament-panels::page>

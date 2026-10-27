@@ -71,7 +71,8 @@ class CreditCustomerApproval extends Page
 
     public function getSubheading(): ?string
     {
-        return 'Review credit limit applications and approve or reject customer credit requests.';
+        // no text under the page title (user, 28 Oct 2026)
+        return null;
     }
 
     /** @return array<string, string> */

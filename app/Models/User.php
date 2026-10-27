@@ -89,7 +89,8 @@ class User extends Authenticatable implements FilamentUser, HasTenants
         }
 
         return $this->hasAnyRole([
-            'hq_admin',
+            'super_admin',
+            'branch_admin',
             'branch_manager',
             'counter',
             'finance',
@@ -155,13 +156,20 @@ class User extends Authenticatable implements FilamentUser, HasTenants
 
     public function isSuperadmin(): bool
     {
-        return $this->is_hq || $this->hasRole('hq_admin');
+        return $this->is_hq || $this->hasRole('super_admin');
     }
 
+    /** Master Data → Company pages (user, 28 Oct 2026): super_admin for every company, branch_admin for their companies only. */
     public function canManageStaff(): bool
     {
-        return $this->isSuperadmin() || $this->branches()->where('branches.code', 'KL')->exists();
+        return $this->isSuperadmin() || $this->isBranchAdmin();
     }
+
+    public function isBranchAdmin(): bool
+    {
+        return ! $this->isSuperadmin() && $this->hasRole('branch_admin');
+    }
+
 
     /**
      * @return Collection<int, Branch>

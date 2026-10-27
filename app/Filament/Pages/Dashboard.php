@@ -27,11 +27,8 @@ class Dashboard extends BaseDashboard
 
     public function getSubheading(): ?string
     {
-        $company = CurrentCompany::get();
-
-        return $company
-            ? $company->name.' · '.($company->branch?->name ?? $company->code)
-            : null;
+        // no text under the page title (user, 28 Oct 2026)
+        return null;
     }
 
     /**

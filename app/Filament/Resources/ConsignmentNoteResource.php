@@ -24,6 +24,7 @@ use App\Filament\Resources\ConsignmentNoteResource\RelationManagers;
 use App\Filament\Resources\ConsignmentNoteResource\Schemas\ConsignmentNoteForm;
 use App\Filament\Pages\OrderDetail;
 use App\Support\CurrentCompany;
+use App\Domains\MasterData\Models\Company;
 use Filament\Facades\Filament;
 use Filament\Forms;
 use Filament\Forms\Form;
@@ -59,6 +60,24 @@ class ConsignmentNoteResource extends Resource
         return ConsignmentNoteForm::configure($form);
     }
 
+    /** This company's CSNs and the CSNs other companies moved here (user, 28 Oct 2026). */
+    public static function getEloquentQuery(): Builder
+    {
+        $query = static::getModel()::query();
+
+        if ($companyId = CurrentCompany::id()) {
+            $query->where(fn (Builder $q) => $q->where('company_id', $companyId)->orWhere('moved_to_company_id', $companyId));
+        }
+
+        return $query;
+    }
+
+    /** A CSN moved here from another company is only assigned to a lorry here. */
+    public static function canEdit(\Illuminate\Database\Eloquent\Model $record): bool
+    {
+        return ! $record->isMovedIn() && parent::canEdit($record);
+    }
+
     public static function table(Table $table): Table
     {
         return $table
@@ -74,6 +93,15 @@ class ConsignmentNoteResource extends Resource
                     ->label('Branch')
                     ->badge()
                     ->color(fn (?string $state) => static::branchColor($state))
+                    ->placeholder('—')
+                    ->toggleable(),
+                // moved to / from another company (user, 28 Oct 2026)
+                Tables\Columns\TextColumn::make('moved_to_company_id')
+                    ->label('Moved')
+                    ->badge()
+                    ->state(fn (ConsignmentNote $record) => $record->movedLabel())
+                    ->color(fn (ConsignmentNote $record) => $record->isMovedIn() ? 'info' : 'warning')
+                    ->tooltip(fn (ConsignmentNote $record) => $record->movedNote())
                     ->placeholder('—')
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('issued_at')
@@ -235,6 +263,16 @@ class ConsignmentNoteResource extends Resource
                     ->form(fn ($livewire) => static::assignLorryFormSchema($livewire->selectedSubsheetRecords()))
                     ->action(fn (Collection $records, array $data, $livewire) => static::assignSelection($records, $livewire->selectedSubsheetRecords(), $data, $livewire))
                     ->deselectRecordsAfterCompletion(),
+                Tables\Actions\BulkAction::make('bulkMoveCompany')
+                    ->label('Move to company')
+                    ->icon('heroicon-o-arrow-right-circle')
+                    ->color('gray')
+                    ->modalHeading('Move the selected CSNs to another company')
+                    ->modalDescription('That company sees them in its list and can assign them to its lorries, nothing else. They stay in this list, marked with the company they went to. Cancelled CSNs, CSNs already moved and CSNs moved here are skipped.')
+                    ->modalSubmitActionLabel('Move')
+                    ->form(static::moveCompanyForm())
+                    ->action(fn (Collection $records, array $data) => static::moveToCompany($records, (int) $data['company_id']))
+                    ->deselectRecordsAfterCompletion(),
                 Tables\Actions\BulkAction::make('bulkSubsheets')
                     ->label('Create subsheets')
                     ->icon('heroicon-o-document-duplicate')
@@ -249,6 +287,12 @@ class ConsignmentNoteResource extends Resource
                         foreach ($records as $record) {
                             if ($record->status === CsnStatus::Cancelled) {
                                 $skipped[] = $record->number.' (cancelled)';
+
+                                continue;
+                            }
+
+                            if ($record->isMovedIn()) {
+                                $skipped[] = $record->number.' (moved here from '.($record->company?->code ?? 'another company').': assign to lorry only)';
 
                                 continue;
                             }
@@ -269,7 +313,7 @@ class ConsignmentNoteResource extends Resource
             ])
             ->actions([
                 Tables\Actions\ViewAction::make(),
-                Tables\Actions\EditAction::make(),
+                Tables\Actions\EditAction::make()->visible(fn (ConsignmentNote $record) => ! $record->isMovedIn()),
                 Tables\Actions\Action::make('previewPdf')
                     ->label('PDF')
                     ->icon('heroicon-o-document-arrow-down')
@@ -279,7 +323,7 @@ class ConsignmentNoteResource extends Resource
                     ->label('Claim')
                     ->icon('heroicon-o-qr-code')
                     ->color('warning')
-                    ->visible(fn (ConsignmentNote $record) => $record->isClaimable() && ! $record->transfer_claim_pending)
+                    ->visible(fn (ConsignmentNote $record) => ! $record->isMovedIn() && $record->isClaimable() && ! $record->transfer_claim_pending)
                     ->form([
                         Forms\Components\TextInput::make('qr_token')
                             ->label('Scan / paste CSN QR code (optional)')
@@ -302,7 +346,7 @@ class ConsignmentNoteResource extends Resource
                     ->label('Transfer lorry')
                     ->icon('heroicon-o-arrows-right-left')
                     ->color('gray')
-                    ->visible(fn (ConsignmentNote $record) => \App\Domains\Dispatch\Actions\TransferJobSheetTask::canTransfer(auth()->user())
+                    ->visible(fn (ConsignmentNote $record) => ! $record->isMovedIn() && \App\Domains\Dispatch\Actions\TransferJobSheetTask::canTransfer(auth()->user())
                         && $record->deliveryOrder()->exists()
                         && ! in_array($record->status, [CsnStatus::Delivered, CsnStatus::Cancelled], true))
                     ->form([
@@ -347,7 +391,7 @@ class ConsignmentNoteResource extends Resource
                     ->label('Collect Payment')
                     ->icon('heroicon-o-banknotes')
                     ->color('success')
-                    ->visible(fn (ConsignmentNote $record) => $record->billing_type === CsnBillingType::CashBill
+                    ->visible(fn (ConsignmentNote $record) => ! $record->isMovedIn() && $record->billing_type === CsnBillingType::CashBill
                         && $record->payment_status !== PaymentStatus::Paid
                         && $record->status !== CsnStatus::Cancelled)
                     ->form([
@@ -383,7 +427,7 @@ class ConsignmentNoteResource extends Resource
                 Tables\Actions\Action::make('generateProforma')
                     ->label('Proforma')
                     ->icon('heroicon-o-document')
-                    ->visible(fn (ConsignmentNote $record) => in_array($record->billing_type, [
+                    ->visible(fn (ConsignmentNote $record) => ! $record->isMovedIn() && in_array($record->billing_type, [
                         CsnBillingType::Cod, CsnBillingType::CashBill,
                     ], true) && ! $record->proformaInvoice)
                     ->action(function (ConsignmentNote $record) {
@@ -411,7 +455,7 @@ class ConsignmentNoteResource extends Resource
                     ->label('Add Subsheets')
                     ->icon('heroicon-o-document-duplicate')
                     ->color('warning')
-                    ->visible(fn (ConsignmentNote $record) => $record->status !== CsnStatus::Cancelled)
+                    ->visible(fn (ConsignmentNote $record) => ! $record->isMovedIn() && $record->status !== CsnStatus::Cancelled)
                     ->modalHeading(fn (ConsignmentNote $record) => 'Create subsheets for '.$record->number)
                     ->form(fn () => static::subsheetCreateForm())
                     ->action(function (ConsignmentNote $record, array $data) {
@@ -426,7 +470,83 @@ class ConsignmentNoteResource extends Resource
                             Notification::make()->title($e->getMessage())->danger()->send();
                         }
                     }),
+                // a CSN moved to another company (user, 28 Oct 2026): that company picks it and assigns it to its lorry
+                Tables\Actions\Action::make('moveCompany')
+                    ->label('Move to company')
+                    ->icon('heroicon-o-arrow-right-circle')
+                    ->color('gray')
+                    ->visible(fn (ConsignmentNote $record) => $record->moved_to_company_id === null && $record->status !== CsnStatus::Cancelled)
+                    ->modalHeading(fn (ConsignmentNote $record) => 'Move '.$record->number.' to another company')
+                    ->modalDescription('That company sees the CSN in its list and can assign it to its lorry, nothing else. It stays in this list, marked with the company it went to, and can be taken back.')
+                    ->modalSubmitActionLabel('Move')
+                    ->form(static::moveCompanyForm())
+                    ->action(fn (ConsignmentNote $record, array $data) => static::moveToCompany(collect([$record]), (int) $data['company_id'])),
+                Tables\Actions\Action::make('takeBack')
+                    ->label(fn (ConsignmentNote $record) => 'Take back from '.($record->movedToCompany?->code ?? 'company'))
+                    ->icon('heroicon-o-arrow-uturn-left')
+                    ->color('gray')
+                    ->visible(fn (ConsignmentNote $record) => $record->isMovedOut())
+                    ->requiresConfirmation()
+                    ->modalHeading(fn (ConsignmentNote $record) => 'Take '.$record->number.' back')
+                    ->modalDescription(fn (ConsignmentNote $record) => ($record->movedToCompany?->name ?? 'That company').' no longer sees the CSN. A lorry it already assigned keeps the job.')
+                    ->modalSubmitActionLabel('Take back')
+                    ->action(fn (ConsignmentNote $record) => static::takeBack(collect([$record]))),
             ]);
+    }
+
+    /** The other companies a CSN can be moved to. @return array<int, Forms\Components\Component> */
+    public static function moveCompanyForm(): array
+    {
+        return [
+            Forms\Components\Select::make('company_id')
+                ->label('Move to')
+                ->options(fn () => Company::query()->whereKeyNot(CurrentCompany::id())->orderBy('code')->get()->mapWithKeys(fn (Company $c) => [$c->id => $c->code.' — '.$c->name])->all())
+                ->required()
+                ->searchable()
+                ->native(false),
+        ];
+    }
+
+    /** Move this company's CSNs to another company (cancelled or already moved ones are skipped). */
+    public static function moveToCompany(Collection $records, int $companyId): void
+    {
+        $company = Company::query()->find($companyId);
+        [$moved, $skipped] = [0, []];
+
+        foreach ($records as $record) {
+            if (! $company || $company->id === (int) CurrentCompany::id()) {
+                $skipped[] = $record->number.' (choose another company)';
+            } elseif ($record->isMovedIn()) {
+                $skipped[] = $record->number.' (not this company\'s CSN)';
+            } elseif ($record->status === CsnStatus::Cancelled) {
+                $skipped[] = $record->number.' (cancelled)';
+            } elseif ($record->moved_to_company_id !== null) {
+                $skipped[] = $record->number.' (already moved to '.($record->movedToCompany?->code ?? '?').')';
+            } else {
+                $record->forceFill(['moved_to_company_id' => $company->id, 'moved_at' => now(), 'moved_by' => auth()->id()])->save();
+                $moved++;
+            }
+        }
+
+        $notice = Notification::make()
+            ->title($moved.' CSN(s) moved to '.($company?->code ?? '?'))
+            ->body($skipped ? 'Skipped: '.implode(', ', $skipped) : null);
+        ($skipped ? $notice->warning() : $notice->success())->send();
+    }
+
+    /** Take moved-out CSNs back: the other company no longer sees them. */
+    public static function takeBack(Collection $records): void
+    {
+        $taken = 0;
+
+        foreach ($records as $record) {
+            if ($record->isMovedOut()) {
+                $record->forceFill(['moved_to_company_id' => null, 'moved_at' => null, 'moved_by' => null])->save();
+                $taken++;
+            }
+        }
+
+        Notification::make()->title($taken.' CSN(s) taken back')->success()->send();
     }
 
     /**

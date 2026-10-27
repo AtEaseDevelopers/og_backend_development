@@ -66,7 +66,7 @@ class SaveOrderPricing
                 ->map(fn (array $o) => sprintf('%s → %s: standard RM %s, entered RM %s', $o['item'], $o['destination'], number_format($o['standard'], 2), number_format($o['entered'], 2)))
                 ->implode('; ');
 
-            if (! ($actor->is_hq || $actor->hasAnyRole(['hq_admin', 'branch_manager']))) {
+            if (! ($actor->is_hq || $actor->hasAnyRole(['super_admin', 'branch_admin', 'branch_manager']))) {
                 throw new InvalidArgumentException('These rates differ from the standard price list and need HQ Admin or Branch Manager permission: '.$summary);
             }
 

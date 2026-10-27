@@ -72,7 +72,7 @@ class AcceptQuotation
             throw new InvalidArgumentException('Enter a price for '.implode(', ', $unpriced).' under Items & pricing before confirming '.$quotation->number.'.');
         }
 
-        $reviewer = $actor ?? $quotation->salesperson ?? $quotation->creator ?? User::query()->role('hq_admin')->first();
+        $reviewer = $actor ?? $quotation->salesperson ?? $quotation->creator ?? User::query()->role('super_admin')->first();
 
         $quotation = DB::transaction(function () use ($quotation, $channel, $confirmedByName, $actor, $consentEvidence, $reviewer, $recordedByStaff) {
             $from = $quotation->status->value;

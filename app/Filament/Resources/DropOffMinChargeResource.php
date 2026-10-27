@@ -36,9 +36,8 @@ class DropOffMinChargeResource extends Resource
     {
         return $form->schema([
             Forms\Components\Section::make()->schema([
-                Forms\Components\Select::make('branch_id')
-                    ->label('Company (blank = all companies)')
-                    ->options(fn () => Branch::query()->where('is_active', true)->orderBy('code')->pluck('name', 'id')),
+                // per company (user, 28 Oct 2026): the row belongs to the company switched to at the top
+                Forms\Components\Hidden::make('branch_id')->default(fn () => \App\Support\CurrentCompany::branchId()),
                 Forms\Components\Select::make('drop_off_type')
                     ->options(DropOffType::options())
                     ->required(),

@@ -50,7 +50,8 @@ class ListFailedDeliveries extends ListRecords
 
     public function getSubheading(): ?string
     {
-        return 'Review failed delivery tasks, failure information and supporting evidence.';
+        // no text under the page title (user, 28 Oct 2026)
+        return null;
     }
 
     public function applyFilters(): void

@@ -27,6 +27,12 @@ class SystemSettingsPage extends Page
 
     protected static ?string $slug = 'system-settings';
 
+    // a Master Data → Company page (user, 28 Oct 2026): super_admin and branch_admin (the settings are system-wide)
+    public static function canAccess(): bool
+    {
+        return auth()->user()?->canManageStaff() ?? false;
+    }
+
     protected static string $view = 'filament.pages.system-settings';
 
     /** @var array<string, mixed>|null */
@@ -45,7 +51,8 @@ class SystemSettingsPage extends Page
 
     public function getSubheading(): ?string
     {
-        return 'Configurable behaviour for the order → quotation → CSN flow.';
+        // no text under the page title (user, 28 Oct 2026)
+        return null;
     }
 
     public function form(Form $form): Form

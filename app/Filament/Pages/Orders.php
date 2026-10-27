@@ -10,6 +10,15 @@ use App\Models\User;
 use App\Support\CurrentCompany;
 use App\Support\OrderListingData;
 use App\Support\OrderStage;
+use App\Domains\Quotation\Models\Quotation;
+use App\Domains\MasterData\Models\TransferCode;
+use App\Enums\QuotationStatus;
+use App\Filament\Resources\ConsignmentNoteResource;
+use Filament\Actions\Action;
+use Filament\Forms;
+use Filament\Notifications\Notification;
+use Illuminate\Support\Collection;
+use Throwable;
 use Filament\Pages\Page;
 use Illuminate\Support\Carbon;
 use Livewire\Attributes\Session;
@@ -117,6 +126,126 @@ class Orders extends Page
     public string $dir = 'asc';
 
     public bool $filtersOpen = false;
+
+    /**
+     * Bulk order processing (user, 28 Oct 2026): the orders at Pending item (a Store order paid and billed, waiting
+     * for its goods) verified, their CSNs created and put on one lorry in one go. An order with a transfer code gets
+     * a subsheet with that code on the lorry (its CSN stays for the main leg); without one the CSN itself goes.
+     */
+    public function bulkProcessAction(): Action
+    {
+        return Action::make('bulkProcess')
+            ->label('Bulk order processing')
+            ->icon('heroicon-o-truck')
+            ->color('gray')
+            ->slideOver()
+            ->modalWidth('2xl')
+            ->modalHeading('Bulk order processing')
+            ->modalDescription('Orders at Pending item. Pick the lorry, filter by transfer code if you like, tick the orders (or Select all) and process: each order is verified, its CSN created and put on the lorry. An order with a transfer code gets a subsheet with that code on the lorry instead.')
+            ->form([
+                Forms\Components\Select::make('lorry_id')
+                    ->label('Lorry')
+                    ->placeholder('Select lorry')
+                    ->helperText('The lorry\'s default driver drives it.')
+                    ->options(fn () => ConsignmentNoteResource::lorryOptions())
+                    ->required()
+                    ->searchable(),
+                Forms\Components\Select::make('transfer_code')
+                    ->label('Transfer code')
+                    ->placeholder('All transfer codes')
+                    ->options(fn () => $this->transferCodeFilterOptions())
+                    ->searchable()
+                    ->live()
+                    ->afterStateUpdated(fn (Forms\Set $set) => $set('order_ids', [])),
+                Forms\Components\CheckboxList::make('order_ids')
+                    ->label(fn (Forms\Get $get) => 'Orders at Pending item ('.count((array) $get('order_ids')).' ticked)')
+                    ->options(fn (Forms\Get $get) => $this->pendingItemOrders($get('transfer_code'))->mapWithKeys(fn (Quotation $o) => [$o->id => $o->orderNumber().(filled($o->transfer_code) ? ' · code '.$o->transfer_code : '')])->all())
+                    ->descriptions(fn (Forms\Get $get) => $this->pendingItemOrders($get('transfer_code'))->mapWithKeys(fn (Quotation $o) => [$o->id => collect([
+                        $o->customer?->company_name,
+                        $o->consignee_name,
+                        $o->created_at?->format('d/m/Y'),
+                    ])->filter()->implode(' · ')])->all())
+                    ->bulkToggleable()
+                    ->live()
+                    ->required()
+                    ->validationMessages(['required' => 'Tick at least one order.']),
+            ])
+            ->modalSubmitActionLabel('Verify, create CSN & assign to lorry')
+            ->action(function (array $data): void {
+                $orders = $this->pendingItemOrders()->whereIn('id', array_map('intval', (array) ($data['order_ids'] ?? [])));
+
+                if ($orders->isEmpty()) {
+                    Notification::make()->title('No order ticked')->warning()->send();
+
+                    return;
+                }
+
+                [$csns, $subsheets, $done, $failed] = [collect(), collect(), [], []];
+
+                foreach ($orders as $order) {
+                    try {
+                        $created = app(\App\Domains\Quotation\Actions\MarkStoreItemReady::class)->execute($order, auth()->user());
+
+                        foreach ($created as $csn) {
+                            $csn = $csn->fresh(['subsheets', 'deliveryOrder', 'sourceBranch']);
+
+                            // an order with a transfer code: a subsheet with that code goes on the lorry
+                            if ($csn->subsheets->isEmpty() && filled($order->transfer_code)) {
+                                app(\App\Domains\Dispatch\Actions\CreateSubsheet::class)->forCsn($csn, [
+                                    'transfer_code' => $order->transfer_code,
+                                    'task_type' => 'transfer',
+                                    'notes' => 'Bulk order processing',
+                                ]);
+                                $csn = $csn->fresh(['subsheets', 'deliveryOrder', 'sourceBranch']);
+                            }
+
+                            $csn->subsheets->isNotEmpty() ? $subsheets = $subsheets->merge($csn->subsheets) : $csns->push($csn);
+                            $done[] = $csn->number;
+                        }
+                    } catch (Throwable $e) {
+                        $failed[] = $order->orderNumber().' ('.$e->getMessage().')';
+                    }
+                }
+
+                if ($csns->isNotEmpty() || $subsheets->isNotEmpty()) {
+                    ConsignmentNoteResource::assignSelection($csns, $subsheets->values(), ['lorry_id' => $data['lorry_id']]);
+                }
+
+                $notice = Notification::make()
+                    ->title(count($done).' order(s) processed'.($done ? ': CSN '.implode(', ', $done) : ''))
+                    ->body($failed ? 'Not processed: '.implode('; ', $failed) : null);
+                ($failed ? $notice->warning() : $notice->success())->send();
+            });
+    }
+
+    /** The orders at Pending item of this company, newest first; only those with the transfer code when one is given. */
+    public function pendingItemOrders(?string $transferCode = null): Collection
+    {
+        return Quotation::query()
+            ->when(CurrentCompany::id(), fn ($q, $id) => $q->where('company_id', $id))
+            ->where('status', QuotationStatus::Confirmed)
+            ->where('service_type', ServiceType::Store)
+            ->whereNull('item_received_at')
+            ->whereDoesntHave('consignmentNotes')
+            ->when(filled($transferCode), fn ($q) => $q->where('transfer_code', $transferCode))
+            ->with('customer:id,company_name')
+            ->latest('id')
+            ->limit(300)
+            ->get()
+            ->filter(fn (Quotation $order) => $order->isBilledAwaitingItem())
+            ->values();
+    }
+
+    /** The transfer codes of the orders at Pending item (with how many), then the other active codes. @return array<string, string> */
+    public function transferCodeFilterOptions(): array
+    {
+        $counts = $this->pendingItemOrders()->countBy(fn (Quotation $o) => (string) $o->transfer_code);
+        $codes = TransferCode::query()->where('is_active', true)->orderBy('code')->get();
+
+        return $codes->sortByDesc(fn (TransferCode $c) => $counts[$c->code] ?? 0)->mapWithKeys(fn (TransferCode $c) => [
+            $c->code => $c->code.(filled($c->name) ? ' — '.$c->name : '').(isset($counts[$c->code]) ? ' ('.$counts[$c->code].')' : ''),
+        ])->all();
+    }
 
     public function mount(): void
     {

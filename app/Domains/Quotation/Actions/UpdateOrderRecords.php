@@ -63,10 +63,11 @@ class UpdateOrderRecords
         'drop_off_location' => 'drop-off location',
         'customer_do_number' => 'DO number',
         'expected_delivery_date' => 'expected delivery',
+        'transfer_code' => 'transfer code',
     ];
 
     /** Fields whose old / new values are written into the change summary (the others only say "updated"). */
-    private const SHORT_FIELDS = ['consignor_name', 'store_id', 'from_location_id', 'consignor_pic_name', 'consignor_pic_phone', 'consignee_name', 'to_location_id', 'consignee_pic_name', 'consignee_pic_phone', 'customer_do_number', 'expected_delivery_date', 'customer_id', 'order_type', 'service_type', 'drop_off_type'];
+    private const SHORT_FIELDS = ['consignor_name', 'store_id', 'from_location_id', 'consignor_pic_name', 'consignor_pic_phone', 'consignee_name', 'to_location_id', 'consignee_pic_name', 'consignee_pic_phone', 'customer_do_number', 'expected_delivery_date', 'transfer_code', 'customer_id', 'order_type', 'service_type', 'drop_off_type'];
 
     public function __construct(
         private CreateOrderFromEnquiry $createOrders,
@@ -944,7 +945,9 @@ class UpdateOrderRecords
         $fields['destination_types'] = [['column' => $column, 'drop_off_type' => $dropOffType, 'service_type' => $serviceType]];
         $fields['notes'] = static::notesWithInstructions($order->notes, $pair['instructions'] ?? null);
         $fields['admin_notes'] = $this->clean($pair['admin_notes'] ?? null);
-        $fields['stops'] = ! empty($pair['multi_stops']) && is_array($pair['stops'] ?? null) ? (\App\Support\OrderStops::clean($pair['stops']) ?: null) : null;
+        $fields['stops'] = isset($pair['multi_pickup']) || isset($pair['multi_dropoff'])
+            ? (\App\Support\OrderStops::merge($pair) ?: null)
+            : (is_array($pair['stops'] ?? null) ? (\App\Support\OrderStops::clean($pair['stops']) ?: null) : null);
         $fields['consignee_store_id'] = ($pair['consignee_mode'] ?? '') === 'store' && filled($pair['consignee_store_id'] ?? null) ? (int) $pair['consignee_store_id'] : null;
 
         if ($headerEditable) {
@@ -1325,8 +1328,10 @@ class UpdateOrderRecords
             'store_branch_id' => $this->clean($pair['store_branch_id'] ?? null),
             'store_id' => $this->clean($pair['store_id'] ?? null),
             'admin_notes' => $this->clean($pair['admin_notes'] ?? null),
-            'multi_stops' => ! empty($pair['multi_stops']),
-            'stops' => is_array($pair['stops'] ?? null) ? $pair['stops'] : [],
+            'multi_pickup' => ! empty($pair['multi_pickup']),
+            'pickup_stops' => is_array($pair['pickup_stops'] ?? null) ? $pair['pickup_stops'] : [],
+            'multi_dropoff' => ! empty($pair['multi_dropoff']),
+            'dropoff_stops' => is_array($pair['dropoff_stops'] ?? null) ? $pair['dropoff_stops'] : [],
             'consignee_mode' => $this->clean($pair['consignee_mode'] ?? null),
             'consignee_store_id' => $this->clean($pair['consignee_store_id'] ?? null),
             'consignor_pic_name' => $this->clean($pair['consignor_pic_name'] ?? null),
@@ -1335,6 +1340,7 @@ class UpdateOrderRecords
             'consignee_pic_phone' => $this->clean($pair['consignee_pic_phone'] ?? null),
             'customer_do_number' => $this->clean($pair['customer_do_number'] ?? null),
             'expected_delivery_date' => $this->clean($pair['expected_delivery_date'] ?? null),
+            'transfer_code' => $this->clean($pair['transfer_code'] ?? null),
             'instructions' => $this->clean($pair['instructions'] ?? null),
             // photos uploaded for the new block (its record's own files)
             'attachments' => array_values(array_filter($pair['attachments'] ?? [], 'is_array')),
@@ -1496,14 +1502,17 @@ class UpdateOrderRecords
             'service_type' => $serviceType,
             'customer_do_number' => $this->clean($pair['customer_do_number'] ?? null),
             'expected_delivery_date' => $this->clean($pair['expected_delivery_date'] ?? null),
+            'transfer_code' => $this->clean($pair['transfer_code'] ?? null),
             // kept so the edit page shows the same values again (company numbers are no longer entered:
             // an older destination keeps its own through the merge with $base)
             'consignor_name' => $this->clean($pair['consignor_name'] ?? null),
             'store_branch_id' => $serviceType === ServiceType::Store->value ? $this->clean($pair['store_branch_id'] ?? null) : null,
             'store_id' => $serviceType === ServiceType::Store->value ? $this->clean($pair['store_id'] ?? null) : null,
             'admin_notes' => $this->clean($pair['admin_notes'] ?? null),
-            'multi_stops' => ! empty($pair['multi_stops']),
-            'stops' => is_array($pair['stops'] ?? null) ? $pair['stops'] : [],
+            'multi_pickup' => ! empty($pair['multi_pickup']),
+            'pickup_stops' => is_array($pair['pickup_stops'] ?? null) ? $pair['pickup_stops'] : [],
+            'multi_dropoff' => ! empty($pair['multi_dropoff']),
+            'dropoff_stops' => is_array($pair['dropoff_stops'] ?? null) ? $pair['dropoff_stops'] : [],
             'consignee_mode' => $this->clean($pair['consignee_mode'] ?? null),
             'consignee_store_id' => ($pair['consignee_mode'] ?? '') === 'store' ? $this->clean($pair['consignee_store_id'] ?? null) : null,
             'from_location_id' => $this->clean($pair['from_location_id'] ?? null),
@@ -1544,11 +1553,11 @@ class UpdateOrderRecords
             'service_type' => $order->service_type?->value,
             'customer_do_number' => $order->customer_do_number,
             'expected_delivery_date' => $order->expected_delivery_date,
+            'transfer_code' => $order->transfer_code,
             'store_branch_id' => $order->store_branch_id,
             'store_id' => $order->store_id,
             'admin_notes' => $order->admin_notes,
-            'multi_stops' => ! empty($order->stops),
-            'stops' => $order->stops ?? [],
+            ...\App\Support\OrderStops::split($order->stops),
             'consignee_mode' => $order->consignee_store_id ? 'store' : 'deliver',
             'consignee_store_id' => $order->consignee_store_id,
             'consignor_pic_name' => $order->consignor_pic_name,

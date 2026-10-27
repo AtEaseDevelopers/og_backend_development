@@ -3,6 +3,7 @@
 namespace App\Domains\MasterData\Models;
 
 use App\Enums\DropOffType;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -12,6 +13,23 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class DropOffMinCharge extends Model
 {
+    /**
+     * Per company (user, 28 Oct 2026): in the panel every query sees the current company's rows only, and a new row
+     * belongs to the current company. Outside a company (console, migrations) nothing is filtered.
+     */
+    protected static function booted(): void
+    {
+        static::addGlobalScope('company', function (Builder $query): void {
+            if ($branchId = \App\Support\CurrentCompany::branchId()) {
+                $query->where($query->qualifyColumn('branch_id'), $branchId);
+            }
+        });
+
+        static::creating(function (self $row): void {
+            $row->branch_id ??= \App\Support\CurrentCompany::branchId();
+        });
+    }
+
     protected $fillable = ['branch_id', 'drop_off_type', 'minimum_charge', 'is_active', 'remarks'];
 
     protected function casts(): array

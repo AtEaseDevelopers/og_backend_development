@@ -55,6 +55,46 @@ class OrderStops
         return $out;
     }
 
+    /**
+     * The stops of a form block: the consignor side's extra addresses (pickup) then the consignee's (dropoff), each
+     * side only when its "Multiple address" is ticked (user, 28 Oct 2026).
+     *
+     * @param  array<string, mixed>  $pair
+     * @return list<array{type: string, location: ?string, do_number: ?string}>
+     */
+    public static function merge(array $pair): array
+    {
+        $rows = [];
+
+        foreach (['pickup' => self::PICKUP, 'dropoff' => self::DROPOFF] as $side => $type) {
+            if (! empty($pair['multi_'.$side])) {
+                foreach ((array) ($pair[$side.'_stops'] ?? []) as $row) {
+                    $rows[] = is_array($row) ? ['type' => $type] + $row : ['type' => $type];
+                }
+            }
+        }
+
+        return static::clean($rows);
+    }
+
+    /**
+     * The form block's sides from saved stops: multi_pickup / pickup_stops and multi_dropoff / dropoff_stops.
+     *
+     * @return array{multi_pickup: bool, pickup_stops: list<array<string, mixed>>, multi_dropoff: bool, dropoff_stops: list<array<string, mixed>>}
+     */
+    public static function split(?array $stops): array
+    {
+        $pickup = array_values(array_filter($stops ?? [], fn ($s) => ($s['type'] ?? '') === self::PICKUP));
+        $dropoff = array_values(array_filter($stops ?? [], fn ($s) => ($s['type'] ?? '') !== self::PICKUP));
+
+        return [
+            'multi_pickup' => $pickup !== [],
+            'pickup_stops' => array_map(fn (array $s) => $s + self::blank(self::PICKUP), $pickup),
+            'multi_dropoff' => $dropoff !== [],
+            'dropoff_stops' => array_map(fn (array $s) => $s + self::blank(self::DROPOFF), $dropoff),
+        ];
+    }
+
     /** The DO numbers of the stops, in order. @return list<string> */
     public static function doNumbers(?array $stops): array
     {

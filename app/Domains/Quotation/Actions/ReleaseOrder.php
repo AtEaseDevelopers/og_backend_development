@@ -33,9 +33,12 @@ class ReleaseOrder
             throw new InvalidArgumentException('Only confirmed orders can be released.');
         }
 
-        // Admin release is for Credit / Term orders only (user, 13 Oct 2026): a Cash order waits for full payment
-        if ($quotation->orderType() !== OrderType::Term) {
-            throw new InvalidArgumentException('Admin release is for Credit / Term orders only. A Cash order goes ahead once it is fully paid.');
+        // Admin release is for Credit / Term orders (user, 13 Oct 2026) and, since 28 Oct 2026, a Cash order the
+        // customer has part-paid: admin may decide to go ahead to the CSN before the rest comes in
+        $partPaidCash = $quotation->orderType() === OrderType::Cash && (float) $quotation->paid_amount > 0;
+
+        if ($quotation->orderType() !== OrderType::Term && ! $partPaidCash) {
+            throw new InvalidArgumentException('Admin release is for Credit / Term orders, or a Cash order the customer has part-paid. A Cash order goes ahead by itself once it is fully paid.');
         }
 
         if ($quotation->isReleased()) {
@@ -131,7 +134,7 @@ class ReleaseOrder
 
     private function assertAuthorised(User $actor): void
     {
-        if ($actor->is_hq || $actor->hasAnyRole(['hq_admin', 'branch_manager', 'finance'])) {
+        if ($actor->is_hq || $actor->hasAnyRole(['super_admin', 'branch_admin', 'branch_manager', 'finance'])) {
             return;
         }
 

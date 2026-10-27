@@ -58,7 +58,8 @@ class ReportDetail extends Page implements HasForms, HasTable
 
     public function getSubheading(): ?string
     {
-        return ReportsHub::REPORTS[$this->report]['description'] ?? null;
+        // no text under the page title (user, 28 Oct 2026)
+        return null;
     }
 
     public function mount(): void
@@ -358,6 +359,6 @@ class ReportDetail extends Page implements HasForms, HasTable
         $user = auth()->user();
 
         return $user?->is_hq
-            || $user?->hasAnyRole(['hq_admin', 'branch_manager', 'finance', 'dispatcher']);
+            || $user?->hasAnyRole(['super_admin', 'branch_admin', 'branch_manager', 'finance', 'dispatcher']);
     }
 }

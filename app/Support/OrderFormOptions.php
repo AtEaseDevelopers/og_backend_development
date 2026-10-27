@@ -169,13 +169,14 @@ class OrderFormOptions
         $keep = array_values(array_filter(array_map('intval', $keep)));
 
         return Store::query()
-            ->with(['branch:id,name,code', 'location:id,name'])
+            ->with(['branch:id,name,code', 'saLocation:id,name,csn_prefix', 'location:id,name'])
             ->when(CurrentCompany::id(), fn ($query, $id) => $query->where('company_id', $id))
             ->where(fn ($query) => $query->where('is_active', true)->when($keep !== [], fn ($q) => $q->orWhereIn('id', $keep)))
             ->get()
-            ->sortBy(fn (Store $store) => [$store->branch?->name, $store->name])
+            ->sortBy(fn (Store $store) => [$store->saLocation?->name ?? $store->branch?->name, $store->name])
             ->mapWithKeys(fn (Store $store) => [$store->id => [
-                'label' => $store->label().($store->branch ? ' · '.$store->branch->name : ''),
+                // the store with its branch (several stores per branch, user 28 Oct 2026)
+                'label' => $store->label().(($store->saLocation ?? $store->branch) ? ' · '.($store->saLocation?->name ?? $store->branch->name) : ''),
                 'sub' => collect([
                     static::oneLine($store->address),
                     $store->location ? 'From '.$store->location->name : null,

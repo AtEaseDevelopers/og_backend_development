@@ -22,7 +22,7 @@ class AssignEnquirySalesperson
         bool $lock = false,
         ?string $source = null,
     ): PortalEnquiry {
-        if (! $salesperson->isSalesperson() && ! $salesperson->is_hq && ! $salesperson->hasAnyRole(['hq_admin', 'branch_manager'])) {
+        if (! $salesperson->isSalesperson() && ! $salesperson->is_hq && ! $salesperson->hasAnyRole(['super_admin', 'branch_admin', 'branch_manager'])) {
             throw new InvalidArgumentException($salesperson->name.' is not a salesperson.');
         }
 

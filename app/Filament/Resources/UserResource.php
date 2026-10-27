@@ -37,8 +37,12 @@ class UserResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
+        $user = auth()->user();
+
         return parent::getEloquentQuery()
-            ->whereDoesntHave('roles', fn (Builder $query) => $query->where('name', 'customer'));
+            ->whereDoesntHave('roles', fn (Builder $query) => $query->where('name', 'customer'))
+            // a branch admin sees the staff of their companies only (user, 28 Oct 2026)
+            ->when($user?->isBranchAdmin(), fn (Builder $q) => $q->whereHas('branches', fn (Builder $b) => $b->whereIn('branches.id', $user->accessibleBranchIds())));
     }
 
     public static function form(Form $form): Form
@@ -54,7 +58,9 @@ class UserResource extends Resource
             Forms\Components\TextInput::make('phone')->tel()->maxLength(50),
             Forms\Components\Select::make('branch_id')
                 ->label('Company access')
-                ->options(fn () => Branch::query()->where('is_active', true)->orderBy('code')->pluck('name', 'id'))
+                ->options(fn () => Branch::query()->where('is_active', true)
+                    ->when(auth()->user()?->isBranchAdmin(), fn ($q) => $q->whereIn('id', auth()->user()->accessibleBranchIds()))
+                    ->orderBy('code')->pluck('name', 'id'))
                 ->searchable()
                 ->required()
                 ->dehydrated(false)
@@ -64,7 +70,9 @@ class UserResource extends Resource
                 // the pivot sync are all keyed by role id. A separate name-keyed ->options() list
                 // disagreed with the id-keyed search results and synced names as role_id 0.
                 ->relationship('roles', 'name', fn (Builder $query) => $query
-                    ->whereNotIn($query->qualifyColumn('name'), ['customer', 'driver']))
+                    ->whereNotIn($query->qualifyColumn('name'), ['customer', 'driver'])
+                    // only a super admin gives the super_admin role
+                    ->when(! auth()->user()?->isSuperadmin(), fn (Builder $q) => $q->where($q->qualifyColumn('name'), '!=', 'super_admin')))
                 ->multiple()
                 ->preload()
                 // The filter also applies to the loaded state, so a driver-only account loads with no

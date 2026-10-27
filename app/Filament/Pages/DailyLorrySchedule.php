@@ -60,7 +60,8 @@ class DailyLorrySchedule extends Page
 
     public function getSubheading(): ?string
     {
-        return 'Where every lorry starts and goes on the selected day, by company.';
+        // no text under the page title (user, 28 Oct 2026)
+        return null;
     }
 
     /** @return array<string, string> */

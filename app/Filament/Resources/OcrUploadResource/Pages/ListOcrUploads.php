@@ -45,7 +45,8 @@ class ListOcrUploads extends ListRecords
 
     public function getSubheading(): ?string
     {
-        return 'Upload hardcopy quotations, review extracted data and create verified quotes.';
+        // no text under the page title (user, 28 Oct 2026)
+        return null;
     }
 
     /** @return array<string, mixed>|null */

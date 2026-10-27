@@ -2,6 +2,7 @@
 
 namespace App\Domains\Consignment\Models;
 
+use App\Support\CurrentCompany;
 use App\Models\Concerns\BelongsToCompany;
 
 use App\Domains\Billing\Models\Invoice;
@@ -55,6 +56,8 @@ class ConsignmentNote extends Model
         'salesperson_id', 'sa_location_id', 'sa_prefix', 'order_type', 'invoice_number', 'proforma_number',
         'transfer_code_id', 'customer_do_number', 'service_type', 'drop_off_type',
         'claimed_by', 'claimed_at', 'claim_channel', 'assigned_by', 'assigned_at', 'transfer_claim_pending',
+        // moved to another company (user, 28 Oct 2026)
+        'moved_to_company_id', 'moved_at', 'moved_by',
     ];
 
     protected function casts(): array
@@ -65,6 +68,7 @@ class ConsignmentNote extends Model
             'claimed_at' => 'datetime',
             'assigned_at' => 'datetime',
             'transfer_claim_pending' => 'boolean',
+            'moved_at' => 'datetime',
             'billing_type' => CsnBillingType::class,
             'status' => CsnStatus::class,
             'payment_status' => PaymentStatus::class,
@@ -92,6 +96,54 @@ class ConsignmentNote extends Model
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()->logFillable()->logOnlyDirty();
+    }
+
+    /** The company a CSN was moved to (user, 28 Oct 2026): it may only assign the CSN to its lorry. */
+    public function movedToCompany(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\MasterData\Models\Company::class, 'moved_to_company_id');
+    }
+
+    public function movedBy(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\User::class, 'moved_by');
+    }
+
+    /** Moved here from another company: the opened company is the one it was moved to, not its own. */
+    public function isMovedIn(): bool
+    {
+        return $this->moved_to_company_id !== null
+            && (int) $this->moved_to_company_id === (int) CurrentCompany::id()
+            && (int) $this->company_id !== (int) CurrentCompany::id();
+    }
+
+    /** This company's CSN, moved to another company. */
+    public function isMovedOut(): bool
+    {
+        return $this->moved_to_company_id !== null && ! $this->isMovedIn();
+    }
+
+    /** "→ KLG" (moved there) or "← KL" (moved here from); null when not moved. */
+    public function movedLabel(): ?string
+    {
+        if ($this->moved_to_company_id === null) {
+            return null;
+        }
+
+        return $this->isMovedIn() ? '← '.($this->company?->code ?? '?') : '→ '.($this->movedToCompany?->code ?? '?');
+    }
+
+    public function movedNote(): ?string
+    {
+        if ($this->moved_to_company_id === null) {
+            return null;
+        }
+
+        $when = $this->moved_at?->format('d/m/Y H:i');
+        $by = $this->movedBy?->name;
+
+        return ($this->isMovedIn() ? 'Moved here from '.($this->company?->name ?? '?') : 'Moved to '.($this->movedToCompany?->name ?? '?'))
+            .($by ? ' by '.$by : '').($when ? ' on '.$when : '').($this->isMovedIn() ? ' · here it can only be assigned to a lorry' : '');
     }
 
     public function sourceBranch(): BelongsTo

@@ -128,6 +128,23 @@
                     @endforeach
                 </x-filament::tabs>
             </div>
+
+            {{-- CSNs moved to / from another company (user, 28 Oct 2026) --}}
+            <div class="csn-toggle-field">
+                <span class="csn-toggle-caption">Moved</span>
+                <x-filament::tabs label="Moved">
+                    @foreach ($this->movedToggles() as $toggle)
+                        <x-filament::tabs.item
+                            :active="(string) $moved === $toggle['value']"
+                            :badge="$toggle['count']"
+                            wire:click="$set('moved', '{{ $toggle['value'] }}')"
+                            :title="$toggle['title']"
+                        >
+                            {{ $toggle['label'] }}
+                        </x-filament::tabs.item>
+                    @endforeach
+                </x-filament::tabs>
+            </div>
         </div>
 
         <div class="ow-page csn-list">

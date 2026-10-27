@@ -20,4 +20,7 @@ enum DocumentType: string
     case CommissionPi = 'CPI';
     case CashBill = 'CBL';
     case RefundNote = 'RN';
+    case PaymentVoucher = 'PV';
+    /** the Quotations page (Q-KL-261000001) */
+    case Quote = 'Q';
 }

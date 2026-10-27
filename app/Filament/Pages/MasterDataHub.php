@@ -45,6 +45,9 @@ class MasterDataHub extends Page
             ['class' => Resources\DriverResource::class, 'label' => 'Drivers', 'icon' => 'heroicon-o-user'],
             ['class' => Resources\FleetVehicleResource::class, 'label' => 'Fleet Vehicles', 'icon' => 'heroicon-o-truck'],
             ['class' => Resources\TransferCodeResource::class, 'label' => 'Transfer Codes', 'icon' => 'heroicon-o-qr-code'],
+            ['class' => Resources\StoreResource::class, 'label' => 'Stores', 'icon' => 'heroicon-o-home-modern'],
+            ['class' => Resources\LorryCompanyResource::class, 'label' => 'Lorry Companies', 'icon' => 'heroicon-o-building-office'],
+            ['class' => Resources\LorryGroupResource::class, 'label' => 'Lorry Groups', 'icon' => 'heroicon-o-rectangle-group'],
         ],
         // user, 25 Oct 2026: the switcher's KL, JB, … are companies; a company's sales areas are its branches
         'Company' => [

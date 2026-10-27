@@ -81,13 +81,14 @@ class AssignCsnToLorry
                 $lorry,
                 $date,
                 $resolvedDriverId,
-                $csn->company_id,
+                // a CSN moved to another company (user, 28 Oct 2026): the DO and job sheet are that company's
+                $csn->moved_to_company_id ?: $csn->company_id,
                 $isShared,
             );
 
             $do = DeliveryOrder::query()->create([
                 'number' => $this->numbering->next($csn->sourceBranch, DocumentType::Do),
-                'company_id' => $csn->company_id,
+                'company_id' => $csn->moved_to_company_id ?: $csn->company_id,
                 'consignment_note_id' => $csn->id,
                 'source_branch_id' => $csn->source_branch_id,
                 'job_sheet_id' => $jobSheet->id,

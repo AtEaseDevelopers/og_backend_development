@@ -10,11 +10,9 @@ use Illuminate\Support\Facades\DB;
 class DocumentNumberingService
 {
     /**
-     * Next document number for a branch: {PREFIX}-{TYPE}-{Ym}-{0001}.
-     *
-     * The running sequence is always kept per branch / type / month. $prefixOverride replaces
-     * the branch code in the printed number (used for the SA-location CSN prefix, section H)
-     * without starting a separate counter, so numbers stay unique within the branch.
+     * Next document number (user, 28 Oct 2026): ZZ-EE-YYMM#####, e.g. INV-KL-261000001. ZZ = the document type code,
+     * EE = the company code (replaced by $prefixOverride when given), YYMM = this month, ##### = a 5-digit running
+     * number kept per company, type and month.
      */
     public function next(Branch|int $branch, DocumentType $type, ?string $prefixOverride = null): string
     {
@@ -23,8 +21,8 @@ class DocumentNumberingService
             ? $branch->code
             : Branch::query()->whereKey($branchId)->value('code');
 
-        $prefix = filled($prefixOverride) ? strtoupper(trim($prefixOverride)) : $branchCode;
-        $period = now()->format('Ym');
+        $prefix = strtoupper(filled($prefixOverride) ? trim($prefixOverride) : (string) $branchCode);
+        $period = now()->format('ym');
 
         return DB::transaction(function () use ($branchId, $prefix, $type, $period) {
             $sequence = DocumentNumberSequence::query()
@@ -32,49 +30,34 @@ class DocumentNumberingService
                 ->where('document_type', $type->value)
                 ->where('period', $period)
                 ->lockForUpdate()
-                ->first();
-
-            if (! $sequence) {
-                $sequence = DocumentNumberSequence::query()->create([
-                    'branch_id' => $branchId,
-                    'document_type' => $type->value,
-                    'period' => $period,
-                    'last_number' => 0,
-                ]);
-            }
+                ->first()
+                ?? DocumentNumberSequence::query()->create(['branch_id' => $branchId, 'document_type' => $type->value, 'period' => $period, 'last_number' => 0]);
 
             $sequence->last_number++;
             $sequence->save();
 
-            return sprintf(
-                '%s-%s-%s-%04d',
-                $prefix,
-                $type->value,
-                $period,
-                $sequence->last_number
-            );
+            return sprintf('%s-%s-%s%05d', $type->value, $prefix, $period, $sequence->last_number);
         });
     }
 
     /**
-     * Next CSN number, the client's format (user, 26 Oct 2026): XX-YYMM#####, e.g. KL-261000001.
-     * XX = the location code (the branch's CSN code: KL, SA, MK, KG, PK, PP, PA, JB; else the company code),
-     * YYMM = the year and month the order was placed, ##### = a 5-digit running number that starts again each month
-     * for each location code.
+     * Next CSN number (user, 28 Oct 2026): CSN-EE-XX-YYMM#####, e.g. CSN-KL-JB-261000001. EE = the company code,
+     * XX = the branch's CSN code (KL, SA, MK, KG, PK, PP, PA, JB; else the company code), YYMM = the year and month
+     * the order was placed, ##### = a 5-digit running number that starts again each month for each company and code.
      */
     public function nextCsn(Branch|int $branch, ?string $locationCode = null, ?\DateTimeInterface $orderedAt = null): string
     {
         $branchId = $branch instanceof Branch ? $branch->id : $branch;
+        $company = strtoupper((string) ($branch instanceof Branch ? $branch->code : Branch::query()->whereKey($branchId)->value('code')));
         // no branch given (a CSN made by hand): the company's first branch code, else the company code
         $code = strtoupper(trim((string) $locationCode))
             ?: strtoupper((string) \App\Domains\MasterData\Models\SaLocation::query()->where('branch_id', $branchId)->where('is_active', true)->orderBy('id')->value('csn_prefix'))
-            ?: (string) ($branch instanceof Branch ? $branch->code : Branch::query()->whereKey($branchId)->value('code'));
+            ?: $company;
         $period = ($orderedAt ? \Illuminate\Support\Carbon::instance($orderedAt) : now())->format('ym');
-        // a counter per location code and month (the type key carries the code; the period is 4 characters, apart
-        // from the other documents' YYYYMM)
+        // a counter per company, location code and month (the type key carries the code)
         $type = DocumentType::Csn->value.':'.$code;
 
-        return DB::transaction(function () use ($branchId, $type, $period, $code) {
+        return DB::transaction(function () use ($branchId, $type, $period, $company, $code) {
             $sequence = DocumentNumberSequence::query()
                 ->where('branch_id', $branchId)
                 ->where('document_type', $type)
@@ -83,10 +66,12 @@ class DocumentNumberingService
                 ->first()
                 ?? DocumentNumberSequence::query()->create(['branch_id' => $branchId, 'document_type' => $type, 'period' => $period, 'last_number' => 0]);
 
-            $sequence->last_number++;
+            // continue after the highest number in use (renumbered CSNs, a counter out of step)
+            $inUse = (int) substr((string) DB::table('consignment_notes')->where('number', 'like', 'CSN-'.$company.'-'.$code.'-'.$period.'%')->max('number'), -5);
+            $sequence->last_number = max((int) $sequence->last_number, $inUse) + 1;
             $sequence->save();
 
-            return sprintf('%s-%s%05d', $code, $period, $sequence->last_number);
+            return sprintf('CSN-%s-%s-%s%05d', $company, $code, $period, $sequence->last_number);
         });
     }
 }

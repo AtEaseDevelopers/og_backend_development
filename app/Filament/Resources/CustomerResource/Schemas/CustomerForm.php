@@ -80,7 +80,7 @@ class CustomerForm
                     ->label('Agent')
                     ->options(fn () => User::query()
                         ->whereHas('roles', fn ($q) => $q->whereIn('name', [
-                            'salesperson', 'branch_manager', 'counter', 'finance', 'hq_admin',
+                            'salesperson', 'branch_manager', 'counter', 'finance', 'super_admin',
                         ]))
                         ->orderBy('name')
                         ->pluck('name', 'id'))

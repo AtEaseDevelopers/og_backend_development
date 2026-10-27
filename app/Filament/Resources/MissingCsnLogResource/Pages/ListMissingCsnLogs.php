@@ -57,7 +57,8 @@ class ListMissingCsnLogs extends ListRecords
 
     public function getSubheading(): ?string
     {
-        return 'Monitor unreturned CSNs and identify records that exceed the configured return period.';
+        // no text under the page title (user, 28 Oct 2026)
+        return null;
     }
 
     public function applyFilters(): void

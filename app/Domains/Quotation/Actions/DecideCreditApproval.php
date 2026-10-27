@@ -17,7 +17,7 @@ class DecideCreditApproval
             throw new InvalidArgumentException('Approval request is not pending.');
         }
 
-        if (! $actor->hasAnyRole(['hq_admin', 'branch_manager']) && ! $actor->is_hq) {
+        if (! $actor->hasAnyRole(['super_admin', 'branch_admin', 'branch_manager']) && ! $actor->is_hq) {
             throw new InvalidArgumentException('Only branch managers or HQ can decide credit approvals.');
         }
 

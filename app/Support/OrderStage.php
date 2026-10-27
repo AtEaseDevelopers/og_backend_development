@@ -106,7 +106,7 @@ class OrderStage
             $status === QuotationStatus::Confirmed && $type === OrderType::Cod => ['payment', 4, 'Ready to bill', 'released', 'COD order · CSN created, invoice once fully paid', 'Review billing', false],
             // a Cash order still owed: pending payment (Admin release is for Credit / Term orders only)
             // waiting for the customer's payment: the Pending payment stage (user, 27 Oct 2026)
-            $status === QuotationStatus::Confirmed && $paid > 0 && $paid + 0.005 < $total => ['confirmation', 3, 'Pending payment', 'customer', 'Partial payment · Outstanding RM '.number_format($total - $paid, 2), 'Review payment', false],
+            $status === QuotationStatus::Confirmed && $paid > 0 && $paid + 0.005 < $total => ['confirmation', 3, 'Pending payment', 'customer', 'Partial payment · Outstanding RM '.number_format($total - $paid, 2).' · Admin may release to CSN', 'Review payment', false],
             $status === QuotationStatus::Confirmed => ['confirmation', 3, 'Pending payment', 'customer', 'Proforma issued · Waiting for customer payment', 'Review payment', false],
             $status === QuotationStatus::PendingApproval => ['confirmation', 3, 'Credit approval', 'action', 'Customer confirmed · Awaiting branch manager credit approval', 'Review credit approval', false],
             $status === QuotationStatus::Accepted => ['confirmation', 3, 'Pending payment', 'customer', $hasProforma ? 'Customer confirmed · Proforma issued · Waiting for payment' : 'Customer confirmed · Proforma being issued', 'Review payment', false],

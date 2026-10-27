@@ -77,7 +77,8 @@ class SelectCompany extends SimplePage implements HasForms
 
     public function getSubheading(): string | Htmlable | null
     {
-        return 'Select a registered company to open its system, or register a new company with BRN.';
+        // no text under the page title (user, 28 Oct 2026)
+        return null;
     }
 
     public function getMaxWidth(): MaxWidth | string | null

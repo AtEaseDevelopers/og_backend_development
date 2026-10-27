@@ -55,8 +55,10 @@
     .ow-crumb { font-size: .75rem; color: var(--ow-muted); margin-bottom: .25rem; }
     .ow-page a.ow-back { justify-self: start; width: fit-content; display: inline-flex; gap: .35rem; align-items: center; font-size: .8125rem; font-weight: 600; color: var(--ow-text); margin-bottom: .9rem; padding: .4rem .8rem; border: 1px solid var(--ow-line); border-radius: .5rem; background-color: var(--ow-bg); text-decoration: none; box-shadow: var(--ow-shadow); }
     .ow-page a.ow-back:hover { background-color: var(--ow-soft-2); text-decoration: none; }
-    .ow-head { display: flex; gap: 1rem; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; margin-bottom: 1rem; }
-    .ow-title { font-size: 1.5rem; line-height: 1.2; font-weight: 700; letter-spacing: -.01em; }
+    .ow-head { display: flex; gap: 1rem; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: .6rem; }
+    /* tighter header (user, 28 Oct 2026): the back link sits beside the title, the cards start higher */
+    .ow-page a.ow-back { margin-bottom: .4rem; }
+    .ow-title { font-size: 1.35rem; line-height: 1.2; font-weight: 700; letter-spacing: -.01em; }
     .ow-title-mono { font-size: 1.6rem; font-weight: 700; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
     .ow-sub { color: var(--ow-muted); margin-top: .25rem; }
     .ow-chips { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .5rem; align-items: center; }
@@ -75,6 +77,9 @@
     .ow-btn-sm { padding: .3rem .6rem; font-size: .75rem; }
     .ow-btn-link { border: 0; background: none; padding: 0; color: var(--ow-link); font-weight: 600; font-size: .8125rem; cursor: pointer; }
     .ow-btn-link:hover { text-decoration: underline; background: none; }
+    /* Duplicate as a small green button (user, 28 Oct 2026: a link looked like the order no.) */
+    .ow-dup { display: inline-flex; align-items: center; margin-left: .35rem; padding: .05rem .5rem; border: 1px solid var(--ow-released-bd); border-radius: .35rem; background: var(--ow-released-bg); color: var(--ow-released-fg); font-size: .72rem; font-weight: 600; line-height: 1.5; text-decoration: none; vertical-align: middle; }
+    .ow-dup:hover { text-decoration: none; filter: brightness(.96); }
     .ow-actions { display: flex; gap: .5rem; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
     .ow-actions-split { display: flex; gap: .5rem; align-items: center; justify-content: space-between; flex-wrap: wrap; }
 
@@ -208,6 +213,9 @@
     .ow-label .ow-req, .ow-field label .ow-req { color: #dc2626; }
     .ow-fgrid { display: grid; gap: .75rem 1rem; grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .ow-fgrid + .ow-fgrid { margin-top: .75rem; }
+    /* two equal columns (Driver notes / Admin notes, user 28 Oct 2026) */
+    .ow-fgrid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    @media (max-width: 639px) { .ow-fgrid-2 { grid-template-columns: minmax(0, 1fr); } }
     .ow-fgrid-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
     /* 7-day date strip (CSN date on the CSN list, created date on Orders): one card per day with its count */
     .ow-strip-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .25rem 1rem; margin-bottom: .45rem; }

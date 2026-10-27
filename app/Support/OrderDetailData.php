@@ -774,14 +774,15 @@ class OrderDetailData
             $type === OrderType::Term => 'Admin release required',
             $type === OrderType::Cod => $order->cod_blocked ? 'COD blocked' : 'Collect on delivery',
             $paid + 0.005 >= $total && $total > 0 => 'Paid in full',
-            // a Cash order still owed: just pending payment (no Admin release for Cash)
-            $order->status === QuotationStatus::Confirmed => 'Pending payment',
+            // a Cash order still owed: pending payment (part-paid, admin may release it to the CSN)
+            $order->status === QuotationStatus::Confirmed => $paid > 0 ? 'Part-paid' : 'Pending payment',
             default => 'Not requested',
         };
 
         $note = match (true) {
             $order->billingStatus() === BillingStatus::Failed => 'Billing generation failed: '.($order->billing_error ?: 'see activity'),
             $type === OrderType::Term && ! $order->isReleased() && $order->status === QuotationStatus::Confirmed => 'Credit order · Admin release issues the invoice and creates the CSN.',
+            $type === OrderType::Cash && ! $order->isReleased() && ! $billed && $order->status === QuotationStatus::Confirmed && $paid > 0 && $paid + 0.005 < $total => 'Part-paid · Admin release goes ahead to the cash bill and CSN before the rest is paid.',
             default => null,
         };
 
@@ -1167,7 +1168,7 @@ class OrderDetailData
     private function permissions(?Quotation $order, ?PortalEnquiry $enquiry, array $stage, bool $lockedByOther, ?int $firstRecordId = null): array
     {
         $user = auth()->user();
-        $isManager = (bool) ($user?->is_hq || $user?->hasAnyRole(['hq_admin', 'branch_manager', 'finance']));
+        $isManager = (bool) ($user?->is_hq || $user?->hasAnyRole(['super_admin', 'branch_admin', 'branch_manager', 'finance']));
         $enquiryStatus = $enquiry?->status instanceof PortalEnquiryStatus ? $enquiry->status : null;
         $status = $order?->status;
         $latest = $order?->isLatestVersion() ?? false;
@@ -1186,8 +1187,10 @@ class OrderDetailData
             'change_type' => $order && $status !== QuotationStatus::Converted && ! $status->isTerminal() && ! $order->paymentTermLocked(),
             // DO number / expected delivery date on the order page (Customer & order → Edit) until the record has a CSN
             'edit_details' => $order && $latest && ! $status->isTerminal() && $order->consignmentNotes->isEmpty(),
-            // Admin release: Credit / Term orders only (a Cash order waits for full payment)
-            'release' => $order && $status === QuotationStatus::Confirmed && $order->orderType() === OrderType::Term && ! $order->isReleased() && $order->billingStatus() !== BillingStatus::Generated && $isManager,
+            // Admin release: Credit / Term orders, or a part-paid Cash order (user, 28 Oct 2026: admin may go ahead to the CSN)
+            'release' => $order && $status === QuotationStatus::Confirmed
+                && ($order->orderType() === OrderType::Term || ($order->orderType() === OrderType::Cash && (float) $order->paid_amount > 0 && (float) $order->paid_amount + 0.005 < (float) $order->total_amount))
+                && ! $order->isReleased() && $order->billingStatus() !== BillingStatus::Generated && $isManager,
             // Block COD is no longer offered (user, 10 Oct 2026); an order blocked before keeps Unblock COD
             'block_cod' => false,
             'unblock_cod' => $order && $order->orderType() === OrderType::Cod && $order->cod_blocked,

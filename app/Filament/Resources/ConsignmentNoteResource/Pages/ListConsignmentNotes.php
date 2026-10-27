@@ -19,6 +19,7 @@ use App\Enums\ServiceType;
 use App\Filament\Resources\ConsignmentNoteResource;
 use App\Models\User;
 use App\Support\CurrentCompany;
+use App\Domains\MasterData\Models\Company;
 use Closure;
 use Filament\Actions;
 use Filament\Forms;
@@ -51,7 +52,7 @@ class ListConsignmentNotes extends ListRecords
         'search', 'csnFrom', 'csnTo', 'jobFrom', 'jobTo', 'createdFrom', 'createdTo',
         'customer', 'orderType', 'serviceType', 'paymentStatus',
         'billingType', 'saLocation', 'transferCode', 'salesperson', 'driver', 'lorry', 'quotation',
-        'claimed', 'assigned', 'hasSubsheets', 'amountMin', 'amountMax',
+        'claimed', 'assigned', 'hasSubsheets', 'amountMin', 'amountMax', 'moved',
     ];
 
     /** The fields behind "Filters +": the panel opens on load when one of them is set. */
@@ -107,6 +108,10 @@ class ListConsignmentNotes extends ListRecords
 
     #[Url(as: 'transfer', except: '')]
     public string $transferCode = '';
+
+    /** Moved to / from another company (user, 28 Oct 2026): out, in, to:<company id> or from:<company id>. */
+    #[Url(as: 'moved', except: '')]
+    public string $moved = '';
 
     #[Url(as: 'salesperson', except: '')]
     public string $salesperson = '';
@@ -190,7 +195,7 @@ class ListConsignmentNotes extends ListRecords
     protected function getTableQuery(): Builder
     {
         return $this->applyFilterBar(parent::getTableQuery())
-            ->with(['deliveryOrder.lorry', 'deliveryOrders.failedDelivery', 'quotation', 'transferCode', 'subsheets.subLorry', 'subsheets.deliveryOrder', 'returnedCsn.receivedBy'])
+            ->with(['company:id,code,name', 'movedToCompany:id,code,name', 'movedBy:id,name', 'deliveryOrder.lorry', 'deliveryOrders.failedDelivery', 'quotation', 'transferCode', 'subsheets.subLorry', 'subsheets.deliveryOrder', 'returnedCsn.receivedBy'])
             ->withCount('breakBulks');
     }
 
@@ -565,6 +570,10 @@ class ListConsignmentNotes extends ListRecords
             $this->withTransferCode($query, $this->transferCode);
         }
 
+        if (filled($this->moved)) {
+            $this->withMoved($query, $this->moved);
+        }
+
         if (filled($this->driver)) {
             $query->whereHas('deliveryOrder', fn (Builder $query): Builder => $query->where('driver_id', $this->driver));
         }
@@ -682,6 +691,51 @@ class ListConsignmentNotes extends ListRecords
             ]))
             ->values()
             ->all();
+    }
+
+    /**
+     * Moved toggles: All, Moved out (this company's CSNs at another company), Moved in (another company's CSNs
+     * here), then one per company with CSNs moved to it (→ KLG) or from it (← KL).
+     */
+    public function movedToggles(): array
+    {
+        $me = (int) CurrentCompany::id();
+        $base = fn () => $this->filteredWithout('moved');
+        $out = fn () => $this->withMoved($base(), 'out');
+        $in = fn () => $this->withMoved($base(), 'in');
+
+        $toggles = [
+            ['value' => '', 'label' => 'All', 'title' => 'Moved or not', 'count' => $base()->count()],
+            ['value' => 'out', 'label' => 'Moved out', 'title' => 'This company\'s CSNs moved to another company', 'count' => $out()->count()],
+            ['value' => 'in', 'label' => 'Moved in', 'title' => 'CSNs another company moved here', 'count' => $in()->count()],
+        ];
+
+        foreach (Company::query()->whereKeyNot($me)->orderBy('code')->get() as $company) {
+            if ($count = $this->withMoved($base(), 'to:'.$company->id)->count()) {
+                $toggles[] = ['value' => 'to:'.$company->id, 'label' => '→ '.$company->code, 'title' => 'Moved to '.$company->name, 'count' => $count];
+            }
+
+            if ($count = $this->withMoved($base(), 'from:'.$company->id)->count()) {
+                $toggles[] = ['value' => 'from:'.$company->id, 'label' => '← '.$company->code, 'title' => 'Moved here from '.$company->name, 'count' => $count];
+            }
+        }
+
+        return $toggles;
+    }
+
+    /** CSNs moved out / in, or to / from one company. */
+    protected function withMoved(Builder $query, string $value): Builder
+    {
+        $me = (int) CurrentCompany::id();
+        [$kind, $id] = array_pad(explode(':', $value, 2), 2, null);
+
+        return match ($kind) {
+            'out' => $query->where('company_id', $me)->whereNotNull('moved_to_company_id'),
+            'in' => $query->where('moved_to_company_id', $me)->where('company_id', '!=', $me),
+            'to' => $query->where('company_id', $me)->where('moved_to_company_id', (int) $id),
+            'from' => $query->where('moved_to_company_id', $me)->where('company_id', (int) $id),
+            default => $query,
+        };
     }
 
     public function transferToggles(): array

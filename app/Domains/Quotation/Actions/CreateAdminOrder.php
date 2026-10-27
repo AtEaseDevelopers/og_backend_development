@@ -113,6 +113,7 @@ class CreateAdminOrder
                         'service_type' => $pair['service_type'] ?? ($data['service_type'] ?? null),
                         'customer_do_number' => $pair['customer_do_number'] ?? null,
                         'expected_delivery_date' => $pair['expected_delivery_date'] ?? null,
+                        'transfer_code' => $pair['transfer_code'] ?? null,
                         // consignor (pickup or store) and the person in charge on each side
                         'consignor_name' => $pair['consignor_name'] ?? null,
                         'store_branch_id' => $pair['store_branch_id'] ?? null,
@@ -170,6 +171,7 @@ class CreateAdminOrder
                     'consignee_pic_phone' => $pair['consignee_pic_phone'] ?? null,
                     'customer_do_number' => $pair['customer_do_number'] ?? null,
                     'expected_delivery_date' => $pair['expected_delivery_date'] ?? null,
+                    'transfer_code' => $pair['transfer_code'] ?? null,
                     'instructions' => $pair['instructions'] ?? null,
                     'admin_notes' => $pair['admin_notes'] ?? null,
                     'stops' => $pair['stops'] ?? null,

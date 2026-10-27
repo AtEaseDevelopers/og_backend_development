@@ -23,7 +23,8 @@ class ViewDeliveryOrder extends ViewRecord
 
     public function getSubheading(): ?string
     {
-        return 'Review delivery task details, proof of delivery, and operational timestamps.';
+        // no text under the page title (user, 28 Oct 2026)
+        return null;
     }
 
     protected function getHeaderActions(): array

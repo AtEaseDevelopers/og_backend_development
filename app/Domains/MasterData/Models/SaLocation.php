@@ -31,10 +31,13 @@ class SaLocation extends Model
         static::saved(fn (SaLocation $branch) => $branch->syncStore());
     }
 
-    /** The branch's store (the Store option on Create order): same code, name, address and active flag. */
+    /**
+     * A new branch gets a first store with its code, name and address (user, 28 Oct 2026: stores are managed in
+     * Master Data → Stores, several per branch, so an existing store is never overwritten here).
+     */
     public function syncStore(): Store
     {
-        return Store::query()->updateOrCreate(['sa_location_id' => $this->id], [
+        return Store::query()->firstOrCreate(['sa_location_id' => $this->id], [
             'company_id' => $this->company_id,
             'branch_id' => $this->branch_id,
             'code' => $this->code,
@@ -44,9 +47,14 @@ class SaLocation extends Model
         ]);
     }
 
+    public function stores(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Store::class, 'sa_location_id');
+    }
+
     public function store(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
-        return $this->hasOne(Store::class, 'sa_location_id');
+        return $this->hasOne(Store::class, 'sa_location_id')->oldestOfMany();
     }
 
     public function branch(): BelongsTo

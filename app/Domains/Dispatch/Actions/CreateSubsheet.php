@@ -54,6 +54,27 @@ class CreateSubsheet
      * A subsheet of the CSN without a lorry yet. Type: Subsheet (incoming_psi), Transfer (transfer, the default)
      * or Break bulk (break_bulk, set from the driver app).
      */
+    /**
+     * The subsheet number (user, 28 Oct 2026): the CSN number + the transfer code, e.g. CSN-KL-JB-261000005A; a
+     * second subsheet with the same code on the CSN is CSN-KL-JB-261000005A-2. Without a code the running SS number.
+     */
+    protected function subsheetNumber(ConsignmentNote $csn, ?string $transferCode): string
+    {
+        if ($transferCode === null || trim($transferCode) === '') {
+            return $this->numbering->next($csn->sourceBranch, DocumentType::Subsheet);
+        }
+
+        $base = $csn->number.strtoupper(trim($transferCode));
+        $number = $base;
+        $n = 1;
+
+        while (Subsheet::query()->where('number', $number)->exists()) {
+            $number = $base.'-'.(++$n);
+        }
+
+        return $number;
+    }
+
     public function forCsn(ConsignmentNote $csn, array $data): Subsheet
     {
         $csn->loadMissing(['deliveryOrder', 'sourceBranch']);
@@ -61,7 +82,7 @@ class CreateSubsheet
         $transferCode = filled($data['transfer_code'] ?? null) ? (string) $data['transfer_code'] : null;
 
         return Subsheet::query()->create([
-            'number' => $this->numbering->next($csn->sourceBranch, DocumentType::Subsheet),
+            'number' => $this->subsheetNumber($csn, $transferCode),
             'consignment_note_id' => $csn->id,
             'transfer_code' => $transferCode,
             'task_type' => $this->taskType($data, $transferCode),

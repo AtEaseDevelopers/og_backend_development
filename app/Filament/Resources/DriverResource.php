@@ -48,10 +48,21 @@ class DriverResource extends Resource
             Forms\Components\Section::make('Lorry')
                 ->description('The lorry number, type and tonne also fill the lorry in Master Data → Fleet Vehicles (created if new) with this driver as its default driver.')
                 ->schema([
-                    Forms\Components\TextInput::make('lorry_group_code')->label('Lorry Group Code')->maxLength(50),
-                    Forms\Components\TextInput::make('lorry_group')->label('Lorry Group Name')->maxLength(150),
-                    Forms\Components\TextInput::make('lorry_company_code')->label('Lorry Company Code')->maxLength(50),
-                    Forms\Components\TextInput::make('lorry_company')->label('Lorry Company')->maxLength(150),
+                    // picked from Master Data → Lorry Companies / Lorry Groups (user, 28 Oct 2026)
+                    Forms\Components\Select::make('lorry_company_id')
+                        ->label('Lorry Company')
+                        ->options(fn () => \App\Domains\MasterData\Models\LorryCompany::query()->where('is_active', true)
+                            ->when(\App\Support\CurrentCompany::id(), fn ($q, $id) => $q->where('company_id', $id))
+                            ->orderBy('name')->get()->mapWithKeys(fn ($c) => [$c->id => $c->label()]))
+                        ->searchable()
+                        ->helperText('Add one in Master Data → Lorry Companies.'),
+                    Forms\Components\Select::make('lorry_group_id')
+                        ->label('Lorry Group')
+                        ->options(fn () => \App\Domains\MasterData\Models\LorryGroup::query()->where('is_active', true)
+                            ->when(\App\Support\CurrentCompany::id(), fn ($q, $id) => $q->where('company_id', $id))
+                            ->orderBy('name')->get()->mapWithKeys(fn ($g) => [$g->id => $g->label()]))
+                        ->searchable()
+                        ->helperText('Add one in Master Data → Lorry Groups.'),
                     Forms\Components\TextInput::make('lorry_number')->label('Lorry Number')->maxLength(30)->placeholder('e.g. JCM 6456'),
                     Forms\Components\TextInput::make('lorry_type')->label('Lorry Type')->maxLength(50)->placeholder('e.g. 24FT'),
                     Forms\Components\TextInput::make('tonnage')->label('Tonne')->numeric()->minValue(0),

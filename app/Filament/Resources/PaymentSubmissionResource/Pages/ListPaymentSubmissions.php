@@ -28,7 +28,8 @@ class ListPaymentSubmissions extends ListRecords
 
     public function getSubheading(): ?string
     {
-        return 'Customer payment proofs and counter payments awaiting verification / approval.';
+        // no text under the page title (user, 28 Oct 2026)
+        return null;
     }
 
     protected function getHeaderActions(): array

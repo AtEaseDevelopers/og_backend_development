@@ -35,7 +35,7 @@ class FlagVehicleMaintenanceDue
                 ->where(function ($q) {
                     $q->where('is_hq', true)
                         ->orWhereHas('roles', fn ($r) => $r->whereIn('name', [
-                            'hq_admin', 'branch_manager', 'dispatcher',
+                            'super_admin', 'branch_admin', 'branch_manager', 'dispatcher',
                         ]));
                 })
                 ->get();

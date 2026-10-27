@@ -184,6 +184,6 @@ class SharedDispatch extends Page implements HasForms
         $user = auth()->user();
 
         return $user?->is_hq
-            || $user?->hasAnyRole(['hq_admin', 'branch_manager', 'dispatcher']);
+            || $user?->hasAnyRole(['super_admin', 'branch_admin', 'branch_manager', 'dispatcher']);
     }
 }

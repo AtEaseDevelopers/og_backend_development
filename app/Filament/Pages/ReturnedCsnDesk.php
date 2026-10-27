@@ -60,7 +60,8 @@ class ReturnedCsnDesk extends Page
 
     public function getSubheading(): ?string
     {
-        return 'Scan and review returned original CSNs and their linked delivery records.';
+        // no text under the page title (user, 28 Oct 2026)
+        return null;
     }
 
     public function updatedScanInput(): void
@@ -265,6 +266,6 @@ class ReturnedCsnDesk extends Page
         $user = auth()->user();
 
         return $user?->is_hq
-            || $user?->hasAnyRole(['hq_admin', 'branch_manager', 'counter', 'storekeeper', 'finance']);
+            || $user?->hasAnyRole(['super_admin', 'branch_admin', 'branch_manager', 'counter', 'storekeeper', 'finance']);
     }
 }

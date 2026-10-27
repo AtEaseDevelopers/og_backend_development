@@ -4,7 +4,7 @@
 > what is done, what is left, and the rules the user has set. Update it whenever an item changes status,
 > and refresh "Last updated" with the output of plain `date` (local Malaysia time).
 
-**Last updated:** Tue Oct 27 02:55:00 MPST 2026 · Round 7 committed and pushed
+**Last updated:** Wed Oct 28 01:56:55 MPST 2026 · Round 8 committed and pushed
 
 **Previous round:** finished and pushed as commit `a29b179` on `main` (8 Oct 2026: orders, order details,
 billing / COD / Term, CSN bulk actions, QR codes, returned-CSN scanning, cash bill calculator). Its details are
@@ -396,6 +396,35 @@ Legend: [x] done · [~] done in code, not yet browser-checked · [ ] not started
 | 7.25 | Pickup subsheet "0 created": not a bug — the chosen lorry was the CSN's own main lorry (skipped on purpose); now the action says why ("JCM 6456 already carries this CSN… pick another lorry, or leave Lorries empty") | Done, tested |
 | 7.26 | CSN list filter bar: Search and CSN date on top; Customer, Order type and Payment status moved under "Filters +" | Done |
 | 7.27 | Job sheet list: a Print action on every row (same PDF as the job sheet page) | Done, tested |
+
+## Round 8 (user, 28 Oct) — not committed
+
+| # | Change | Status |
+|---|---|---|
+| 8.1 | Stores are master data again (Master Data → Stores card): a store belongs to a Branch and a branch has several stores (migration `2026_10_28_100000` drops the one-store-per-branch rule); a new branch still gets a first store, but branches no longer overwrite stores. Create order's (Pick Up) / (Drop Off) Store lists every store with its branch; with one store on the company's branch it is picked for you, with several the user picks | Done, tested |
+| 8.2 | Customer view page: no page header (breadcrumbs + title), the cards start at the top | Done |
+| 8.3 | Roles: hq_admin renamed **super_admin** (migration `2026_10_28_110000`, the users keep it); new **branch_admin** (given the branch manager's rights wherever both admins were listed). Master Data → Company section (Company, Branches, Staff accounts, System Settings): super_admin sees every company; branch_admin only the companies assigned to them (Company access) — their companies, branches and staff, and may not give the super_admin role; no other role sees the section | Done, tested |
+| 8.4 | Products & pricing per company: Measurements, Items, Chartered Lorry and Drop-off Min Charges belong to one company (`uoms.branch_id`, migration `2026_10_28_120000`; product code unique per company); every list, picker, price lookup and import sees the current company's rows only, new rows belong to it. Existing products / prices → KL; JB, Klang and Penang start empty | Done, tested |
+| 8.5 | Master Data → Lorry Companies and Lorry Groups (code, name, contact, email, address; per company); the driver form picks them (the driver's text columns follow, so the PO / job sheet prints and the driver import keep working; the import links or creates the records). Migration `2026_10_28_130000` makes the records from the drivers' existing text | Done, tested |
+| 8.6 | Page headers: only the main label — the crumb line and description removed on Create order / quotation / Edit order, Orders and Order details, and the subheading text on 19 Filament pages (Cash Bill, COD Listing, Credit approval, Daily lorry schedule, Dashboard, Delivery monitoring, Portal enquiries, Reports, Returned CSN desk, System Settings, Break bulk, Delivery order, Failed deliveries, Missing CSN logs, OCR uploads, Payment submissions, …) | Done, tested |
+| 8.7 | Create order: the long salesperson / payment-term note removed; headers tighter (back link beside the title, smaller title, less gap) on the order pages and on every Filament page; Orders list: Duplicate is a text link instead of an icon | Done, tested |
+| 8.8 | Create order: "Pickup location" → **Consignor Address**, "Drop-off location" → **Consignee Address**; a **Multiple address** tick beside each label — ticked, that card lists its extra addresses, each with its own DO number, and the DO number field below the cards hides (it moves into the ticked card(s)); saved as the record's stops as before | Done, tested |
+| 8.9 | Create order: picking a consignor / consignee fills the address and area only on Pickup / Deliver (not when the side is a store); toggles read Pickup / **Customer Drop Off** and Deliver / **Self Collection**; Driver notes and Admin notes half-width each | Done, tested |
+| 8.10 | Customer history popup (beside Line total): a **Default price** tab — the whole default price list (the same for every customer) with category and sub-category filters | Done, tested |
+| 8.11 | Cash Bill Payment: "Company-Configured Method" removed from the payment methods | Done |
+| 8.12 | CSN numbers renumbered to the client's format (superseded by 8.23: CSN-EE-XX-YYMM#####) | Done, tested |
+| 8.13 | Quotation / order page: L, W and H are min – max ranges (two fields each, weight stays one); the size band must contain the whole range | Done, tested |
+| 8.14 | CSN moved to another company: row and bulk **Move to company**, **Take back**; the other company sees the CSN in its list and may only assign it to a lorry (no edit, claim, payment, proforma, subsheets); **Moved** column (→ KLG / ← KL) and **Moved** toggles (Moved out / Moved in / per company) on the CSN list; migration `2026_10_28_150000` | Done, tested |
+| 8.15 | Orders list: the copy icon works on a plain-http page too (hidden text box fallback); Duplicate is a small green button, not a link | Done |
+| 8.16 | Order form: a **Transfer code** select per block (saved on the order; Bulk order processing makes the CSN's subsheet with it — the code itself lives on the subsheet); migration `2026_10_28_160000` | Done, tested |
+| 8.17 | Orders page: **Bulk order processing** slide-over — lorry, transfer-code filter, tick the Pending item orders (Select all); each is verified, its CSN created and put on the lorry; an order with a transfer code gets a subsheet with that code on the lorry | Done, tested |
+| 8.18 | CSN numbering: a code's running number continues after the highest number in use across companies (a JB salesperson's order at the KL company no longer clashes with the JB company's CSNs — the "Duplicate entry JB-261000002" billing error) | Done, tested |
+| 8.19 | Job sheet PDF: column label "CSM No." → "CSN No." | Done |
+| 8.20 | Admin release also for a part-paid Cash order (customer paid part; admin may go ahead to the cash bill and CSN); the payment flow stays: portal payment → Payment verification (admin verifies), admin-recorded payment → verified at once, Pending item only for Store orders | Done, tested |
+| 8.21 | Job sheet PDF in landscape | Done |
+| 8.22 | Subsheet numbers = CSN number + transfer code (CSN-KL-JB-261000005A; a second one with the same code …A-2); subsheets without a code keep a running `SS-KL-YYMM#####`; existing ones renumbered by the 8.23 migration (old numbers kept in `subsheets.old_number`) | Done, tested |
+| 8.23 | **Document numbers in the client's format** — `ZZ-EE-YYMM#####` (type, company, month, 5-digit running no. per company/type/month): ORD-KL-261000001, QT-KL-261000001(-V2), Q-KL-261000001, JS-KL-…, PI-KL-…, INV-KL-…, OR-KL-…, PV-KL-…, RN-KL-…, CB-KL-…, CS-KL-… (also DO-KL-…, SS-KL-…, BB-KL-…, CPO/CPI); CSN `CSN-EE-XX-YYMM#####` (CSN-KL-JB-261000001, XX = branch CSN code, month the order was placed); subsheet = CSN no. + transfer code. Migration `2026_10_28_180000` renumbers every existing document (old month and running number kept, so INV-… / OR-… sent to customers map 1:1: KL-INV-202610-0009 → INV-KL-261000009), copies on CSNs / refund notes follow, CSNs and Quotations-page numbers are numbered again in creation order (old CSN / subsheet numbers kept in `old_number`), counters continue after them | Done, tested |
+| 8.24 | Job sheet PDF: the row-number column has no "No." label (the header read "No.CSN No.") | Done |
 
 ## Open questions for the user
 - Round 6: truncating customers resets IDs, so old orders / CSNs / invoices would show the new customer that gets their old ID. Kept IDs instead (unused customers removed, used ones inactive). Clean slate (clear old test orders too) only if the user confirms. Role name "Branch Manager" and data names like "KL Branch" were left unchanged; customer portal wording left as branch/company.

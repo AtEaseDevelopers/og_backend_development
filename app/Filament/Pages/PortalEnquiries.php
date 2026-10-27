@@ -70,7 +70,8 @@ class PortalEnquiries extends Page
 
     public function getSubheading(): ?string
     {
-        return 'Review and verify transportation requests submitted via the Customer Portal.';
+        // no text under the page title (user, 28 Oct 2026)
+        return null;
     }
 
     public function applyFilters(): void

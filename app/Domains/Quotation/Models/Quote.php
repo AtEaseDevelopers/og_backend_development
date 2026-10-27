@@ -26,7 +26,7 @@ class Quote extends Model
     /** The customer accepted it: its prices are the customer's special prices (user, 21 Oct 2026). */
     public const ACCEPTED = 'accepted';
 
-    /** Quotation numbers: Q00001, Q00002, … */
+    /** Quotation numbers (user, 28 Oct 2026): Q-KL-261000001 (Q, the company code, the month and a running number) */
     public const PREFIX = 'Q';
 
     public const STATUSES = [
@@ -51,17 +51,12 @@ class Quote extends Model
         ];
     }
 
-    /**
-     * The next quotation number: the last one plus 1, Q and five digits ("Q00001" when there is none yet). Call
-     * inside the transaction that saves the quotation (the last number is locked).
-     */
-    public static function nextNumber(): string
+    /** The next quotation number of the opened company: Q-KL-261000001 (a running number per company and month). */
+    public static function nextNumber(?int $branchId = null): string
     {
-        $last = DB::table('quotes')->lockForUpdate()
-            ->selectRaw('MAX(CAST(REPLACE(number, ?, \'\') AS UNSIGNED)) as last', [self::PREFIX])
-            ->value('last');
+        $branchId ??= \App\Support\CurrentCompany::branchId() ?? (int) Branch::query()->orderBy('id')->value('id');
 
-        return self::PREFIX.str_pad((string) (((int) $last) + 1), 5, '0', STR_PAD_LEFT);
+        return app(\App\Services\DocumentNumberingService::class)->next($branchId, \App\Enums\DocumentType::Quote);
     }
 
     public function customer(): BelongsTo

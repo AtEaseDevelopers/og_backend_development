@@ -53,7 +53,8 @@ class DeliveryMonitoring extends Page
 
     public function getSubheading(): ?string
     {
-        return 'Monitor delivery tasks and identify scheduled tasks requiring further action.';
+        // no text under the page title (user, 28 Oct 2026)
+        return null;
     }
 
     public function applyFilters(): void
@@ -177,6 +178,6 @@ class DeliveryMonitoring extends Page
         $user = auth()->user();
 
         return $user?->is_hq
-            || $user?->hasAnyRole(['hq_admin', 'branch_manager', 'dispatcher']);
+            || $user?->hasAnyRole(['super_admin', 'branch_admin', 'branch_manager', 'dispatcher']);
     }
 }

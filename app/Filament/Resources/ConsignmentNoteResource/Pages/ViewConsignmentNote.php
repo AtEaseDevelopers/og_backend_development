@@ -56,7 +56,7 @@ class ViewConsignmentNote extends ViewRecord
                 ->icon('heroicon-o-document-duplicate')
                 ->color('warning')
                 // no lorry needed on the CSN first; the subsheet's own lorry is optional (assigned later)
-                ->visible(fn () => $record->status !== CsnStatus::Cancelled)
+                ->visible(fn () => ! $record->isMovedIn() && $record->status !== CsnStatus::Cancelled)
                 ->form(ConsignmentNoteResource::subsheetCreateForm())
                 ->action(function (array $data) use ($record) {
                     try {

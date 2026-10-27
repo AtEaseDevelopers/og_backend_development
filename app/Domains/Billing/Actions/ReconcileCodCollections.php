@@ -54,7 +54,7 @@ class ReconcileCodCollections
             $voucher = null;
             if ($shortage > 0) {
                 $voucher = PaymentVoucher::query()->create([
-                    'number' => 'PV-'.$this->numbering->next($branchId, DocumentType::Receipt),
+                    'number' => $this->numbering->next($branchId, DocumentType::PaymentVoucher),
                     'source_branch_id' => $branchId,
                     'driver_id' => $driver->id,
                     'amount' => $shortage,

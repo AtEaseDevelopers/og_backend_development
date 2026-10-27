@@ -188,6 +188,6 @@ class AutoCountSync extends Page implements HasForms, HasTable
     {
         $user = auth()->user();
 
-        return $user?->is_hq || $user?->hasAnyRole(['hq_admin', 'finance', 'branch_manager']);
+        return $user?->is_hq || $user?->hasAnyRole(['super_admin', 'finance', 'branch_manager']);
     }
 }

@@ -26,7 +26,6 @@
         <a href="{{ $d['urls']['index'] }}" class="ow-back">← Back to orders</a>
         <div class="ow-head" style="margin-bottom:0">
             <div>
-                <div class="ow-crumb">Order details · {{ $d['customer'] }}</div>
                 <div class="ow-title-mono">{{ $d['number'] }}</div>
                 <div class="ow-chips">
                     <span class="ow-pill ow-pill-{{ $d['stage']['color'] }}">{{ $d['stage']['label'] }}</span>

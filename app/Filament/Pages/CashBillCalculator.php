@@ -87,7 +87,8 @@ class CashBillCalculator extends Page
 
     public function getSubheading(): ?string
     {
-        return 'Choose the customer and tick the Cash Bill CSNs being paid (or scan their QR codes), record the payment and print the receipt.';
+        // no text under the page title (user, 28 Oct 2026)
+        return null;
     }
 
     protected function getHeaderActions(): array
@@ -114,7 +115,7 @@ class CashBillCalculator extends Page
             ['key' => 'ewallet', 'label' => 'eWallet'],
             ['key' => 'bank_transfer', 'label' => 'Bank Transfer'],
             ['key' => 'online', 'label' => 'Online Payment'],
-            ['key' => 'counter', 'label' => 'Company-Configured Method'],
+            // Company-Configured Method removed (user, 28 Oct 2026)
         ];
     }
 

@@ -63,7 +63,7 @@ class VerifyCodCollection
 
             if ($shortage > 0 && $payment->driver_id) {
                 PaymentVoucher::query()->create([
-                    'number' => 'PV-'.$this->numbering->next($payment->source_branch_id, DocumentType::Receipt),
+                    'number' => $this->numbering->next($payment->source_branch_id, DocumentType::PaymentVoucher),
                     'source_branch_id' => $payment->source_branch_id,
                     'driver_id' => $payment->driver_id,
                     'amount' => $shortage,

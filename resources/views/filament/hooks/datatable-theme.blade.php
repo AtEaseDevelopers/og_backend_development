@@ -1,4 +1,9 @@
 <style>
+    /* page headers (user, 28 Oct 2026): the main label only, less space above the content */
+    .fi-page .fi-header { margin-bottom: 0; }
+    .fi-page .fi-page-header-main-ctn { gap: .25rem; }
+    .fi-page .fi-header-heading { font-size: 1.35rem; }
+    .fi-page > section, .fi-page .fi-page-content { gap: 1rem; }
     /*
      * Global datatable convention: "Showing x to y of z" on the left, per-page selector and
      * page numbers together on the right. Filament renders a 3-column grid that centres the

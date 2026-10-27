@@ -388,32 +388,48 @@ class CreateOrder extends Page
         return array_map(fn (string $key) => (int) (explode(':', $key, 2)[1] ?? 0), array_keys($this->catalogOptions('uom') + $this->catalogOptions('lorry')));
     }
 
+    /** The L, W and H of a Measurement row as [min, max] ranges and its weight (user, 28 Oct 2026); null where not entered. */
+    protected function measurementRanges(array $item): array
+    {
+        $num = fn (string $key) => is_numeric($item[$key] ?? null) ? (float) $item[$key] : null;
+
+        return [
+            'l' => [$num('length'), $num('length_max')],
+            'w' => [$num('width'), $num('width_max')],
+            'h' => [$num('height'), $num('height_max')],
+            'kg' => $num('weight'),
+        ];
+    }
+
     /**
-     * The size band of a Measurement row: the product of its sub-category whose limits the goods' L, W, H and weight
-     * fit (L+W+H, length, width, height and weight ranges of the price list); the tightest band when several fit.
+     * The size band of a Measurement row: the product of its sub-category whose limits the goods' L, W, H ranges and
+     * weight fit (L+W+H, length, width, height and weight ranges of the price list, the whole min – max inside the
+     * band's); the tightest band when several fit.
      */
     public function measurementProduct(array $item): ?Uom
     {
         $sub = trim((string) ($item['sub_category'] ?? ''));
-        $size = array_map(fn (string $dim) => is_numeric($item[$dim] ?? null) ? (float) $item[$dim] : null, ['l' => 'length', 'w' => 'width', 'h' => 'height', 'kg' => 'weight']);
+        $size = $this->measurementRanges($item);
 
-        if ($sub === '' || in_array(null, $size, true)) {
+        if ($sub === '' || $size['kg'] === null || in_array(null, [...$size['l'], ...$size['w'], ...$size['h']], true)) {
             return null;
         }
 
-        $within = fn (float $value, $min, $max) => ($min === null || $value >= (float) $min - 0.0001) && ($max === null || $value <= (float) $max + 0.0001);
-        $lwh = $size['l'] + $size['w'] + $size['h'];
+        // the whole entered range lies inside the band
+        $within = fn (float $lo, float $hi, $min, $max) => ($min === null || min($lo, $hi) >= (float) $min - 0.0001) && ($max === null || max($lo, $hi) <= (float) $max + 0.0001);
+        $lwhLo = $size['l'][0] + $size['w'][0] + $size['h'][0];
+        $lwhHi = $size['l'][1] + $size['w'][1] + $size['h'][1];
 
         return Uom::query()
             ->whereIn('id', $this->offeredProductIds())
             ->where('category', Uom::MEASUREMENT)
             ->where('sub_category', $sub)
             ->get()
-            ->filter(fn (Uom $uom) => $within($lwh, $uom->min_lwh, $uom->max_lwh)
-                && $within($size['l'], $uom->min_length, $uom->max_length)
-                && $within($size['w'], null, $uom->max_width)
-                && $within($size['h'], null, $uom->max_height)
-                && $within($size['kg'], $uom->min_weight, $uom->max_weight))
+            ->filter(fn (Uom $uom) => $within($lwhLo, $lwhHi, $uom->min_lwh, $uom->max_lwh)
+                && $within($size['l'][0], $size['l'][1], $uom->min_length, $uom->max_length)
+                && $within($size['w'][0], $size['w'][1], null, $uom->max_width)
+                && $within($size['h'][0], $size['h'][1], null, $uom->max_height)
+                && $within($size['kg'], $size['kg'], $uom->min_weight, $uom->max_weight))
             // a per-kg product only when no per-piece band fits; then the tightest size, then weight
             ->sortBy([
                 fn (Uom $a, Uom $b) => str_ends_with($a->name, '(per kg)') <=> str_ends_with($b->name, '(per kg)'),
@@ -423,19 +439,25 @@ class CreateOrder extends Page
             ->first();
     }
 
-    /** "Bundle · 150 × 100 × 25 cm · 100 kg" once the product and its full size are entered. */
+    /** "10 – 20" (or "15" when both ends agree) for the size text. */
+    protected static function rangeText(array $range): string
+    {
+        $fmt = fn ($v) => rtrim(rtrim(number_format((float) $v, 2, '.', ''), '0'), '.');
+
+        return abs($range[0] - $range[1]) < 0.0001 ? $fmt($range[0]) : $fmt(min($range)).' – '.$fmt(max($range));
+    }
+
+    /** "Bundle · L 100 – 150 × W 100 × H 20 – 25 cm · 100 kg" once the product and its full size are entered. */
     protected function measurementSize(array $item): ?string
     {
         $sub = trim((string) ($item['sub_category'] ?? ''));
-        $dims = array_map(fn (string $dim) => is_numeric($item[$dim] ?? null) ? rtrim(rtrim(number_format((float) $item[$dim], 2, '.', ''), '0'), '.') : null, ['length', 'width', 'height', 'weight']);
+        $size = $this->measurementRanges($item);
 
-        if ($sub === '' || in_array(null, $dims, true)) {
+        if ($sub === '' || $size['kg'] === null || in_array(null, [...$size['l'], ...$size['w'], ...$size['h']], true)) {
             return null;
         }
 
-        [$l, $w, $h, $kg] = $dims;
-
-        return "{$sub} · {$l} × {$w} × {$h} cm · {$kg} kg";
+        return "{$sub} · L ".static::rangeText($size['l']).' × W '.static::rangeText($size['w']).' × H '.static::rangeText($size['h']).' cm · '.static::rangeText([$size['kg'], $size['kg']]).' kg';
     }
 
     /** The note under a Measurement row's size fields. */
@@ -444,20 +466,20 @@ class CreateOrder extends Page
         $sub = trim((string) ($item['sub_category'] ?? ''));
 
         if ($sub === '') {
-            return 'Choose the product, then enter its size and weight.';
+            return 'Choose the product, then enter its size range and weight.';
         }
 
-        $filled = array_filter(['length', 'width', 'height', 'weight'], fn (string $dim) => is_numeric($item[$dim] ?? null));
-
+        $size = $this->measurementRanges($item);
+        $complete = $size['kg'] !== null && ! in_array(null, [...$size['l'], ...$size['w'], ...$size['h']], true);
         $matched = filled($item['catalog_key'] ?? null);
 
-        if (count($filled) < 4) {
-            return $matched ? 'Size band: '.$item['item_name'].' · enter L, W, H and weight to check it.' : 'Enter L, W, H and weight: the size band they fit sets the price.';
+        if (! $complete) {
+            return $matched ? 'Size band: '.$item['item_name'].' · enter the L, W, H ranges and weight to check it.' : 'Enter the L, W, H ranges (min – max) and weight: the size band they fit sets the price.';
         }
 
         return $matched
             ? 'Size band: '.$item['item_name']
-            : 'No '.$sub.' size band fits '.$item['length'].' × '.$item['width'].' × '.$item['height'].' cm, '.$item['weight'].' kg · key in the unit price, or check the size / choose another product.';
+            : 'No '.$sub.' size band fits L '.static::rangeText($size['l']).' × W '.static::rangeText($size['w']).' × H '.static::rangeText($size['h']).' cm, '.static::rangeText([$size['kg'], $size['kg']]).' kg · key in the unit price, or check the size / choose another product.';
     }
 
     /** @return array<string, mixed> the working order as it is now */
@@ -937,9 +959,19 @@ class CreateOrder extends Page
     }
 
     /** Consignor toggle: Pick up (collected from the consignor) or Store (brought to an O&G branch). @return array<string, string> */
+    /** The active transfer codes, "A — From Johor … to KL". @return array<string, string> */
+    public function transferCodeOptions(): array
+    {
+        static $options;
+
+        return $options ??= \App\Domains\MasterData\Models\TransferCode::query()->where('is_active', true)->orderBy('code')->get()
+            ->mapWithKeys(fn ($code) => [$code->code => filled($code->name) ? $code->code.' — '.$code->name : $code->code])->all();
+    }
+
     public function serviceTypeOptions(): array
     {
-        return [ServiceType::Pickup->value => 'Pickup', ServiceType::Store->value => 'Store'];
+        // the consignor brings the goods to a store = "Customer Drop Off" (user, 28 Oct 2026)
+        return [ServiceType::Pickup->value => 'Pickup', ServiceType::Store->value => 'Customer Drop Off'];
     }
 
     /** @return array<string, string> */
@@ -1102,9 +1134,13 @@ class CreateOrder extends Page
             'consignee_store_id' => '',
             'customer_do_number' => '',
             // several pick-up / drop-off locations, each with its own DO number (user, 27 Oct 2026)
-            'multi_stops' => false,
-            'stops' => [],
+            'multi_pickup' => false,
+            'pickup_stops' => [],
+            'multi_dropoff' => false,
+            'dropoff_stops' => [],
             'expected_delivery_date' => '',
+            // the order's transfer code (user, 28 Oct 2026): Bulk order processing puts a subsheet with it on the lorry
+            'transfer_code' => '',
             // Driver notes (printed on the CSN) and Admin notes (internal), user 27 Oct 2026
             'instructions' => '',
             'admin_notes' => '',
@@ -1119,7 +1155,7 @@ class CreateOrder extends Page
             'line_type' => 'uom', 'catalog_key' => '', 'item_name' => '', 'uom' => '', 'quantity' => 1,
             // the product type first (Measurement / Item / Lorry, user 21 Oct 2026); a Measurement product is its
             // sub-category with the goods' size and weight: the size band they fit is the product priced
-            'kind' => '', 'sub_category' => '', 'length' => '', 'width' => '', 'height' => '', 'weight' => '',
+            'kind' => '', 'sub_category' => '', 'length' => '', 'length_max' => '', 'width' => '', 'width_max' => '', 'height' => '', 'height_max' => '', 'weight' => '',
             // a Measurement row whose size no band fits: named by its size, the price keyed in
             'no_band' => false,
             'unit_price' => null, 'tier' => null, 'source' => null, 'available' => null,
@@ -1236,17 +1272,16 @@ class CreateOrder extends Page
     {
         // consignee Store (user, 27 Oct 2026): the store's address is the drop-off location and its area the To location
         // "Multiple pick-up / drop-off" switched on: the stops start as this record's pick-up and drop-off (with its DO number)
-        if (preg_match('/^(\d+)\.multi_stops$/', $key, $m)) {
+        if (preg_match('/^(\d+)\.multi_(pickup|dropoff)$/', $key, $m)) {
             $index = (int) $m[1];
+            $side = $m[2];
             $pair = &$this->pairs[$index];
 
-            if (! empty($pair['multi_stops']) && empty($pair['stops'])) {
-                $pair['stops'] = [
-                    ['type' => \App\Support\OrderStops::PICKUP, 'location' => (string) ($pair['pickup_location'] ?? ''), 'do_number' => (string) ($pair['customer_do_number'] ?? '')],
-                    ['type' => \App\Support\OrderStops::DROPOFF, 'location' => (string) ($pair['drop_off_location'] ?? ''), 'do_number' => ''],
-                ];
-            } elseif (empty($pair['multi_stops']) && blank($pair['customer_do_number'] ?? null)) {
-                $pair['customer_do_number'] = (string) (\App\Support\OrderStops::doNumbers($pair['stops'] ?? [])[0] ?? '');
+            // ticked: the side's first extra address starts with the DO number of the record (which moves up here)
+            if (! empty($pair['multi_'.$side]) && empty($pair[$side.'_stops'])) {
+                $pair[$side.'_stops'] = [array_merge(\App\Support\OrderStops::blank($side === 'pickup' ? \App\Support\OrderStops::PICKUP : \App\Support\OrderStops::DROPOFF), ['location' => (string) ($pair[$side === 'pickup' ? 'pickup_location' : 'drop_off_location'] ?? ''), 'do_number' => (string) ($pair['customer_do_number'] ?? '')])];
+            } elseif (empty($pair['multi_pickup']) && empty($pair['multi_dropoff']) && blank($pair['customer_do_number'] ?? null)) {
+                $pair['customer_do_number'] = (string) (\App\Support\OrderStops::doNumbers([...($pair['pickup_stops'] ?? []), ...($pair['dropoff_stops'] ?? [])])[0] ?? '');
             }
 
             unset($pair);
@@ -1392,13 +1427,16 @@ class CreateOrder extends Page
                 $pair['consignor_pic_name'] = (string) ($party->pic_name ?? $pair['consignor_pic_name'] ?? '');
                 $pair['consignor_pic_phone'] = (string) ($party->phone ?? $pair['consignor_pic_phone'] ?? '');
 
-                if (filled($party->address)) {
-                    $pair['pickup_preset'] = OrderFormOptions::NEW_ADDRESS;
-                    $pair['pickup_location'] = (string) $party->address;
-                }
+                // the address and area only on a Pickup (a Customer Drop Off keeps the store's, user 28 Oct 2026)
+                if (($pair['service_type'] ?? '') !== ServiceType::Store->value) {
+                    if (filled($party->address)) {
+                        $pair['pickup_preset'] = OrderFormOptions::NEW_ADDRESS;
+                        $pair['pickup_location'] = (string) $party->address;
+                    }
 
-                if ($party->location_id) {
-                    $pair['from_location_id'] = (string) $party->location_id;
+                    if ($party->location_id) {
+                        $pair['from_location_id'] = (string) $party->location_id;
+                    }
                 }
 
                 return;
@@ -1408,12 +1446,15 @@ class CreateOrder extends Page
             $pair['consignee_pic_name'] = (string) ($party->pic_name ?? $pair['consignee_pic_name'] ?? '');
             $pair['consignee_pic_phone'] = (string) ($party->phone ?? $pair['consignee_pic_phone'] ?? '');
 
-            if (filled($party->address)) {
+            // the address and area only on a Deliver (a Self Collection keeps the store's, user 28 Oct 2026)
+            $deliver = ($pair['consignee_mode'] ?? 'deliver') !== 'store';
+
+            if ($deliver && filled($party->address)) {
                 $pair['drop_off_preset'] = OrderFormOptions::NEW_ADDRESS;
                 $pair['drop_off_location'] = (string) $party->address;
             }
 
-            if ($party->location_id) {
+            if ($deliver && $party->location_id) {
                 $pair['to_location_id'] = (string) $party->location_id;
                 unset($pair);
                 $this->refreshPairPrices($index);
@@ -1478,7 +1519,7 @@ class CreateOrder extends Page
             return;
         }
 
-        if (preg_match('/^(\d+)\.items\.(\d+)\.(kind|sub_category|length|width|height|weight)$/', $key, $m)) {
+        if (preg_match('/^(\d+)\.items\.(\d+)\.(kind|sub_category|length|length_max|width|width_max|height|height_max|weight)$/', $key, $m)) {
             $index = (int) $m[1];
             $itemIndex = (int) $m[2];
             $item = &$this->pairs[$index]['items'][$itemIndex];
@@ -1488,13 +1529,13 @@ class CreateOrder extends Page
             if ($m[3] === 'sub_category' && $value === self::OTHER_PRODUCT) {
                 $item = array_merge($item, [
                     'line_type' => 'uom', 'catalog_key' => '', 'item_name' => '', 'uom' => '', 'manual_price' => '', 'price_edited' => false,
-                    'unit_price' => null, 'tier' => null, 'no_band' => false, 'length' => '', 'width' => '', 'height' => '', 'weight' => '',
+                    'unit_price' => null, 'tier' => null, 'no_band' => false, 'length' => '', 'length_max' => '', 'width' => '', 'width_max' => '', 'height' => '', 'height_max' => '', 'weight' => '',
                 ]);
 
                 return;
             }
 
-            if (in_array($m[3], ['length', 'width', 'height', 'weight'], true) && ($item['sub_category'] ?? '') === self::OTHER_PRODUCT) {
+            if (in_array($m[3], ['length', 'length_max', 'width', 'width_max', 'height', 'height_max', 'weight'], true) && ($item['sub_category'] ?? '') === self::OTHER_PRODUCT) {
                 return;
             }
 
@@ -1511,7 +1552,7 @@ class CreateOrder extends Page
                 // another type: the row starts again
                 $item = array_merge($item, [
                     'line_type' => 'uom', 'catalog_key' => '', 'item_name' => '', 'uom' => '', 'sub_category' => '',
-                    'length' => '', 'width' => '', 'height' => '', 'weight' => '', 'manual_price' => '', 'price_edited' => false,
+                    'length' => '', 'length_max' => '', 'width' => '', 'width_max' => '', 'height' => '', 'height_max' => '', 'weight' => '', 'manual_price' => '', 'price_edited' => false,
                     'no_band' => false,
                 ]);
             } else {
@@ -1771,16 +1812,18 @@ class CreateOrder extends Page
         $this->pairs[$index]['items'][] = $this->itemTemplate();
     }
 
-    /** Another stop of a record with several pick-up / drop-off locations (user, 27 Oct 2026). */
-    public function addStop(int $index): void
+    /** Another address of a side (consignor = pickup, consignee = dropoff), with its own DO number (user, 28 Oct 2026). */
+    public function addStop(int $index, string $side = 'pickup'): void
     {
-        $this->pairs[$index]['stops'][] = \App\Support\OrderStops::blank();
+        $side = $side === 'dropoff' ? 'dropoff' : 'pickup';
+        $this->pairs[$index][$side.'_stops'][] = \App\Support\OrderStops::blank($side === 'pickup' ? \App\Support\OrderStops::PICKUP : \App\Support\OrderStops::DROPOFF);
     }
 
-    public function removeStop(int $index, int $stopIndex): void
+    public function removeStop(int $index, string $side, int $stopIndex): void
     {
-        unset($this->pairs[$index]['stops'][$stopIndex]);
-        $this->pairs[$index]['stops'] = array_values($this->pairs[$index]['stops']);
+        $side = $side === 'dropoff' ? 'dropoff' : 'pickup';
+        unset($this->pairs[$index][$side.'_stops'][$stopIndex]);
+        $this->pairs[$index][$side.'_stops'] = array_values($this->pairs[$index][$side.'_stops']);
     }
 
     public function removeItem(int $index, int $itemIndex): void
@@ -2021,6 +2064,8 @@ class CreateOrder extends Page
                     'customer' => $this->customerName(),
                     // the customer's special prices, as on Customer → Special price (user, 25 Oct 2026)
                     'special' => $customerId ? \App\Filament\Resources\CustomerResource::specialPrices(Customer::query()->find($customerId)) : [],
+                    // the default price list (user, 28 Oct 2026): the same for every customer, filtered by category / sub-category
+                    'defaults' => \App\Filament\Resources\CustomerResource::defaultPrices(),
                     'rows' => $customerId
                         ? app(CustomerQuotationPriceHistory::class)->productHistory((int) $customerId, null, null, $this->historyExcludedQuotationIds(), 100, CurrentCompany::id())
                         : [],
@@ -2290,14 +2335,25 @@ class CreateOrder extends Page
             'pairs.*.to_location_id' => 'nullable|exists:locations,id',
             'pairs.*.from_location_id' => 'nullable|exists:locations,id',
             // with several stops the DO numbers are on the stops
-            'pairs.*.customer_do_number' => 'required_if:pairs.*.multi_stops,false|nullable|string|max:100',
-            'pairs.*.stops' => 'array',
-            'pairs.*.stops.*.type' => 'nullable|in:pickup,dropoff',
-            'pairs.*.stops.*.location' => 'nullable|string|max:500',
-            'pairs.*.stops.*.do_number' => 'required_if:pairs.*.multi_stops,true|nullable|string|max:100',
+            // the DO number sits on the extra addresses when a side has several (user, 28 Oct 2026)
+            'pairs.*.customer_do_number' => ['nullable', 'string', 'max:100', function (string $attribute, mixed $value, \Closure $fail): void {
+                $index = (int) explode('.', $attribute)[1];
+                $pair = $this->pairs[$index] ?? [];
+
+                if (blank($value) && empty($pair['multi_pickup']) && empty($pair['multi_dropoff'])) {
+                    $fail('The DO number is required.');
+                }
+            }],
+            'pairs.*.pickup_stops' => 'array',
+            'pairs.*.pickup_stops.*.location' => 'nullable|string|max:500',
+            'pairs.*.pickup_stops.*.do_number' => 'required_if:pairs.*.multi_pickup,true|nullable|string|max:100',
+            'pairs.*.dropoff_stops' => 'array',
+            'pairs.*.dropoff_stops.*.location' => 'nullable|string|max:500',
+            'pairs.*.dropoff_stops.*.do_number' => 'required_if:pairs.*.multi_dropoff,true|nullable|string|max:100',
             // becomes the CSN date when the record's CSN is created
             // optional free text (a remark, e.g. "Mon 13/10 before noon"); not the CSN date
             'pairs.*.expected_delivery_date' => 'nullable|string|max:255',
+            'pairs.*.transfer_code' => 'nullable|string|max:20',
             'pairs.*.drop_off_type' => 'required|in:'.implode(',', array_keys(DropOffType::options())),
             'pairs.*.items' => 'required|array|min:1',
             'pairs.*.items.*.item_name' => 'required|string|max:255',
@@ -2360,9 +2416,10 @@ class CreateOrder extends Page
             'order_type' => ($pair['order_type'] ?? '') ?: ($this->form['order_type'] ?? null),
             'customer_do_number' => $text($pair['customer_do_number'] ?? null),
             'expected_delivery_date' => $text($pair['expected_delivery_date'] ?? null),
+            'transfer_code' => $text($pair['transfer_code'] ?? null),
             'instructions' => $text($pair['instructions'] ?? null),
             'admin_notes' => $text($pair['admin_notes'] ?? null),
-            'stops' => ! empty($pair['multi_stops']) ? \App\Support\OrderStops::clean((array) ($pair['stops'] ?? [])) : null,
+            'stops' => \App\Support\OrderStops::merge($pair) ?: null,
             'consignee_mode' => ($pair['consignee_mode'] ?? '') === 'store' ? 'store' : 'deliver',
             'consignee_store_id' => ($pair['consignee_mode'] ?? '') === 'store' ? (($pair['consignee_store_id'] ?? null) ?: null) : null,
             'items' => array_map(fn (array $item) => [

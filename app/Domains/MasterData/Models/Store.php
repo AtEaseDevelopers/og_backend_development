@@ -30,6 +30,12 @@ class Store extends Model
         return $this->belongsTo(Branch::class);
     }
 
+    /** The branch (Master Data → Branches) this store belongs to; a branch has several stores (user, 28 Oct 2026). */
+    public function saLocation(): BelongsTo
+    {
+        return $this->belongsTo(SaLocation::class, 'sa_location_id');
+    }
+
     /** The price-list "From" location of orders picked up at this store. */
     public function location(): BelongsTo
     {

@@ -38,7 +38,8 @@ class CodListing extends Page
 
     public function getSubheading(): ?string
     {
-        return 'View today\'s working drivers and their assigned COD collection totals.';
+        // no text under the page title (user, 28 Oct 2026)
+        return null;
     }
 
     public function applyFilters(): void
