@@ -141,19 +141,16 @@ class Orders extends Page
             ->slideOver()
             ->modalWidth('2xl')
             ->modalHeading('Bulk order processing')
-            ->modalDescription('Orders at Pending item. Pick the lorry, tick the orders (or Select all) and process: each order is verified, its CSN created and put on the lorry. Choose a transfer code to put a subsheet with that code on the lorry instead of the CSN.')
             ->form([
                 Forms\Components\Select::make('lorry_id')
                     ->label('Lorry')
                     ->placeholder('Select lorry')
-                    ->helperText('The lorry\'s default driver drives it.')
                     ->options(fn () => ConsignmentNoteResource::lorryOptions())
                     ->required()
                     ->searchable(),
                 Forms\Components\Select::make('transfer_code')
                     ->label('Transfer code')
                     ->placeholder('None · the CSN goes on the lorry')
-                    ->helperText('With a code, each CSN gets a subsheet with it (number = CSN no. + code) and the subsheet goes on the lorry.')
                     ->options(fn () => $this->transferCodeOptions())
                     ->searchable(),
                 Forms\Components\CheckboxList::make('order_ids')
