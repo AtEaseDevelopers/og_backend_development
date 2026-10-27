@@ -127,6 +127,15 @@ class Orders extends Page
 
     public bool $filtersOpen = false;
 
+    /** Pagination (user, 28 Oct 2026): the page in the URL, the page size kept for the session. */
+    #[Url(as: 'page', except: 1)]
+    public int $page = 1;
+
+    #[Session(key: 'orders.per-page')]
+    public int $perPage = 25;
+
+    public const PAGE_SIZES = [25, 50, 100];
+
     /**
      * Bulk order processing (user, 28 Oct 2026): the orders at Pending item (a Store order paid and billed, waiting
      * for its goods) verified, their CSNs created and put on one lorry in one go. With a transfer code chosen each
@@ -271,6 +280,50 @@ class Orders extends Page
         return '';
     }
 
+    /**
+     * The rows of the current page (the listing is assembled and filtered in PHP, so the slice is taken here).
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return array{rows: list<array<string, mixed>>, page: int, pages: int, from: int, to: int, total: int, per_page: int}
+     */
+    public function paginate(array $rows): array
+    {
+        $perPage = in_array($this->perPage, self::PAGE_SIZES, true) ? $this->perPage : 25;
+        $total = count($rows);
+        $pages = max(1, (int) ceil($total / $perPage));
+        $page = min(max(1, $this->page), $pages);
+        $slice = array_slice($rows, ($page - 1) * $perPage, $perPage);
+
+        return [
+            'rows' => $slice,
+            'page' => $page,
+            'pages' => $pages,
+            'from' => $total === 0 ? 0 : ($page - 1) * $perPage + 1,
+            'to' => $total === 0 ? 0 : ($page - 1) * $perPage + count($slice),
+            'total' => $total,
+            'per_page' => $perPage,
+        ];
+    }
+
+    public function gotoPage(int $page): void
+    {
+        $this->page = max(1, $page);
+    }
+
+    public function updatedPerPage(): void
+    {
+        $this->perPage = in_array((int) $this->perPage, self::PAGE_SIZES, true) ? (int) $this->perPage : 25;
+        $this->page = 1;
+    }
+
+    /** Any filter change goes back to page 1 (the page itself, the page size and the column toggle do not). */
+    public function updated(string $property): void
+    {
+        if (! in_array($property, ['page', 'perPage', 'hiddenColumns', 'filtersOpen', 'stripStart'], true) && ! str_starts_with($property, 'hiddenColumns.')) {
+            $this->page = 1;
+        }
+    }
+
     /** @return array<string, mixed> */
     public function getOrders(): array
     {
@@ -322,6 +375,8 @@ class Orders extends Page
      */
     public function applyColumnFilter(string $column, array $selected): void
     {
+        $this->page = 1;
+
         foreach (array_keys(OrderListingData::COLUMN_FILTERS[$column] ?? []) as $field) {
             $values = $selected[$field] ?? null;
 
@@ -335,6 +390,7 @@ class Orders extends Page
 
     public function clearColumnFilter(string $column): void
     {
+        $this->page = 1;
         foreach (array_keys(OrderListingData::COLUMN_FILTERS[$column] ?? []) as $field) {
             unset($this->colFilters[$field]);
         }
@@ -409,6 +465,7 @@ class Orders extends Page
     /** Clicking a day shows only orders created that day; clicking it again clears the created date. */
     public function selectStripDay(string $day): void
     {
+        $this->page = 1;
         if (($day = $this->dateOrNull($day)) === null) {
             return;
         }
@@ -419,16 +476,19 @@ class Orders extends Page
 
     public function shiftStrip(int $days): void
     {
+        $this->page = 1;
         $this->stripStart = $this->stripStartDate()->addDays(max(-31, min(31, $days)))->toDateString();
     }
 
     public function stripToday(): void
     {
+        $this->page = 1;
         $this->centreStrip();
     }
 
     public function clearCreatedDate(): void
     {
+        $this->page = 1;
         $this->createdFrom = $this->createdTo = '';
     }
 
@@ -538,6 +598,8 @@ class Orders extends Page
             return;
         }
 
+        $this->page = 1;
+
         if ($this->sort !== $key) {
             [$this->sort, $this->dir] = [$key, 'asc'];
         } elseif ($this->dir === 'asc') {
@@ -561,11 +623,13 @@ class Orders extends Page
     public function selectCard(string $key): void
     {
         $this->card = $key;
+        $this->page = 1;
     }
 
     public function selectStage(string $key): void
     {
         $this->stage = array_key_exists($key, OrderStage::STAGES) ? $key : '';
+        $this->page = 1;
     }
 
     public function toggleFilters(): void
@@ -576,6 +640,7 @@ class Orders extends Page
     /** Enter in the search box: the text becomes a tag (searched together with the others) and the box clears. */
     public function addSearchTag(): void
     {
+        $this->page = 1;
         $tag = trim($this->search);
 
         if ($tag !== '' && ! in_array($tag, $this->searchTags, true)) {
@@ -587,6 +652,7 @@ class Orders extends Page
 
     public function removeSearchTag(int $index): void
     {
+        $this->page = 1;
         unset($this->searchTags[$index]);
         $this->searchTags = array_values($this->searchTags);
     }
@@ -600,6 +666,7 @@ class Orders extends Page
         $this->searchTags = [];
         $this->dir = 'asc';
         $this->colFilters = [];
+        $this->page = 1;
         $this->centreStrip();
     }
 

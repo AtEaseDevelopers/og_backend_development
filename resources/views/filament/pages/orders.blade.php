@@ -1,6 +1,7 @@
 @php
     $data = $this->getOrders();
-    $rows = $data['rows'];
+    $pager = $this->paginate($data['rows']);
+    $rows = $pager['rows'];
     $cards = $this->cards($data['summary']);
     $allColumns = $this->columns();
     $columns = $this->visibleColumns();
@@ -459,9 +460,34 @@
                 </table>
             </div>
 
-            <div class="ow-foot">
-                <span>{{ $data['count'] }} of {{ $data['total'] }} {{ \Illuminate\Support\Str::plural('record', $data['total']) }}</span>
-                <span>All results on one page</span>
+            {{-- pagination (user, 28 Oct 2026) --}}
+            <div class="ow-foot ow-pager">
+                <span>
+                    @if ($pager['total'] === 0)
+                        No records
+                    @else
+                        {{ $pager['from'] }}–{{ $pager['to'] }} of {{ $pager['total'] }} {{ \Illuminate\Support\Str::plural('record', $pager['total']) }}
+                    @endif
+                    <span class="ow-pager-all">· {{ $data['total'] }} in all</span>
+                </span>
+                <span class="ow-pager-controls">
+                    <label class="ow-pager-size">Per page
+                        <select wire:model.live="perPage" class="ow-select" aria-label="Records per page">
+                            @foreach (\App\Filament\Pages\Orders::PAGE_SIZES as $size)<option value="{{ $size }}">{{ $size }}</option>@endforeach
+                        </select>
+                    </label>
+                    @if ($pager['pages'] > 1)
+                        <button type="button" class="ow-btn ow-pager-btn" wire:click="gotoPage({{ $pager['page'] - 1 }})" @disabled($pager['page'] <= 1) aria-label="Previous page">‹</button>
+                        @php
+                            $pageNos = collect([1, $pager['pages'], $pager['page'] - 1, $pager['page'], $pager['page'] + 1])->filter(fn ($p) => $p >= 1 && $p <= $pager['pages'])->unique()->sort()->values();
+                        @endphp
+                        @foreach ($pageNos as $i => $no)
+                            @if ($i > 0 && $no - $pageNos[$i - 1] > 1)<span class="ow-pager-gap">…</span>@endif
+                            <button type="button" @class(['ow-btn', 'ow-pager-btn', 'ow-pill-dark' => $no === $pager['page']]) wire:click="gotoPage({{ $no }})" @if ($no === $pager['page']) aria-current="page" @endif>{{ $no }}</button>
+                        @endforeach
+                        <button type="button" class="ow-btn ow-pager-btn" wire:click="gotoPage({{ $pager['page'] + 1 }})" @disabled($pager['page'] >= $pager['pages']) aria-label="Next page">›</button>
+                    @endif
+                </span>
             </div>
         </div>
 

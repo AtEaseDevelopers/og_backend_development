@@ -351,6 +351,16 @@
     .ow-next { color: var(--ow-link); font-weight: 600; font-size: .8125rem; }
     .ow-next:hover { text-decoration: underline; }
     .ow-foot { display: flex; justify-content: space-between; gap: 1rem; padding: .65rem 1rem; color: var(--ow-muted); font-size: .75rem; border-top: 1px solid var(--ow-line); }
+    /* the orders table pager (user, 28 Oct 2026) */
+    .ow-pager { align-items: center; flex-wrap: wrap; }
+    .ow-pager-all { color: var(--ow-faint); }
+    .ow-pager-controls { display: inline-flex; align-items: center; gap: .3rem; flex-wrap: wrap; }
+    .ow-pager-size { display: inline-flex; align-items: center; gap: .4rem; margin-right: .5rem; }
+    .ow-pager-size .ow-select { width: auto; padding-top: .25rem; padding-bottom: .25rem; font-size: .75rem; }
+    .ow-pager-btn { min-width: 2rem; padding: .3rem .5rem; font-size: .75rem; }
+    .ow-pager-btn:disabled { opacity: .45; cursor: default; }
+    .ow-pager-gap { padding: 0 .2rem; color: var(--ow-faint); }
+    @media (max-width: 639px) { .ow-pager { flex-direction: column; align-items: flex-start; } }
     .ow-flow { color: var(--ow-muted); font-size: .75rem; margin-top: .75rem; }
     .ow-empty { text-align: center; color: var(--ow-muted); padding: 2rem 1rem; }
 
