@@ -35,7 +35,7 @@ class Quotation extends Model
 
     protected $fillable = [
         'number', 'company_id', 'branch_id', 'customer_id', 'consignor_name', 'salesperson_id', 'portal_enquiry_id',
-        'status', 'valid_until', 'title', 'is_active', 'quoted_at', 'expected_delivery_date', 'transfer_code',
+        'status', 'valid_until', 'title', 'is_active', 'quoted_at', 'expected_delivery_date',
         'from_location_id', 'to_location_id',
         'consignor_brn', 'pickup_location', 'consignee_name', 'consignee_brn',
         'consignee_address', 'drop_off_location', 'customer_address',

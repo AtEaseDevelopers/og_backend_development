@@ -959,15 +959,6 @@ class CreateOrder extends Page
     }
 
     /** Consignor toggle: Pick up (collected from the consignor) or Store (brought to an O&G branch). @return array<string, string> */
-    /** The active transfer codes, "A — From Johor … to KL". @return array<string, string> */
-    public function transferCodeOptions(): array
-    {
-        static $options;
-
-        return $options ??= \App\Domains\MasterData\Models\TransferCode::query()->where('is_active', true)->orderBy('code')->get()
-            ->mapWithKeys(fn ($code) => [$code->code => filled($code->name) ? $code->code.' — '.$code->name : $code->code])->all();
-    }
-
     public function serviceTypeOptions(): array
     {
         // the consignor brings the goods to a store = "Customer Drop Off" (user, 28 Oct 2026)
@@ -1139,8 +1130,6 @@ class CreateOrder extends Page
             'multi_dropoff' => false,
             'dropoff_stops' => [],
             'expected_delivery_date' => '',
-            // the order's transfer code (user, 28 Oct 2026): Bulk order processing puts a subsheet with it on the lorry
-            'transfer_code' => '',
             // Driver notes (printed on the CSN) and Admin notes (internal), user 27 Oct 2026
             'instructions' => '',
             'admin_notes' => '',
@@ -2353,7 +2342,6 @@ class CreateOrder extends Page
             // becomes the CSN date when the record's CSN is created
             // optional free text (a remark, e.g. "Mon 13/10 before noon"); not the CSN date
             'pairs.*.expected_delivery_date' => 'nullable|string|max:255',
-            'pairs.*.transfer_code' => 'nullable|string|max:20',
             'pairs.*.drop_off_type' => 'required|in:'.implode(',', array_keys(DropOffType::options())),
             'pairs.*.items' => 'required|array|min:1',
             'pairs.*.items.*.item_name' => 'required|string|max:255',
@@ -2416,7 +2404,6 @@ class CreateOrder extends Page
             'order_type' => ($pair['order_type'] ?? '') ?: ($this->form['order_type'] ?? null),
             'customer_do_number' => $text($pair['customer_do_number'] ?? null),
             'expected_delivery_date' => $text($pair['expected_delivery_date'] ?? null),
-            'transfer_code' => $text($pair['transfer_code'] ?? null),
             'instructions' => $text($pair['instructions'] ?? null),
             'admin_notes' => $text($pair['admin_notes'] ?? null),
             'stops' => \App\Support\OrderStops::merge($pair) ?: null,

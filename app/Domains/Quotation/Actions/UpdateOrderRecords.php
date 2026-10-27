@@ -63,11 +63,10 @@ class UpdateOrderRecords
         'drop_off_location' => 'drop-off location',
         'customer_do_number' => 'DO number',
         'expected_delivery_date' => 'expected delivery',
-        'transfer_code' => 'transfer code',
     ];
 
     /** Fields whose old / new values are written into the change summary (the others only say "updated"). */
-    private const SHORT_FIELDS = ['consignor_name', 'store_id', 'from_location_id', 'consignor_pic_name', 'consignor_pic_phone', 'consignee_name', 'to_location_id', 'consignee_pic_name', 'consignee_pic_phone', 'customer_do_number', 'expected_delivery_date', 'transfer_code', 'customer_id', 'order_type', 'service_type', 'drop_off_type'];
+    private const SHORT_FIELDS = ['consignor_name', 'store_id', 'from_location_id', 'consignor_pic_name', 'consignor_pic_phone', 'consignee_name', 'to_location_id', 'consignee_pic_name', 'consignee_pic_phone', 'customer_do_number', 'expected_delivery_date', 'customer_id', 'order_type', 'service_type', 'drop_off_type'];
 
     public function __construct(
         private CreateOrderFromEnquiry $createOrders,
@@ -1340,7 +1339,6 @@ class UpdateOrderRecords
             'consignee_pic_phone' => $this->clean($pair['consignee_pic_phone'] ?? null),
             'customer_do_number' => $this->clean($pair['customer_do_number'] ?? null),
             'expected_delivery_date' => $this->clean($pair['expected_delivery_date'] ?? null),
-            'transfer_code' => $this->clean($pair['transfer_code'] ?? null),
             'instructions' => $this->clean($pair['instructions'] ?? null),
             // photos uploaded for the new block (its record's own files)
             'attachments' => array_values(array_filter($pair['attachments'] ?? [], 'is_array')),
@@ -1502,7 +1500,6 @@ class UpdateOrderRecords
             'service_type' => $serviceType,
             'customer_do_number' => $this->clean($pair['customer_do_number'] ?? null),
             'expected_delivery_date' => $this->clean($pair['expected_delivery_date'] ?? null),
-            'transfer_code' => $this->clean($pair['transfer_code'] ?? null),
             // kept so the edit page shows the same values again (company numbers are no longer entered:
             // an older destination keeps its own through the merge with $base)
             'consignor_name' => $this->clean($pair['consignor_name'] ?? null),
@@ -1553,7 +1550,6 @@ class UpdateOrderRecords
             'service_type' => $order->service_type?->value,
             'customer_do_number' => $order->customer_do_number,
             'expected_delivery_date' => $order->expected_delivery_date,
-            'transfer_code' => $order->transfer_code,
             'store_branch_id' => $order->store_branch_id,
             'store_id' => $order->store_id,
             'admin_notes' => $order->admin_notes,

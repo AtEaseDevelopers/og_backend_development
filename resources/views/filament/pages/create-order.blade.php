@@ -553,17 +553,6 @@
                         <input id="{{ $fieldId }}-delivery" type="text" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.expected_delivery_date" class="ow-input" maxlength="255" autocomplete="off" placeholder="Optional · e.g. 13/10 before noon">
                         @error($ep.'pairs.'.$i.'.expected_delivery_date')<div class="ow-field-error">{{ $message }}</div>@enderror
                     </div>
-                    {{-- the order's transfer code (user, 28 Oct 2026): Bulk order processing filters by it --}}
-                    <div class="ow-field">
-                        <label for="{{ $fieldId }}-tcode">Transfer code</label>
-                        <select id="{{ $fieldId }}-tcode" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.transfer_code" class="ow-select">
-                            <option value="">None</option>
-                            @foreach ($this->transferCodeOptions() as $value => $label)
-                                <option value="{{ $value }}">{{ $label }}</option>
-                            @endforeach
-                        </select>
-                        @error($ep.'pairs.'.$i.'.transfer_code')<div class="ow-field-error">{{ $message }}</div>@enderror
-                    </div>
                 </div>
 
                 <div class="ow-table-wrap" style="margin-top:.9rem">

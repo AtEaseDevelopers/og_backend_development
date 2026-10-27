@@ -129,8 +129,8 @@ class Orders extends Page
 
     /**
      * Bulk order processing (user, 28 Oct 2026): the orders at Pending item (a Store order paid and billed, waiting
-     * for its goods) verified, their CSNs created and put on one lorry in one go. An order with a transfer code gets
-     * a subsheet with that code on the lorry (its CSN stays for the main leg); without one the CSN itself goes.
+     * for its goods) verified, their CSNs created and put on one lorry in one go. With a transfer code chosen each
+     * CSN gets a subsheet with that code and the subsheet goes on the lorry; without one the CSN itself goes.
      */
     public function bulkProcessAction(): Action
     {
@@ -141,7 +141,7 @@ class Orders extends Page
             ->slideOver()
             ->modalWidth('2xl')
             ->modalHeading('Bulk order processing')
-            ->modalDescription('Orders at Pending item. Pick the lorry, filter by transfer code if you like, tick the orders (or Select all) and process: each order is verified, its CSN created and put on the lorry. An order with a transfer code gets a subsheet with that code on the lorry instead.')
+            ->modalDescription('Orders at Pending item. Pick the lorry, tick the orders (or Select all) and process: each order is verified, its CSN created and put on the lorry. Choose a transfer code to put a subsheet with that code on the lorry instead of the CSN.')
             ->form([
                 Forms\Components\Select::make('lorry_id')
                     ->label('Lorry')
@@ -152,15 +152,14 @@ class Orders extends Page
                     ->searchable(),
                 Forms\Components\Select::make('transfer_code')
                     ->label('Transfer code')
-                    ->placeholder('All transfer codes')
-                    ->options(fn () => $this->transferCodeFilterOptions())
-                    ->searchable()
-                    ->live()
-                    ->afterStateUpdated(fn (Forms\Set $set) => $set('order_ids', [])),
+                    ->placeholder('None · the CSN goes on the lorry')
+                    ->helperText('With a code, each CSN gets a subsheet with it (number = CSN no. + code) and the subsheet goes on the lorry.')
+                    ->options(fn () => $this->transferCodeOptions())
+                    ->searchable(),
                 Forms\Components\CheckboxList::make('order_ids')
                     ->label(fn (Forms\Get $get) => 'Orders at Pending item ('.count((array) $get('order_ids')).' ticked)')
-                    ->options(fn (Forms\Get $get) => $this->pendingItemOrders($get('transfer_code'))->mapWithKeys(fn (Quotation $o) => [$o->id => $o->orderNumber().(filled($o->transfer_code) ? ' · code '.$o->transfer_code : '')])->all())
-                    ->descriptions(fn (Forms\Get $get) => $this->pendingItemOrders($get('transfer_code'))->mapWithKeys(fn (Quotation $o) => [$o->id => collect([
+                    ->options(fn () => $this->pendingItemOrders()->mapWithKeys(fn (Quotation $o) => [$o->id => $o->orderNumber()])->all())
+                    ->descriptions(fn () => $this->pendingItemOrders()->mapWithKeys(fn (Quotation $o) => [$o->id => collect([
                         $o->customer?->company_name,
                         $o->consignee_name,
                         $o->created_at?->format('d/m/Y'),
@@ -181,6 +180,7 @@ class Orders extends Page
                 }
 
                 [$csns, $subsheets, $done, $failed] = [collect(), collect(), [], []];
+                $code = trim((string) ($data['transfer_code'] ?? ''));
 
                 foreach ($orders as $order) {
                     try {
@@ -189,10 +189,10 @@ class Orders extends Page
                         foreach ($created as $csn) {
                             $csn = $csn->fresh(['subsheets', 'deliveryOrder', 'sourceBranch']);
 
-                            // an order with a transfer code: a subsheet with that code goes on the lorry
-                            if ($csn->subsheets->isEmpty() && filled($order->transfer_code)) {
+                            // a transfer code chosen: a subsheet with that code goes on the lorry
+                            if ($code !== '') {
                                 app(\App\Domains\Dispatch\Actions\CreateSubsheet::class)->forCsn($csn, [
-                                    'transfer_code' => $order->transfer_code,
+                                    'transfer_code' => $code,
                                     'task_type' => 'transfer',
                                     'notes' => 'Bulk order processing',
                                 ]);
@@ -218,8 +218,8 @@ class Orders extends Page
             });
     }
 
-    /** The orders at Pending item of this company, newest first; only those with the transfer code when one is given. */
-    public function pendingItemOrders(?string $transferCode = null): Collection
+    /** The orders at Pending item of this company, newest first. */
+    public function pendingItemOrders(): Collection
     {
         return Quotation::query()
             ->when(CurrentCompany::id(), fn ($q, $id) => $q->where('company_id', $id))
@@ -227,7 +227,6 @@ class Orders extends Page
             ->where('service_type', ServiceType::Store)
             ->whereNull('item_received_at')
             ->whereDoesntHave('consignmentNotes')
-            ->when(filled($transferCode), fn ($q) => $q->where('transfer_code', $transferCode))
             ->with('customer:id,company_name')
             ->latest('id')
             ->limit(300)
@@ -236,15 +235,11 @@ class Orders extends Page
             ->values();
     }
 
-    /** The transfer codes of the orders at Pending item (with how many), then the other active codes. @return array<string, string> */
-    public function transferCodeFilterOptions(): array
+    /** The active transfer codes, "A — From Johor … to KL". @return array<string, string> */
+    public function transferCodeOptions(): array
     {
-        $counts = $this->pendingItemOrders()->countBy(fn (Quotation $o) => (string) $o->transfer_code);
-        $codes = TransferCode::query()->where('is_active', true)->orderBy('code')->get();
-
-        return $codes->sortByDesc(fn (TransferCode $c) => $counts[$c->code] ?? 0)->mapWithKeys(fn (TransferCode $c) => [
-            $c->code => $c->code.(filled($c->name) ? ' — '.$c->name : '').(isset($counts[$c->code]) ? ' ('.$counts[$c->code].')' : ''),
-        ])->all();
+        return TransferCode::query()->where('is_active', true)->orderBy('code')->get()
+            ->mapWithKeys(fn (TransferCode $c) => [$c->code => filled($c->name) ? $c->code.' — '.$c->name : $c->code])->all();
     }
 
     public function mount(): void
