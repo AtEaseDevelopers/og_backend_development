@@ -212,14 +212,14 @@ class OrderFormOptions
         ];
     }
 
-    /** A store's pickup location: its address on one line, else its name. */
+    /** A store's pickup location: its address on one line, else its branch's address (user, 28 Oct 2026), else its name. */
     public static function storeAddress(?Store $store): string
     {
         if (! $store) {
             return '';
         }
 
-        return static::oneLine($store->address) ?: (string) $store->name;
+        return static::oneLine($store->address) ?: static::oneLine($store->branch?->address) ?: (string) $store->name;
     }
 
     private static function oneLine(?string $text): string

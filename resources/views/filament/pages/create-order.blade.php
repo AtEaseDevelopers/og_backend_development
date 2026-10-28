@@ -365,6 +365,9 @@
                                     <div class="ow-store-card">
                                         @if ($storeInfo['address'] !== '')
                                             <div class="ow-store-address">{{ $storeInfo['address'] }}</div>
+                                            @if ($storeInfo['address_from_branch'] ?? false)
+                                                <div class="ow-note">No address saved for {{ $storeInfo['name'] }} yet · its branch's address is used as the pickup location.</div>
+                                            @endif
                                         @else
                                             <div class="ow-note">No address saved for {{ $storeInfo['name'] }} yet · the store name is used as the pickup location.</div>
                                         @endif

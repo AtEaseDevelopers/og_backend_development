@@ -1004,7 +1004,9 @@ class CreateOrder extends Page
         return [
             'name' => (string) $store->name,
             'branch' => (string) ($store->branch?->name ?? ''),
-            'address' => trim((string) $store->address),
+            // a store without an address of its own uses its branch's (user, 28 Oct 2026)
+            'address' => trim((string) $store->address) ?: trim((string) ($store->branch?->address ?? '')),
+            'address_from_branch' => trim((string) $store->address) === '' && trim((string) ($store->branch?->address ?? '')) !== '',
             'pic' => trim((string) $store->pic_name),
             'phone' => trim((string) $store->pic_phone),
             'edit_url' => $editUrl,
