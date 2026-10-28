@@ -13,7 +13,11 @@ return new class extends Migration
     public function up(): void
     {
         if (Schema::hasColumn('quotations', 'transfer_code')) {
-            Schema::table('quotations', fn (Blueprint $table) => $table->dropColumn('transfer_code'));
+            // its index first: SQLite (the test suite) cannot drop a column that still has one
+            Schema::table('quotations', function (Blueprint $table): void {
+                $table->dropIndex(['transfer_code']);
+                $table->dropColumn('transfer_code');
+            });
         }
     }
 

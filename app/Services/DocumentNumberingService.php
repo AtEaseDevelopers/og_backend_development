@@ -10,9 +10,15 @@ use Illuminate\Support\Facades\DB;
 class DocumentNumberingService
 {
     /**
-     * Next document number (user, 28 Oct 2026): ZZ-EE-YYMM#####, e.g. INV-KL-261000001. ZZ = the document type code,
+     * The document types numbered without hyphens, with their own type code (user, 28 Oct 2026): an invoice
+     * IVKL261000001, a cash bill CBKL261000001 (ZZXXYYMM#####).
+     */
+    public const COMPACT = [DocumentType::Invoice->value => 'IV', DocumentType::CashBill->value => 'CB'];
+
+    /**
+     * Next document number (user, 28 Oct 2026): ZZ-EE-YYMM#####, e.g. OR-KL-261000001. ZZ = the document type code,
      * EE = the company code (replaced by $prefixOverride when given), YYMM = this month, ##### = a 5-digit running
-     * number kept per company, type and month.
+     * number kept per company, type and month. An invoice or cash bill is ZZXXYYMM##### (COMPACT).
      */
     public function next(Branch|int $branch, DocumentType $type, ?string $prefixOverride = null): string
     {
@@ -36,7 +42,9 @@ class DocumentNumberingService
             $sequence->last_number++;
             $sequence->save();
 
-            return sprintf('%s-%s-%s%05d', $type->value, $prefix, $period, $sequence->last_number);
+            return isset(self::COMPACT[$type->value])
+                ? sprintf('%s%s%s%05d', self::COMPACT[$type->value], $prefix, $period, $sequence->last_number)
+                : sprintf('%s-%s-%s%05d', $type->value, $prefix, $period, $sequence->last_number);
         });
     }
 

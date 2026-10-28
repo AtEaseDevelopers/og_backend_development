@@ -301,7 +301,8 @@ class GenerateOrderBilling
         $dueDays = $type === 'term' ? (int) ($quotation->customer?->credit_term_days ?? 0) : 0;
 
         $invoice = Invoice::query()->create([
-            'number' => $this->numbering->next($quotation->branch, DocumentType::Invoice),
+            // a cash bill has its own number type (CBKL…), the other invoices IVKL…
+            'number' => $this->numbering->next($quotation->branch, $type === 'cash_bill' ? DocumentType::CashBill : DocumentType::Invoice),
             'company_id' => $quotation->company_id,
             'source_branch_id' => $quotation->branch_id,
             'customer_id' => $quotation->customer_id,

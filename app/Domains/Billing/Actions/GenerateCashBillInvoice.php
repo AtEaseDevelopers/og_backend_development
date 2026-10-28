@@ -37,7 +37,7 @@ class GenerateCashBillInvoice
             $rounding = round($rounded - $rawTotal, 2);
 
             $invoice = Invoice::query()->create([
-                'number' => $this->numbering->next($csn->sourceBranch, DocumentType::Invoice),
+                'number' => $this->numbering->next($csn->sourceBranch, DocumentType::CashBill),
                 'source_branch_id' => $csn->source_branch_id,
                 'customer_id' => $csn->customer_id,
                 'consignment_note_id' => $csn->id,
