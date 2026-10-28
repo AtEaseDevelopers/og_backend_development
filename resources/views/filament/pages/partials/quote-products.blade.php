@@ -140,12 +140,23 @@
                                         {{-- the goods' size and weight (a Measurement product's size picks its band), then the price list's
                                              minimum charges; the pickup location is the row's (user, 21 Oct 2026) --}}
                                         @if (! $new)
-                                            @foreach ($kind === 'measurement' ? ['length' => 'L (cm)', 'width' => 'W (cm)', 'height' => 'H (cm)', 'weight' => 'Weight (kg)'] : ['weight' => 'Weight (kg)'] as $dim => $dimLabel)
-                                                <label class="ow-dim">
-                                                    <span>{{ $dimLabel }} @if ($kind === 'measurement')<span class="ow-req">*</span>@endif</span>
-                                                    <input type="text" inputmode="decimal" autocomplete="off" wire:model.live.debounce.600ms="{{ $field }}.{{ $dim }}" class="ow-input" x-on:input="{{ $decimalOnly }}">
-                                                </label>
-                                            @endforeach
+                                            @if ($kind === 'measurement')
+                                                {{-- L, W, H as min – max ranges, as on the order page (user, 28 Oct 2026): the size bands are ranges too --}}
+                                                @foreach (['length' => 'L (cm)', 'width' => 'W (cm)', 'height' => 'H (cm)'] as $dim => $dimLabel)
+                                                    <div class="ow-dim">
+                                                        <span>{{ $dimLabel }} <span class="ow-req">*</span></span>
+                                                        <div class="ow-dim-range">
+                                                            <input type="text" inputmode="decimal" autocomplete="off" placeholder="Min" aria-label="{{ $dimLabel }} min" wire:model.live.debounce.600ms="{{ $field }}.{{ $dim }}" class="ow-input" x-on:input="{{ $decimalOnly }}">
+                                                            <span aria-hidden="true">–</span>
+                                                            <input type="text" inputmode="decimal" autocomplete="off" placeholder="Max" aria-label="{{ $dimLabel }} max" wire:model.live.debounce.600ms="{{ $field }}.{{ $dim }}_max" class="ow-input" x-on:input="{{ $decimalOnly }}">
+                                                        </div>
+                                                    </div>
+                                                @endforeach
+                                            @endif
+                                            <label class="ow-dim">
+                                                <span>Weight (kg) @if ($kind === 'measurement')<span class="ow-req">*</span>@endif</span>
+                                                <input type="text" inputmode="decimal" autocomplete="off" wire:model.live.debounce.600ms="{{ $field }}.weight" class="ow-input" x-on:input="{{ $decimalOnly }}">
+                                            </label>
                                         @endif
                                         @foreach ($columns['minimums'] as $minimum)
                                             <label class="ow-dim">
