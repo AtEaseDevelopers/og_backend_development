@@ -20,8 +20,10 @@ class CsnDocumentData
             'toLocation',
             'lines',
             'deliveryOrder.lorry',
+            'deliveryOrder.jobSheet',
             'invoice',
             'proformaInvoice',
+            'customer',
         ]);
 
         $matrixState = app(CsnTransportMatrix::class)->toFormState($csn);
@@ -41,6 +43,17 @@ class CsnDocumentData
                 'do_number' => $csn->do_number ?: $csn->deliveryOrder?->number,
                 'invoice_number' => $csn->invoice?->number ?: $csn->proformaInvoice?->number,
                 'lorry_number' => $csn->deliveryOrder?->lorry?->registration_no,
+                'job_sheet_number' => $csn->deliveryOrder?->jobSheet?->number ?: $csn->job_no,
+                // the QR carries the CSN number (user, 30 Oct 2026: scanned into the search fields); the old token QRs still work
+                'qr_value' => $csn->number,
+                // the billing customer (user, 30 Oct 2026)
+                'customer_name' => $csn->customer_name ?: $csn->customer?->company_name,
+                'customer_brn' => $csn->customer_brn ?: $csn->customer?->brn,
+                'customer_address' => $csn->customer?->address,
+                'customer_contact' => $this->dropOffContact($csn->customer?->attention, $csn->customer_phone ?: $csn->customer?->phone),
+                'consignor_phone' => $csn->consignor_phone,
+                // every consignee (the main one and the extra drop-off stops), each to chop & sign
+                'consignees' => $this->consignees($csn),
                 // '' = left blank on the order (shown as "—"); not set at all (older CSNs) = the customer
                 'consignor_name' => $csn->consignor_name === '' ? null : ($csn->consignor_name ?: $csn->customer_name),
                 'consignor_address' => $csn->consignor_address,
@@ -65,6 +78,28 @@ class CsnDocumentData
                 'marking' => $csn->marking,
             ],
         );
+    }
+
+    /**
+     * The consignees of a CSN: the main one (its delivery address, PIC and DO) and each extra drop-off stop.
+     *
+     * @return list<array{name: ?string, address: ?string, contact: ?string, do_number: ?string}>
+     */
+    private function consignees(ConsignmentNote $csn): array
+    {
+        $main = [
+            'name' => $csn->consignee_name,
+            'address' => $this->addressBlock($csn->delivery_address, $csn->delivery_postcode, $csn->delivery_city, $csn->delivery_state, $csn->consignee_name) ?: null,
+            'contact' => $this->dropOffContact($csn->consignee_pic, $csn->consignee_phone),
+            'do_number' => $csn->customer_do_number ?: null,
+        ];
+        $stops = collect($csn->stops ?? [])
+            ->filter(fn ($stop) => is_array($stop) && ($stop['type'] ?? '') !== OrderStops::PICKUP)
+            ->map(fn (array $stop) => ['name' => $csn->consignee_name, 'address' => $stop['location'] ?? null, 'contact' => null, 'do_number' => $stop['do_number'] ?? null])
+            ->values()
+            ->all();
+
+        return [$main, ...$stops];
     }
 
     /**
@@ -136,15 +171,11 @@ class CsnDocumentData
             $issuedAt = Carbon::parse($issuedAt);
         }
 
-        $logoPath = public_path('images/logo-og.png');
-        $logoSrc = is_file($logoPath)
-            ? 'data:image/png;base64,'.base64_encode((string) file_get_contents($logoPath))
-            : null;
-
         return [
+            // no logo (user, 30 Oct 2026): the company's details only
             'letterhead' => [
-                'logo_src' => $logoSrc,
-                'logo_url' => asset('images/logo-og.png'),
+                'logo_src' => null,
+                'logo_url' => null,
                 'company_name' => $companyName,
                 'reg_no' => $regNo,
                 'address' => $company?->address ?: $branch?->address,
@@ -157,11 +188,26 @@ class CsnDocumentData
                 'do_number' => filled($fields['do_number'] ?? null) ? $fields['do_number'] : '—',
                 'invoice_number' => filled($fields['invoice_number'] ?? null) ? $fields['invoice_number'] : '—',
                 'lorry_number' => filled($fields['lorry_number'] ?? null) ? $fields['lorry_number'] : '—',
+                'job_sheet_number' => filled($fields['job_sheet_number'] ?? null) ? $fields['job_sheet_number'] : '—',
+                'qr_value' => $fields['qr_value'] ?? ($fields['number'] ?? null),
+            ],
+            'bill_to' => [
+                'name' => $fields['customer_name'] ?? '—',
+                'reg_no' => $fields['customer_brn'] ?? null,
+                'address' => $fields['customer_address'] ?? null,
+                'contact' => $fields['customer_contact'] ?? null,
             ],
             'consignor' => [
                 'name' => $fields['consignor_name'] ?? '—',
                 'address' => $fields['consignor_address'] ?? '—',
+                'contact' => $fields['consignor_phone'] ?? null,
             ],
+            'consignees' => $fields['consignees'] ?? [[
+                'name' => $fields['consignee_name'] ?? '—',
+                'address' => $dropOffAddress ?: null,
+                'contact' => $this->dropOffContact($fields['consignee_pic'] ?? null, $fields['consignee_phone'] ?? null),
+                'do_number' => $fields['customer_do_number'] ?? null,
+            ]],
             'consignee' => [
                 'name' => $fields['consignee_name'] ?? '—',
                 'address' => $dropOffAddress ?: '—',

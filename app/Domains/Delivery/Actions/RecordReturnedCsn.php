@@ -66,7 +66,7 @@ class RecordReturnedCsn
 
     public function executeByQrToken(string $token, array $data, User $receiver): ReturnedCsn
     {
-        $csn = ConsignmentNote::query()->where('qr_token', $token)->first();
+        $csn = ConsignmentNote::query()->where(fn ($q) => $q->where('qr_token', $token)->orWhere('number', $token))->first();
 
         if (! $csn) {
             throw new InvalidArgumentException('CSN QR token not found.');

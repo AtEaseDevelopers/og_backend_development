@@ -13,7 +13,7 @@ class UomRateTier extends Model
      */
     protected $fillable = [
         'uom_id', 'location_id', 'customer_code', 'branch_id', 'drop_off_type', 'pickup_location',
-        'min_qty', 'max_qty', 'price', 'pickup_min_charge', 'construction_min_charge', 'drop_off_min_charge',
+        'min_qty', 'max_qty', 'price', 'fixed_charge', 'pickup_min_charge', 'construction_min_charge', 'drop_off_min_charge',
         'effective_from', 'expires_on', 'source',
     ];
 
@@ -23,6 +23,7 @@ class UomRateTier extends Model
             'min_qty' => 'decimal:2',
             'max_qty' => 'decimal:2',
             'price' => 'decimal:2',
+            'fixed_charge' => 'decimal:2',
             'pickup_min_charge' => 'decimal:2',
             'construction_min_charge' => 'decimal:2',
             'drop_off_min_charge' => 'decimal:2',
@@ -34,6 +35,23 @@ class UomRateTier extends Model
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    /**
+     * The unit price for a quantity (user, 29 Oct 2026): the range's price, plus its fixed charge spread over the
+     * quantity when the range is priced as "(250+4.0X)" (RM 250 + RM 4.00 per unit).
+     */
+    public function unitPriceFor(float $quantity): float
+    {
+        return round((float) $this->price + (float) ($this->fixed_charge ?? 0) / max($quantity, 0.01), 2);
+    }
+
+    /** "RM 4.00 each", or "RM 250.00 + RM 4.00 each" with a fixed charge. */
+    public function priceText(): string
+    {
+        $each = 'RM '.number_format((float) $this->price, 2).' each';
+
+        return $this->fixed_charge !== null && (float) $this->fixed_charge > 0 ? 'RM '.number_format((float) $this->fixed_charge, 2).' + '.$each : $each;
     }
 
     /** "1", "2–9", "20+" */

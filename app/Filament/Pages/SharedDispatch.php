@@ -145,7 +145,7 @@ class SharedDispatch extends Page implements HasForms
 
         try {
             if (($data['assignment_mode'] ?? 'select') === 'qr') {
-                $csn = ConsignmentNote::query()->where('qr_token', $data['qr_token'])->firstOrFail();
+                $csn = ConsignmentNote::query()->where(fn ($q) => $q->where('qr_token', $data['qr_token'])->orWhere('number', $data['qr_token']))->firstOrFail();
             } else {
                 $csn = ConsignmentNote::query()->findOrFail($data['consignment_note_id']);
             }

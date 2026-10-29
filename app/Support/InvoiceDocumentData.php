@@ -20,16 +20,13 @@ class InvoiceDocumentData
             'lines.consignmentNote.fromLocation',
             'lines.consignmentNote.toLocation',
             'lines.consignmentNote.deliveryOrder',
+            'lines.consignmentNote.lines',
+            'quotation.portalEnquiry',
         ]);
 
         $company = $invoice->company;
         $branch = $invoice->sourceBranch ?: $company?->branch;
         $customer = $invoice->customer;
-
-        $logoPath = public_path('images/logo-og.png');
-        $logoSrc = is_file($logoPath)
-            ? 'data:image/png;base64,'.base64_encode((string) file_get_contents($logoPath))
-            : null;
 
         $subtotal = (float) $invoice->subtotal;
         $taxAmount = (float) $invoice->tax_amount;
@@ -47,7 +44,8 @@ class InvoiceDocumentData
 
         return [
             'letterhead' => [
-                'logo_src' => $logoSrc,
+                // no logo (user, 30 Oct 2026): the company's details only
+                'logo_src' => null,
                 'company_name' => $company?->name ?: $branch?->company_name ?: 'O&G Transport',
                 'reg_no' => $company?->brn ?: $branch?->company_no,
                 'address' => $company?->address ?: $branch?->address,
@@ -60,11 +58,18 @@ class InvoiceDocumentData
                 'invoice_date' => $invoice->invoice_date?->format('d/m/Y') ?? now()->format('d/m/Y'),
                 'account_no' => $customer?->code ?: $customer?->control_account ?: '—',
                 'terms' => $terms,
+                // the order and due date (user, 30 Oct 2026: every important detail on the document)
+                'order_no' => $invoice->quotation?->orderNumber(),
+                'due_date' => $invoice->due_date?->format('d/m/Y'),
+                'type' => $invoice->isCashBill() ? 'Cash Bill' : ucwords(str_replace('_', ' ', (string) $invoice->type)),
             ],
             'bill_to' => [
                 'name' => $customer?->company_name ?: '—',
                 'reg_no' => $customer?->brn,
                 'address' => $customer?->address ?: '—',
+                'attention' => $invoice->quotation?->attention ?: $customer?->attention,
+                'phone' => $invoice->quotation?->customer_pic_phone ?: $customer?->phone,
+                'email' => $customer?->email,
             ],
             'lines' => $this->lines($invoice),
             'totals' => [
@@ -140,9 +145,14 @@ class InvoiceDocumentData
             $date = Carbon::parse($date);
         }
 
+        // the goods on the CSN (user, 30 Oct 2026): "15 × 1100L Recycle Bin @ 130.00"
+        $items = $csn->lines->map(fn ($line) => trim(QuantityLabel::format($line->quantity, $line->uom).' × '.$line->item_name
+            .($line->unit_price !== null ? ' @ '.number_format((float) $line->unit_price, 2) : '')))->values()->all();
+
         return [
             'date' => $date?->format('d/m/Y') ?? '—',
             'csn_number' => $csn->number,
+            'items' => $items,
             'your_ref' => $refs,
             'from' => $csn->fromLocation?->name ?: '—',
             'to' => $csn->toLocation?->name ?: $csn->delivery_city ?: '—',

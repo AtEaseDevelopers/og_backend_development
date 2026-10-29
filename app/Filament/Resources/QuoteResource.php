@@ -54,12 +54,13 @@ class QuoteResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('number')->label('Quotation no.')->weight('semibold')->sortable(),
+                Tables\Columns\TextColumn::make('type')->label('Type')->badge()->color('gray')->formatStateUsing(fn (?string $state) => $state === Quote::TYPE_PRICE_LIST ? 'Price list' : 'Customer')->sortable(),
                 Tables\Columns\TextColumn::make('party')
                     ->label('Customer / lead')
                     ->state(fn (Quote $record) => $record->customer
                         ? trim(($record->customer->code ? $record->customer->code.' — ' : '').$record->customer->company_name)
-                        : $record->lead?->name)
-                    ->description(fn (Quote $record) => $record->customer ? null : 'Lead')
+                        : $record->partyName())
+                    ->description(fn (Quote $record) => $record->customer || $record->isPriceList() ? null : 'Lead')
                     ->wrap(),
                 Tables\Columns\TextColumn::make('form.customer_pic_name')->label('PIC')->placeholder('—'),
                 Tables\Columns\TextColumn::make('quote_date')->label('Quotation date')->date('d/m/Y')->sortable(),
@@ -88,7 +89,8 @@ class QuoteResource extends Resource
                     ->label('Accept by customer')
                     ->icon('heroicon-o-check-badge')
                     ->color('success')
-                    ->visible(fn (Quote $record) => $record->isPending())
+                    // a price list is a document only (user, 29 Oct 2026): nothing to accept, no special price
+                    ->visible(fn (Quote $record) => $record->isPending() && ! $record->isPriceList())
                     ->modalHeading(fn (Quote $record) => 'Customer accepted quotation '.$record->number)
                     ->modalDescription(static::acceptText())
                     ->form([
@@ -133,7 +135,7 @@ class QuoteResource extends Resource
                     ->visible(fn (Quote $record) => ! $record->isPending() && $record->customer !== null),
                 Tables\Actions\DeleteAction::make()->visible(fn (Quote $record) => $record->isPending()),
             ])
-            ->checkIfRecordIsSelectableUsing(fn (Quote $record) => $record->isPending())
+            ->checkIfRecordIsSelectableUsing(fn (Quote $record) => $record->isPending() && ! $record->isPriceList())
             ->bulkActions([
                 // the customer agreed: each ticked quotation's prices become the customer's special prices
                 Tables\Actions\BulkAction::make('accept')

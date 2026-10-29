@@ -170,7 +170,7 @@
                                         $special = $item['special'] ?? [];
                                         $lastFilled = 0;
                                         foreach (\App\Support\UomPriceRows::RANGES as $n => $letter) {
-                                            if (filled($special["range_{$letter}_from"] ?? null) || filled($special["range_{$letter}_to"] ?? null) || filled($special["range_{$letter}_price"] ?? null)) {
+                                            if (filled($special["range_{$letter}_from"] ?? null) || filled($special["range_{$letter}_to"] ?? null) || filled($special["range_{$letter}_price"] ?? null) || filled($special["range_{$letter}_fixed"] ?? null)) {
                                                 $lastFilled = $n + 1;
                                             }
                                         }
@@ -183,6 +183,7 @@
                                                 <th>Quantity from</th>
                                                 @if ($columns['quantity_to'])<th>Quantity to</th>@endif
                                                 <th>Price for this range (RM)</th>
+                                                <th title="Optional: a fixed amount added once on top of price × quantity, printed as (250+4.0X)">Fixed charge (RM)</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -194,6 +195,7 @@
                                                         <td><input type="text" inputmode="decimal" autocomplete="off" wire:model.live.debounce.600ms="{{ $field }}.special.range_{{ $letter }}_to" class="ow-input" placeholder="and above" x-on:input="{{ $decimalOnly }}"></td>
                                                     @endif
                                                     <td><input type="text" inputmode="decimal" autocomplete="off" wire:model.live.debounce.600ms="{{ $field }}.special.range_{{ $letter }}_price" class="ow-input" x-on:input="{{ $decimalOnly }}"></td>
+                                                    <td><input type="text" inputmode="decimal" autocomplete="off" wire:model.live.debounce.600ms="{{ $field }}.special.range_{{ $letter }}_fixed" class="ow-input" placeholder="None" x-on:input="{{ $decimalOnly }}"></td>
                                                 </tr>
                                             @endforeach
                                         </tbody>

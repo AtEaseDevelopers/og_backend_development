@@ -2,59 +2,52 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>{{ $quotation->number }}</title>
+    <title>{{ $quotation->orderNumber() }}</title>
+    {{-- the Order Form (user, 29 Oct 2026): the letterhead of the quotation, then the order in boxes — customer, consignor
+         and consignee side by side, delivery details, the items with their prices, instructions and the signatures --}}
     <style>
-        @page { margin: 36px 42px; }
-        body {
-            font-family: DejaVu Sans, sans-serif;
-            font-size: 11px;
-            color: #000;
-            line-height: 1.35;
-        }
-        .center { text-align: center; }
-        .right { text-align: right; }
-        .bold { font-weight: bold; }
-        .upper { text-transform: uppercase; }
-        .line { border-top: 1px solid #000; margin: 10px 0 12px; }
-        .title {
-            font-size: 18px;
-            font-weight: bold;
-            letter-spacing: 1px;
-            margin: 0 0 10px;
-        }
-        .meta-table { width: 100%; margin-bottom: 14px; }
-        .meta-table td { vertical-align: top; padding: 0; }
-        .customer-block { margin-bottom: 14px; }
-        .customer-block div { margin-bottom: 2px; }
-        .subject {
-            text-decoration: underline;
-            font-weight: bold;
-            margin: 10px 0 6px;
-        }
-        .intro { margin-bottom: 10px; }
-        table.rates {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 4px;
-        }
-        table.rates th,
-        table.rates td {
-            border: 1px solid #000;
-            padding: 5px 6px;
-            vertical-align: top;
-        }
-        table.rates th {
-            font-weight: bold;
-            text-align: center;
-        }
-        table.rates td.item-col { width: 34%; }
-        table.rates td.price-col { text-align: center; width: auto; }
-        .item-sub { font-size: 10px; margin-top: 2px; }
-        .footnotes { margin-top: 10px; font-size: 10px; }
-        .footnotes div { margin-bottom: 3px; }
-        .footer-block { margin-top: 18px; font-size: 11px; }
-        .footer-block div { margin-bottom: 4px; }
-        .issued-line { margin-top: 8px; }
+        @page { margin: 226px 36px 46px 36px; }
+        body { font-family: DejaVu Sans, sans-serif; font-size: 9.5px; color: #000; line-height: 1.35; }
+        header { position: fixed; top: -208px; left: 0; right: 0; }
+        .lh-name { font-size: 17px; font-weight: bold; }
+        .lh-small { font-size: 9px; line-height: 1.35; }
+        .lh-rule { border-top: 4px solid #000; margin: 5px 0 6px; }
+        .lh-meta { width: 100%; border-collapse: collapse; }
+        .lh-meta td { padding: 0; vertical-align: bottom; }
+        .lh-meta .k { font-weight: bold; font-size: 10px; }
+        .lh-title { font-size: 19px; font-weight: bold; text-align: right; }
+        /* a QR of the document number (user, 30 Oct 2026): scanned into the system's search fields */
+        .lh-qr { margin-bottom: 2px; }
+        .lh-qr img { width: 54px; height: 54px; }
+        .pagenum:before { content: counter(page); }
+
+        table.box { width: 100%; border-collapse: collapse; margin: 0 0 8px; page-break-inside: avoid; }
+        table.box td, table.box th { border: 1px solid #000; padding: 4px 6px; vertical-align: top; }
+        table.box th { background: #f0f0f0; font-size: 9px; text-align: left; text-transform: uppercase; letter-spacing: .02em; }
+        table.box td.k { width: 17%; color: #333; font-size: 8.5px; text-transform: uppercase; white-space: nowrap; }
+        table.box td.v { font-weight: bold; }
+        .two { width: 100%; border-collapse: separate; border-spacing: 0; margin: 0 0 8px; }
+        .two > tbody > tr > td { width: 50%; padding: 0; vertical-align: top; }
+        .two > tbody > tr > td + td { padding-left: 8px; }
+        .two table.box { margin: 0; }
+        .two table.box td.k { width: 30%; }
+        .tag { display: inline-block; padding: 0 5px; border: 1px solid #000; border-radius: 3px; font-size: 8px; font-weight: bold; text-transform: uppercase; margin-left: 4px; }
+
+        table.items { width: 100%; border-collapse: collapse; margin: 0 0 8px; }
+        table.items th, table.items td { border: 1px solid #000; padding: 4px 6px; vertical-align: top; }
+        table.items th { background: #f0f0f0; font-size: 9px; text-transform: uppercase; }
+        table.items td.num, table.items th.num { text-align: right; white-space: nowrap; }
+        table.items td.c, table.items th.c { text-align: center; white-space: nowrap; }
+        table.items tr.total td { font-weight: bold; background: #f7f7f7; }
+        table.items td.blank { border-left: 0; border-bottom: 0; }
+
+        .notes { margin: 0 0 10px; }
+        .notes .h { font-weight: bold; font-size: 9px; text-transform: uppercase; margin-bottom: 2px; }
+        /* signatures (user, 30 Oct 2026): room to sign, the labels centred under the lines */
+        table.sign { width: 100%; border-collapse: collapse; margin-top: 28px; page-break-inside: avoid; }
+        table.sign td { width: 50%; padding: 0 18px; vertical-align: bottom; }
+        table.sign .line { border-top: 1px solid #000; padding-top: 4px; font-size: 9px; text-align: center; }
+        .muted { color: #444; font-weight: normal; }
     </style>
 </head>
 <body>
@@ -62,6 +55,7 @@
         $company = $quotation->company;
         $branch = $quotation->branch;
         $customer = $quotation->customer;
+        $enquiry = $quotation->portalEnquiry;
         $salesperson = $quotation->salesperson;
 
         $companyName = strtoupper($company?->name ?? $branch?->company_name ?? 'O&G TRANSPORT');
@@ -69,215 +63,183 @@
         $address = strtoupper($company?->address ?? $branch?->address ?? '');
         $phone = $company?->phone ?? $branch?->phone ?? '';
         $email = $company?->email ?? $branch?->email ?? '';
-        $sstNo = $company?->tin ?? '';
+        $fax = $branch?->fax ?? '';
+        $sstNo = ($company?->tin ?: $branch?->sst_no) ?? '';
 
-        $refNo = preg_replace('/\D+/', '', $quotation->number) ?: $quotation->number;
-        $quoteDate = optional($quotation->quoted_at ?? $quotation->confirmed_at ?? $quotation->created_at)->format('d/m/Y');
-        $issuedBy = $quotation->issued_by_name
-            ?? $salesperson?->name
-            ?? auth()->user()?->name
-            ?? '';
+        $orderDate = optional($quotation->confirmed_at ?? $quotation->quoted_at ?? $quotation->created_at)->format('d/m/Y');
+        $issuedBy = $quotation->issued_by_name ?: ($salesperson?->name ?? '');
+        $rm = fn ($amount) => 'RM '.number_format((float) $amount, 2, '.', ',');
+        $qty = fn ($value) => rtrim(rtrim(number_format((float) $value, 3, '.', ','), '0'), '.');
+        $contact = fn (?string $name, ?string $phone) => trim(implode(' · ', array_filter([$name, $phone]))) ?: '—';
 
-        $attention = $quotation->attention
-            ?? $quotation->destinations->first()?->consignee_pic
-            ?? $customer?->pics?->firstWhere('is_default', true)?->name
-            ?? $customer?->pics?->first()?->name
-            ?? '';
+        $orderType = $quotation->orderType();
+        $paymentTerm = trim(($orderType?->getLabel() ?? ($quotation->terms_of_payment ?: '—'))
+            .($orderType === \App\Enums\OrderType::Term && $customer?->credit_term_days ? ' · '.$customer->credit_term_days.' days' : ''));
+        $paymentMethod = $quotation->payment_method ? ucwords(str_replace('_', ' ', (string) $quotation->payment_method)) : null;
+        $receivedThrough = $enquiry?->received_through ? ucwords(str_replace('_', ' ', (string) $enquiry->received_through)) : null;
 
-        $paymentTerms = $quotation->terms_of_payment
-            ?: ($customer?->credit_term_days
-                ? $customer->credit_term_days.' Days'
-                : 'Cash / COD');
+        // consignor: picked up, or brought to a store by the customer; consignee: delivered, or collected at a store
+        $isStore = $quotation->service_type === \App\Enums\ServiceType::Store;
+        $store = $quotation->store ?? $quotation->storeBranch;
+        $consigneeStore = $quotation->consigneeStore;
+        $consignorMode = $isStore ? 'Customer Drop Off' : 'Pick Up';
+        $consigneeMode = $consigneeStore ? 'Self Collection' : 'Deliver';
+        $consignorAddress = $isStore
+            ? trim((method_exists($store, 'label') ? $store?->label() : ($store?->name ?? 'Store')).($store?->address ? "\n".$store->address : ''))
+            : ($quotation->pickup_location ?: ($quotation->customer_address ?: $customer?->address));
+        $consigneeAddress = $consigneeStore
+            ? trim($consigneeStore->label().($consigneeStore->address ? "\n".$consigneeStore->address : ''))
+            : ($quotation->drop_off_location ?: ($quotation->consignee_address ?: $quotation->destinations->sortBy('sequence')->first()?->address));
+        $destination = $quotation->toLocation?->name ?? $quotation->destinations->sortBy('sequence')->first()?->city;
+        $dropOffType = collect($quotation->destination_types ?? [])->first()['drop_off_type'] ?? $quotation->destinations->first()?->drop_off_type;
+        $dropOffLabel = $dropOffType && $dropOffType !== 'default' ? (\App\Enums\DropOffType::tryFrom((string) $dropOffType)?->getLabel() ?? ucfirst((string) $dropOffType)) : null;
+        $stops = \App\Support\OrderStops::split($quotation->stops);
+        $doNumbers = array_values(array_unique(array_filter(array_merge([(string) $quotation->customer_do_number], \App\Support\OrderStops::doNumbers($quotation->stops)))));
 
-        $customerAddress = $quotation->customer_address ?: $customer?->address;
+        $lines = $quotation->lines->sortBy('id')->values();
+        // the UOM column: a product's unit (its sub-category for a measurement, Unit for an item, Trip for a lorry), not its code
+        $products = \App\Domains\MasterData\Models\Uom::query()->withoutGlobalScopes()->whereIn('code', $lines->pluck('uom')->filter()->all())->get(['code', 'category', 'sub_category'])->keyBy('code');
+        $unitOf = function (?string $uom) use ($products): string {
+            $product = $uom ? $products->get($uom) : null;
 
-        $contactPerson = match (true) {
-            $salesperson?->name && $salesperson?->phone => $salesperson->name.' ( '.$salesperson->phone.' )',
-            (bool) $salesperson?->name => $salesperson->name,
-            default => '',
+            return match (true) {
+                // an unknown product code (CODE_LIKE_THIS) is a unit too; a real unit text (pcs, pallet) is printed as it is
+                $product === null => $uom === null || $uom === '' ? '—' : (preg_match('/^[A-Z0-9_]+$/', $uom) && str_contains($uom, '_') ? 'Unit' : (\App\Support\QuantityLabel::unit($uom) ?? $uom)),
+                $product->category === \App\Domains\MasterData\Models\Uom::LORRY => 'Trip',
+                $product->category === \App\Domains\MasterData\Models\Uom::MEASUREMENT && filled($product->sub_category) => ucfirst(strtolower((string) $product->sub_category)),
+                default => 'Unit',
+            };
         };
-
-        $formatRm = function ($amount): string {
-            if ($amount === null || $amount === '') {
-                return '';
-            }
-
-            return 'RM '.number_format((float) $amount, 2, '.', ',');
-        };
-
-        $formatQty = fn ($qty): string => rtrim(rtrim(number_format((float) $qty, 3, '.', ','), '0'), '.');
-
-        $destinations = $rateMatrix['destinations'] ?? [];
-        $rows = $rateMatrix['rows'] ?? [];
-        $columnCount = max(1, count($destinations));
-        $singleDestination = count($destinations) <= 1;
-        $totals = $rateMatrix['totals'] ?? [];
-        $grandTotal = (float) ($rateMatrix['grand_total'] ?? 0);
+        $minimumTopUp = (float) $quotation->destinations->sum('minimum_charge_applied');
+        $subtotal = (float) ($quotation->subtotal ?: $lines->sum('line_total'));
+        $total = (float) ($quotation->total_amount ?: $subtotal + $minimumTopUp);
     @endphp
 
-    {{-- Letterhead --}}
-    <div class="center bold upper" style="font-size:12px;">{{ $companyName }}</div>
-    @if($regNo)
-        <div class="center">(REG NO. : {{ $regNo }})</div>
-    @endif
-    @if($address)
-        <div class="center upper" style="margin-top:4px;">{{ $address }}</div>
-    @endif
-    <div class="center" style="margin-top:4px;">
-        @if($phone) Tel: {{ $phone }} @endif
-        @if($email) Email: {{ $email }} @endif
-    </div>
-    @if($sstNo)
-        <div class="center" style="margin-top:4px;">SST No. : {{ $sstNo }}</div>
-    @endif
+    {{-- letterhead, repeated on every page (the quotation's) --}}
+    <header>
+        <div class="lh-name">{{ $companyName }}</div>
+        <div class="lh-small">
+            @if ($regNo)(REG NO. : {{ $regNo }} )<br>@endif
+            @if ($address){{ $address }}<br>@endif
+            @if ($phone || $fax)@if ($phone)Tel : {{ $phone }}@endif @if ($fax)&nbsp; Fax : {{ $fax }}@endif<br>@endif
+            <table class="lh-meta"><tr>
+                <td class="lh-small">@if ($email)Email : {{ $email }}@endif</td>
+                <td class="lh-small">@if ($sstNo)SST No. : {{ $sstNo }}@endif</td>
+            </tr></table>
+        </div>
+        <div class="lh-rule"></div>
+        <table class="lh-meta"><tr>
+            <td class="k" style="width:34%">Order No. : {{ $quotation->orderNumber() }}</td>
+            <td class="k" style="width:30%">Page No. : <span class="pagenum"></span></td>
+            <td class="lh-title"><div class="lh-qr"><img src="{{ \App\Support\QrCodeImage::dataUri($quotation->orderNumber()) }}" alt="QR {{ $quotation->orderNumber() }}"></div>ORDER FORM</td>
+        </tr></table>
+    </header>
 
-    <div class="line"></div>
-
-    <div class="right title">QUOTATION</div>
-
-    {{-- Ref / page / date --}}
-    <table class="meta-table">
+    <table class="box">
+        <tr><th colspan="4">Customer &amp; order</th></tr>
         <tr>
-            <td style="width:33%;">Ref No. : {{ $refNo }}</td>
-            <td class="center" style="width:34%;">Page No. : 1</td>
-            <td class="right" style="width:33%;">Date : {{ $quoteDate }}</td>
+            <td class="k">Customer</td>
+            <td class="v" style="width:50%">{{ $customer?->company_name ?? '—' }}@if ($customer?->code) <span class="muted">({{ $customer->code }})</span>@endif</td>
+            <td class="k">Date</td>
+            <td class="v">{{ $orderDate }}</td>
+        </tr>
+        <tr>
+            <td class="k">Billing address</td>
+            <td class="v">{!! nl2br(e($quotation->customer_address ?: ($customer?->address ?? '—'))) !!}</td>
+            <td class="k">Payment term</td>
+            <td class="v">{{ $paymentTerm }}@if ($paymentMethod) <span class="muted">· {{ $paymentMethod }}</span>@endif</td>
+        </tr>
+        <tr>
+            <td class="k">Attn / contact</td>
+            <td class="v">{{ $contact($quotation->attention ?: $customer?->attention, $quotation->customer_pic_phone ?: $customer?->phone) }}</td>
+            <td class="k">Enquiry</td>
+            <td class="v">{{ $enquiry?->reference_no ?? '—' }}@if ($receivedThrough) <span class="muted">· {{ $receivedThrough }}</span>@endif</td>
+        </tr>
+        <tr>
+            <td class="k">Salesperson</td>
+            <td class="v">{{ $salesperson?->name ?? '—' }}@if ($quotation->saLocation?->code) <span class="muted">· {{ $quotation->saLocation->code }}</span>@endif</td>
+            <td class="k">Expected delivery</td>
+            <td class="v">{{ $quotation->expected_delivery_date ?: '—' }}</td>
         </tr>
     </table>
 
-    {{-- Customer --}}
-    <div class="customer-block">
-        <div class="bold upper">{{ $customer?->company_name ?? '—' }}</div>
-        @if($customerAddress)
-            <div class="upper">{!! nl2br(e($customerAddress)) !!}</div>
-        @endif
-        @if($customer?->email)
-            <div>Email : {{ $customer->email }}</div>
-        @else
-            <div>Email :</div>
-        @endif
-        @if($customer?->phone)
-            <div>Tel : {{ $customer->phone }}@if($quotation->customer_phone_alt) &nbsp; {{ $quotation->customer_phone_alt }}@endif</div>
-        @endif
-        @if($quotation->customer_fax)
-            <div>Fax : {{ $quotation->customer_fax }}</div>
-        @endif
-        @if($attention)
-            <div>Attention : {{ strtoupper($attention) }}</div>
-        @endif
-    </div>
+    <table class="two"><tbody><tr>
+        <td>
+            <table class="box">
+                <tr><th colspan="2">Consignor <span class="tag">{{ $consignorMode }}</span></th></tr>
+                <tr><td class="k">Name</td><td class="v">{{ $quotation->consignor_name ?: ($quotation->portal_enquiry_id ? '—' : ($customer?->company_name ?? '—')) }}</td></tr>
+                <tr><td class="k">PIC / Tel</td><td class="v">{{ $contact($quotation->consignor_pic_name, $quotation->consignor_pic_phone) }}</td></tr>
+                <tr><td class="k">{{ $isStore ? 'Store' : 'Address' }}</td><td class="v">{!! nl2br(e($consignorAddress ?: '—')) !!}
+                    @if ($stops['multi_pickup'])
+                        @foreach ($stops['pickup_stops'] as $stop)<div class="muted">+ {{ $stop['location'] ?: '—' }}@if ($stop['do_number']) · DO {{ $stop['do_number'] }}@endif</div>@endforeach
+                    @endif
+                </td></tr>
+                @if ($quotation->fromLocation?->name)<tr><td class="k">Area</td><td class="v">{{ $quotation->fromLocation->name }}</td></tr>@endif
+            </table>
+        </td>
+        <td>
+            <table class="box">
+                <tr><th colspan="2">Consignee <span class="tag">{{ $consigneeMode }}</span></th></tr>
+                <tr><td class="k">Name</td><td class="v">{{ $quotation->consignee_name ?: ($quotation->destinations->sortBy('sequence')->first()?->consignee_name ?? '—') }}</td></tr>
+                <tr><td class="k">PIC / Tel</td><td class="v">{{ $contact($quotation->consignee_pic_name, $quotation->consignee_pic_phone) }}</td></tr>
+                <tr><td class="k">{{ $consigneeStore ? 'Store' : 'Address' }}</td><td class="v">{!! nl2br(e($consigneeAddress ?: '—')) !!}
+                    @if ($stops['multi_dropoff'])
+                        @foreach ($stops['dropoff_stops'] as $stop)<div class="muted">+ {{ $stop['location'] ?: '—' }}@if ($stop['do_number']) · DO {{ $stop['do_number'] }}@endif</div>@endforeach
+                    @endif
+                </td></tr>
+                <tr><td class="k">Destination</td><td class="v">{{ $destination ?? '—' }}@if ($dropOffLabel) <span class="muted">· {{ $dropOffLabel }}</span>@endif</td></tr>
+            </table>
+        </td>
+    </tr></tbody></table>
 
-    <div class="issued-line right">Issued by : {{ $issuedBy }}</div>
+    <table class="box">
+        <tr>
+            <td class="k">DO number</td>
+            <td class="v">{{ $doNumbers === [] ? '—' : implode(', ', $doNumbers) }}</td>
+        </tr>
+    </table>
 
-    <div class="subject">RE : {{ $quotation->title ?: 'Quotation Of Transport Charges' }}</div>
-    <div class="intro">Please find the transportation charges for the following:-</div>
-
-    {{-- Rate matrix --}}
-    @if($singleDestination)
-        <table class="rates">
-            <thead>
+    <table class="items">
+        <thead>
+            <tr>
+                <th class="c" style="width:5%">No.</th>
+                <th>Item</th>
+                <th class="num" style="width:9%">Qty</th>
+                <th class="c" style="width:12%">UOM</th>
+                <th class="num" style="width:15%">Unit price (RM)</th>
+                <th class="num" style="width:15%">Amount (RM)</th>
+            </tr>
+        </thead>
+        <tbody>
+            @forelse ($lines as $i => $line)
                 <tr>
-                    <th class="item-col">Item</th>
-                    <th class="price-col">Destination</th>
-                    <th class="price-col">Qty</th>
-                    <th class="price-col">Unit price</th>
-                    <th class="price-col">Amount</th>
+                    <td class="c">{{ $i + 1 }}</td>
+                    <td>{{ $line->item_name }}@if ($line->dimensions || $line->weight)<div class="muted">{{ trim(implode(' · ', array_filter([$line->dimensions, $line->weight ? $line->weight.' kg' : null]))) }}</div>@endif@if ($line->handling_notes)<div class="muted">{{ $line->handling_notes }}</div>@endif</td>
+                    <td class="num">{{ $qty($line->quantity) }}</td>
+                    <td class="c">{{ $unitOf($line->uom) }}</td>
+                    <td class="num">{{ $line->unit_price !== null ? number_format((float) $line->unit_price, 2) : '—' }}</td>
+                    <td class="num">{{ $line->line_total !== null ? number_format((float) $line->line_total, 2) : '—' }}</td>
                 </tr>
-            </thead>
-            <tbody>
-                @forelse($rows as $row)
-                    <tr>
-                        <td class="item-col">
-                            {{ $row['label'] }}
-                            @if(! empty($row['sub']))
-                                <div class="item-sub">{{ $row['sub'] }}</div>
-                            @endif
-                        </td>
-                        <td class="price-col">{{ $destinations[0] ?? '—' }}</td>
-                        <td class="price-col">{{ $formatQty($row['qty'] ?? 1) }}</td>
-                        <td class="price-col">{{ $formatRm($row['prices'][0] ?? null) }}</td>
-                        <td class="price-col">{{ $formatRm($row['amounts'][0] ?? null) }}</td>
-                    </tr>
-                @empty
-                    <tr>
-                        <td class="item-col" colspan="5">No transport charges listed.</td>
-                    </tr>
-                @endforelse
-                @if($rows !== [])
-                    <tr>
-                        <td class="item-col bold" colspan="4" style="text-align:right;">Total</td>
-                        <td class="price-col bold">{{ $formatRm($grandTotal) }}</td>
-                    </tr>
-                @endif
-            </tbody>
-        </table>
-    @else
-        <table class="rates">
-            <thead>
-                <tr>
-                    <th class="item-col">Item</th>
-                    @foreach($destinations as $destinationLabel)
-                        <th class="price-col">{{ $destinationLabel }}</th>
-                    @endforeach
-                </tr>
-            </thead>
-            <tbody>
-                @forelse($rows as $row)
-                    <tr>
-                        <td class="item-col">
-                            {{ $row['label'] }}
-                            @if(($row['qty'] ?? 1) > 1)
-                                <div class="item-sub">Qty {{ $formatQty($row['qty']) }}</div>
-                            @endif
-                            @if(! empty($row['sub']))
-                                <div class="item-sub">{{ $row['sub'] }}</div>
-                            @endif
-                        </td>
-                        @foreach($row['prices'] as $i => $price)
-                            <td class="price-col">
-                                {{ $formatRm($price) }}
-                                @if($price !== null && ($row['qty'] ?? 1) > 1)
-                                    <div class="item-sub">= {{ $formatRm($row['amounts'][$i] ?? null) }}</div>
-                                @endif
-                            </td>
-                        @endforeach
-                    </tr>
-                @empty
-                    <tr>
-                        <td class="item-col" colspan="{{ $columnCount + 1 }}">No transport charges listed.</td>
-                    </tr>
-                @endforelse
-                @if($rows !== [])
-                    <tr>
-                        <td class="item-col bold" style="text-align:right;">Total</td>
-                        @foreach($destinations as $i => $label)
-                            <td class="price-col bold">{{ $formatRm($totals[$i] ?? 0) }}</td>
-                        @endforeach
-                    </tr>
-                @endif
-            </tbody>
-        </table>
-    @endif
+            @empty
+                <tr><td colspan="6" class="c muted">No items</td></tr>
+            @endforelse
+            @if ($minimumTopUp > 0)
+                <tr><td colspan="3" class="blank"></td><td colspan="2" class="num">Subtotal</td><td class="num">{{ number_format($subtotal, 2) }}</td></tr>
+                <tr><td colspan="3" class="blank"></td><td colspan="2" class="num">Minimum charge top-up</td><td class="num">{{ number_format($minimumTopUp, 2) }}</td></tr>
+            @endif
+            <tr class="total"><td colspan="3" class="blank"></td><td colspan="2" class="num">TOTAL</td><td class="num">{{ $rm($total) }}</td></tr>
+        </tbody>
+    </table>
 
-    {{-- Footnotes from quotation notes or defaults --}}
-    <div class="footnotes">
-        @if($quotation->notes)
-            {!! nl2br(e($quotation->notes)) !!}
-        @else
-            <div>*Minimum charge per point / DO RM 20</div>
-            <div>*Minimum charges per pick up RM 60</div>
-        @endif
-    </div>
-
-    {{-- Footer --}}
-    <div class="footer-block">
-        <div>Terms of payment : {{ $paymentTerms }}</div>
-        @if($contactPerson)
-            <div>Contact Person : {{ strtoupper($contactPerson) }}</div>
-        @endif
-        @if($quotation->valid_until)
-            <div>Valid until : {{ $quotation->valid_until->format('d/m/Y') }}</div>
-        @endif
-        <div style="margin-top:10px;">If you have any doubts, please contact us.</div>
-    </div>
+    <table class="sign"><tr>
+        <td>
+            <div style="height:70px"></div>
+            <div class="line">Prepared by{{ $issuedBy ? ' : '.$issuedBy : '' }}@if ($salesperson?->phone) ( {{ $salesperson->phone }} )@endif</div>
+        </td>
+        <td>
+            <div style="height:70px"></div>
+            <div class="line">Customer</div>
+        </td>
+    </tr></table>
 </body>
 </html>

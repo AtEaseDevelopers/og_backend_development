@@ -29,13 +29,23 @@ class Quote extends Model
     /** Quotation numbers (user, 28 Oct 2026): Q-KL-261000001 (Q, the company code, the month and a running number) */
     public const PREFIX = 'Q';
 
+    /** The client's two quotation types (user, 29 Oct 2026): a general price list, or a quotation to one customer. */
+    public const TYPE_PRICE_LIST = 'price_list';
+
+    public const TYPE_CUSTOMER = 'customer';
+
+    public const TYPES = [
+        self::TYPE_CUSTOMER => 'Customer quotation',
+        self::TYPE_PRICE_LIST => 'Price list (with effective date)',
+    ];
+
     public const STATUSES = [
         self::PENDING => 'Pending confirmation',
         self::ACCEPTED => 'Accepted',
     ];
 
     protected $fillable = [
-        'company_id', 'branch_id', 'number', 'customer_id', 'lead_id', 'quote_date', 'status', 'accepted_by', 'form', 'pairs',
+        'company_id', 'branch_id', 'number', 'type', 'customer_id', 'lead_id', 'quote_date', 'status', 'accepted_by', 'form', 'pairs',
         'total_amount', 'order_enquiry_id', 'ordered_at', 'accepted_at', 'created_by',
     ];
 
@@ -85,15 +95,20 @@ class Quote extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    /** The customer's (or the lead's) name. */
+    /** The customer's (or the lead's) name; a price list without one is addressed to the company itself. */
     public function partyName(): ?string
     {
-        return $this->customer?->company_name ?? $this->lead?->name;
+        return $this->customer?->company_name ?? $this->lead?->name ?? ($this->isPriceList() ? 'Price list (no customer)' : null);
     }
 
     public function statusLabel(): string
     {
         return self::STATUSES[$this->status] ?? (string) $this->status;
+    }
+
+    public function isPriceList(): bool
+    {
+        return $this->type === self::TYPE_PRICE_LIST;
     }
 
     public function isPending(): bool

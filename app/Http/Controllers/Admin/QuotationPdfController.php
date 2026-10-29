@@ -25,6 +25,8 @@ class QuotationPdfController
             'salesperson',
             'destinations',
             'lines',
+            // the Order Form (user, 29 Oct 2026): consignor / consignee stores and areas, the enquiry, the sales area
+            'store', 'storeBranch', 'consigneeStore', 'fromLocation', 'toLocation', 'portalEnquiry', 'saLocation',
         ]);
 
         $currentTenant = Filament::getTenant() ?? CurrentCompany::get();
@@ -41,7 +43,7 @@ class QuotationPdfController
             'rateMatrix' => $this->buildRateMatrix($record),
         ])->setPaper('a4');
 
-        return $pdf->stream($record->number.'.pdf');
+        return $pdf->stream($record->orderNumber().'.pdf');
     }
 
     /**

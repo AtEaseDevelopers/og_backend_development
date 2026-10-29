@@ -18,7 +18,7 @@ class ProformaInvoicePdfController
         abort_unless($user, 403);
 
         $record = ProformaInvoice::query()
-            ->with(['quotation.lines', 'quotation.destinations', 'quotation.portalEnquiry', 'quotation.salesperson', 'quotation.fromLocation', 'quotation.toLocation', 'customer', 'company'])
+            ->with(['quotation.lines', 'quotation.destinations', 'quotation.portalEnquiry', 'quotation.salesperson', 'quotation.fromLocation', 'quotation.toLocation', 'customer', 'company', 'consignmentNote'])
             ->findOrFail($proformaInvoice);
 
         $currentTenant = Filament::getTenant() ?? CurrentCompany::get();

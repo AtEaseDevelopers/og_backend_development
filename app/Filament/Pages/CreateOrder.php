@@ -2179,7 +2179,7 @@ class CreateOrder extends Page
             ? $uom->rateTiers()->where('customer_code', $code)->with('location:id,name')->orderBy('location_id')->orderBy('min_qty')->get()
                 ->map(fn (UomRateTier $tier) => [
                     'destination' => ($tier->location?->name ?? '—').(($tier->drop_off_type ?? 'default') !== DropOffType::Default->value ? ' · '.(DropOffType::tryFrom((string) $tier->drop_off_type)?->getLabel() ?? $tier->drop_off_type) : ''),
-                    'uom' => 'Qty '.$tier->rangeLabel(),
+                    'uom' => 'Qty '.$tier->rangeLabel().($tier->fixed_charge !== null && (float) $tier->fixed_charge > 0 ? ' · RM '.number_format((float) $tier->fixed_charge, 2).' fixed +' : ''),
                     'price' => (float) $tier->price,
                     'min_charge' => $tier->drop_off_min_charge !== null ? (float) $tier->drop_off_min_charge : null,
                     'same' => $location !== null && $tier->location?->name === $location,

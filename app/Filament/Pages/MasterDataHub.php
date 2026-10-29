@@ -40,6 +40,7 @@ class MasterDataHub extends Page
             ['class' => Resources\ItemProductResource::class, 'label' => 'Items', 'icon' => 'heroicon-o-cube'],
             ['class' => Resources\LorryProductResource::class, 'label' => 'Chartered Lorry', 'icon' => 'heroicon-o-truck'],
             ['class' => Resources\DropOffMinChargeResource::class, 'label' => 'Drop-off Min Charges', 'icon' => 'heroicon-o-banknotes'],
+            ['class' => Resources\LocationResource::class, 'label' => 'Destinations', 'icon' => 'heroicon-o-map'],
         ],
         'Fleet & dispatch' => [
             ['class' => Resources\DriverResource::class, 'label' => 'Drivers', 'icon' => 'heroicon-o-user'],

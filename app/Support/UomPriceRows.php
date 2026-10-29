@@ -12,7 +12,8 @@ use Illuminate\Support\Facades\DB;
 /**
  * Price rows as the client's price list template lays them out (user, 21 Oct 2026): one row per condition (branch,
  * pickup location, drop-off location and type, the three minimum charges, effective and expiry date) with up to five
- * quantity ranges A–E (quantity from, quantity to, price per unit). Stored as one uom_rate_tiers row per range.
+ * quantity ranges A–E (quantity from, quantity to, price per unit, and since 29 Oct 2026 an optional fixed charge on
+ * top: "(250+4.0X)"). Stored as one uom_rate_tiers row per range.
  */
 class UomPriceRows
 {
@@ -66,6 +67,7 @@ class UomPriceRows
                     $row["range_{$letter}_from"] = $tier ? self::quantity($tier->min_qty) : null;
                     $row["range_{$letter}_to"] = $tier && $tier->max_qty !== null ? self::quantity($tier->max_qty) : null;
                     $row["range_{$letter}_price"] = $tier ? self::money($tier->price) : null;
+                    $row["range_{$letter}_fixed"] = $tier && $tier->fixed_charge !== null && (float) $tier->fixed_charge > 0 ? self::money($tier->fixed_charge) : null;
                 }
 
                 return $row;
@@ -81,9 +83,9 @@ class UomPriceRows
     }
 
     /**
-     * The filled ranges of a row: [from, to (null = and above), price].
+     * The filled ranges of a row: [from, to (null = and above), price per unit, fixed charge (null = none)].
      *
-     * @return list<array{0: float, 1: ?float, 2: float}>
+     * @return list<array{0: float, 1: ?float, 2: float, 3: ?float}>
      */
     public static function ranges(array $row): array
     {
@@ -98,7 +100,8 @@ class UomPriceRows
             }
 
             $to = $row["range_{$letter}_to"] ?? null;
-            $ranges[] = [(float) $from, is_numeric($to) ? (float) $to : null, round((float) $price, 2)];
+            $fixed = $row["range_{$letter}_fixed"] ?? null;
+            $ranges[] = [(float) $from, is_numeric($to) ? (float) $to : null, round((float) $price, 2), is_numeric($fixed) && (float) $fixed > 0 ? round((float) $fixed, 2) : null];
         }
 
         return $ranges;
@@ -109,7 +112,7 @@ class UomPriceRows
     {
         return array_fill_keys(array_merge(
             ['pickup_location', 'pickup_min_charge', 'construction_min_charge', 'drop_off_min_charge', 'effective_from', 'expires_on'],
-            ...array_map(fn (string $l) => ["range_{$l}_from", "range_{$l}_to", "range_{$l}_price"], self::RANGES),
+            ...array_map(fn (string $l) => ["range_{$l}_from", "range_{$l}_to", "range_{$l}_price", "range_{$l}_fixed"], self::RANGES),
         ), null);
     }
 
@@ -165,8 +168,8 @@ class UomPriceRows
             'source' => filled($row['source'] ?? null) ? $row['source'] : 'UOM page',
         ];
 
-        foreach (static::ranges($row) as [$from, $to, $price]) {
-            UomRateTier::query()->create($condition + ['min_qty' => $from, 'max_qty' => $to, 'price' => $price]);
+        foreach (static::ranges($row) as [$from, $to, $price, $fixed]) {
+            UomRateTier::query()->create($condition + ['min_qty' => $from, 'max_qty' => $to, 'price' => $price, 'fixed_charge' => $fixed]);
         }
     }
 
@@ -190,18 +193,18 @@ class UomPriceRows
         return $row;
     }
 
-    /** "1 → RM 14.00", "2–9 → RM 5.50", "40+ → RM 3.50" */
+    /** "1 → RM 14.00", "2–9 → RM 5.50", "40+ → RM 3.50"; with a fixed charge "50+ → RM 250.00 + RM 4.00/unit" */
     public static function rangeLines(array $row): array
     {
         return array_map(function (array $range): string {
-            [$from, $to, $price] = $range;
+            [$from, $to, $price, $fixed] = $range;
             $qty = match (true) {
                 $to === null => self::quantity($from).'+',
                 $to === $from => self::quantity($from),
                 default => self::quantity($from).'–'.self::quantity($to),
             };
 
-            return $qty.' → RM '.number_format($price, 2);
+            return $qty.' → '.($fixed !== null ? 'RM '.number_format($fixed, 2).' + RM '.number_format($price, 2).'/unit' : 'RM '.number_format($price, 2));
         }, self::ranges($row));
     }
 

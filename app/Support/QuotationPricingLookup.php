@@ -40,7 +40,7 @@ class QuotationPricingLookup
             $tier = $this->rates->tierFor($set['tiers'], $quantity);
 
             return $tier
-                ? ['price' => (float) $tier->price, 'source' => $set['special'] ? 'special' : 'master']
+                ? ['price' => $tier->unitPriceFor($quantity), 'source' => $set['special'] ? 'special' : 'master']
                 : ['price' => null, 'source' => null];
         }
 
@@ -81,7 +81,7 @@ class QuotationPricingLookup
         if ($uom) {
             $tier = $this->rates->uomTier($uom, $locationId, $quantity, null, $dropOffType);
 
-            return $tier ? (float) $tier->price : null;
+            return $tier ? $tier->unitPriceFor($quantity) : null;
         }
 
         return null;
@@ -245,7 +245,7 @@ class QuotationPricingLookup
             ? number_format((float) $tier->min_qty, 0).'–'.number_format((float) $tier->max_qty, 0)
             : number_format((float) $tier->min_qty, 0).'+';
 
-        return "Qty {$range} @ RM ".number_format((float) $tier->price, 2).' each (entered: '.number_format($quantity, 0).')';
+        return "Qty {$range} @ ".$tier->priceText().' (entered: '.number_format($quantity, 0).')';
     }
 
     /** @return list<array{range: string, price: float}> */
@@ -260,9 +260,9 @@ class QuotationPricingLookup
 
         return $this->rates->uomTiers($uom, $locationId, $customerId, $dropOffType)['tiers']
             ->map(fn (UomRateTier $tier) => [
-                'range' => $tier->max_qty
+                'range' => ($tier->max_qty
                     ? number_format((float) $tier->min_qty, 0).'–'.number_format((float) $tier->max_qty, 0)
-                    : number_format((float) $tier->min_qty, 0).'+',
+                    : number_format((float) $tier->min_qty, 0).'+').($tier->fixed_charge !== null && (float) $tier->fixed_charge > 0 ? ' · RM '.number_format((float) $tier->fixed_charge, 2).' fixed +' : ''),
                 'price' => (float) $tier->price,
             ])
             ->all();
@@ -291,16 +291,16 @@ class QuotationPricingLookup
                     if ($locationId && $uom) {
                         $tiers = $this->rates->uomTiers($uom, $locationId, $customerId, $dropOffType)['tiers']
                             ->map(fn (UomRateTier $tier) => [
-                                'range' => $tier->max_qty
+                                'range' => ($tier->max_qty
                                     ? number_format((float) $tier->min_qty, 0).'–'.number_format((float) $tier->max_qty, 0)
-                                    : number_format((float) $tier->min_qty, 0).'+',
+                                    : number_format((float) $tier->min_qty, 0).'+').($tier->fixed_charge !== null && (float) $tier->fixed_charge > 0 ? ' · RM '.number_format((float) $tier->fixed_charge, 2).' fixed +' : ''),
                                 'price' => (float) $tier->price,
                                 'active' => $matched?->id === $tier->id,
                             ])
                             ->all();
                     }
 
-                    $unitPrice = $matched ? (float) $matched->price : null;
+                    $unitPrice = $matched ? $matched->unitPriceFor($quantity) : null;
                     $activeRange = collect($tiers)->firstWhere('active', true)['range'] ?? null;
 
                     return [

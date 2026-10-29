@@ -6,9 +6,9 @@
     {{-- the client's quotation format (user, 26 Oct 2026: as their "Quotation of Transportation Charges"):
          letterhead + Ref No. / Page No. / QUOTATION on every page, the rates in a typewriter style --}}
     <style>
-        @page { margin: 168px 36px 46px 36px; }
+        @page { margin: 226px 36px 46px 36px; }
         body { font-family: DejaVu Sans, sans-serif; font-size: 10px; color: #000; line-height: 1.3; }
-        header { position: fixed; top: -150px; left: 0; right: 0; }
+        header { position: fixed; top: -208px; left: 0; right: 0; }
         .lh-name { font-size: 17px; font-weight: bold; }
         .lh-small { font-size: 9px; line-height: 1.35; }
         .lh-rule { border-top: 4px solid #000; margin: 5px 0 6px; }
@@ -16,6 +16,9 @@
         .lh-meta td { padding: 0; vertical-align: bottom; }
         .lh-meta .k { font-weight: bold; font-size: 10px; }
         .lh-title { font-size: 19px; font-weight: bold; text-align: right; }
+        /* a QR of the document number (user, 30 Oct 2026): scanned into the system's search fields */
+        .lh-qr { margin-bottom: 2px; }
+        .lh-qr img { width: 54px; height: 54px; }
         .pagenum:before { content: counter(page); }
 
         .party { width: 100%; border-collapse: collapse; margin-top: 2px; }
@@ -27,15 +30,16 @@
         .tw, .tw td { font-family: Courier, monospace; font-weight: bold; font-size: 9.5px; }
         .tw-line { font-family: Courier, monospace; font-weight: bold; font-size: 9.5px; margin: 0 0 10px; white-space: pre-wrap; }
         table.tw { width: 100%; border-collapse: collapse; margin: 0 0 14px; page-break-inside: avoid; table-layout: fixed; }
-        table.tw td { padding: 1px 4px 1px 0; vertical-align: top; white-space: nowrap; overflow: hidden; }
+        /* a bordered grid (user, 29 Oct 2026: easier to read); the typewriter underlines are hidden */
+        table.tw td { border: 1px solid #000; padding: 3px 5px; vertical-align: top; white-space: nowrap; overflow: hidden; }
         table.tw td.label { white-space: normal; }
-        table.tw tr.head td { padding-bottom: 6px; }
-        table.tw .under { display: block; letter-spacing: 0; overflow: hidden; }
-        table.tw tr.row td { padding-top: 3px; padding-bottom: 3px; }
-        table.tw td.num { text-align: right; padding-right: 10px; }
+        table.tw tr.head td { background: #f0f0f0; }
+        table.tw .under { display: none; }
+        table.tw td.num { text-align: right; }
         table.tw.items tr.first td { padding-top: 7px; }
         table.tw.items td { padding-top: 1px; padding-bottom: 1px; }
-        table.tw td.dest { padding-top: 10px; text-decoration: underline; }
+        table.tw tr.group td { background: #f7f7f7; }
+        table.tw td.qty { padding-left: 14px; }
         .notes { font-family: Courier, monospace; font-weight: bold; font-size: 9.5px; margin-top: 8px; }
         .notes div { margin-bottom: 2px; }
     </style>
@@ -52,7 +56,10 @@
         $sstNo = ($company?->tin ?: $branch?->sst_no) ?? '';
         $issuedBy = $salesperson?->name ?? $quote->creator?->name ?? '';
         $date = $quote->quote_date;
-        $effective = $date ? $date->format('jS F Y') : null;
+        // the client's two types (user, 29 Oct 2026): the price list carries the effective date and the SST line; the customer
+        // quotation opens with "Please find…" and closes with the terms and contact person
+        $priceList = $quote->isPriceList();
+        $effective = $priceList && $date ? $date->format('jS F Y') : null;
         $dash = fn (string $text, string $char) => str_repeat($char, max(4, min(48, mb_strlen($text))));
     @endphp
 
@@ -72,7 +79,7 @@
         <table class="lh-meta"><tr>
             <td class="k" style="width:28%">Ref No. : {{ $quote->number }}</td>
             <td class="k" style="width:32%">Page No. : <span class="pagenum"></span></td>
-            <td class="lh-title">QUOTATION</td>
+            <td class="lh-title"><div class="lh-qr"><img src="{{ \App\Support\QrCodeImage::dataUri($quote->number) }}" alt="QR {{ $quote->number }}"></div>QUOTATION</td>
         </tr></table>
     </header>
 
@@ -101,58 +108,68 @@
         </tr>
     </table>
 
-    <div class="re">RE : Quotation of Transportation Charges{{ $effective ? ' (Effective '.$effective.')' : '' }}</div>
+    <div class="re">RE : Quotation Of Transport Charges{{ $effective ? ' (Effective '.$effective.')' : '' }}</div>
 
-    <div class="tw-line">***** PRICE NOT INCLUDE 6% SST *****</div>
+    <div class="tw-line">{{ $priceList ? '***** PRICE NOT INCLUDE 6% SST *****' : 'Please find the transportation charges for the following:-' }}</div>
 
-    {{-- the client's quotation (user, 26 Oct 2026): ITEM | CHARGES (RM) | QUANTITY, a line per quantity range --}}
+    {{-- the client's quotations (user, 29 Oct 2026): ITEM and a column per destination (4 per table), each product a
+         heading underlined with = and a line per quantity range; a product with one price a single line --}}
     @if ($tables['groups'] !== [])
-        <table class="tw items">
-            <tr class="head">
-                <td style="width:58%">ITEM<span class="under">----</span></td>
-                <td style="width:17%" class="num">CHARGES (RM)<span class="under">------------</span></td>
-                <td style="width:25%">&nbsp;&nbsp;QUANTITY<span class="under">&nbsp;&nbsp;--------</span></td>
-            </tr>
-            @foreach ($tables['groups'] as $group)
-                @if ($group['destination'])
-                    <tr><td colspan="3" class="dest">TO {{ $group['destination'] }}</td></tr>
-                @endif
-                @foreach ($group['products'] as $product)
-                    @foreach ($product['lines'] as $n => $line)
-                        <tr @class(['first' => $n === 0])>
-                            <td class="label">{{ $n === 0 ? $product['name'] : '' }}</td>
-                            <td class="num">{{ $line['charge'] ?? '-' }}</td>
-                            <td>&nbsp;&nbsp;{{ $line['quantity'] }}</td>
-                        </tr>
+    @foreach (array_chunk($tables['columns'], 4) ?: [[]] as $chunk)
+        @php $colWidth = count($chunk) ? round(58 / count($chunk), 2) : 58; @endphp
+            <table class="tw rates">
+                <tr class="head">
+                    <td class="label" style="width:42%">ITEM<span class="under">----</span></td>
+                    @foreach ($chunk as $c)
+                        <td class="num" style="width:{{ $colWidth }}%">{{ $c }}<span class="under">{{ $dash($c, '-') }}</span></td>
                     @endforeach
+                </tr>
+                @foreach ($tables['groups'] as $group)
+                    @php $singleLine = count($group['rows']) === 1 && $group['rows'][0]['label'] === ''; @endphp
+                    <tr class="group">
+                        <td class="label" colspan="{{ $singleLine ? 1 : count($chunk) + 1 }}">{{ $group['name'] }}@unless ($singleLine)<span class="under">{{ $dash($group['name'], '=') }}</span>@endunless</td>
+                        @if ($singleLine)
+                            @foreach ($chunk as $c)
+                                <td class="num">{!! nl2br(e($group['rows'][0]['prices'][$c] ?? '-')) !!}</td>
+                            @endforeach
+                        @endif
+                    </tr>
+                    @unless ($singleLine)
+                        @foreach ($group['rows'] as $row)
+                            <tr class="row">
+                                <td class="label qty">{{ $row['label'] }}</td>
+                                @foreach ($chunk as $c)
+                                    <td class="num">{!! nl2br(e($row['prices'][$c] ?? '-')) !!}</td>
+                                @endforeach
+                            </tr>
+                        @endforeach
+                    @endunless
                 @endforeach
-            @endforeach
-        </table>
+            </table>
+    @endforeach
     @endif
 
-    {{-- chartered lorries: the only table with destinations, 4 destinations per table as the client's quotation --}}
+    {{-- chartered lorries: their own block, as the client's CHARTED LORRY, with its own destination columns --}}
     @if ($tables['lorry'])
-        @foreach (array_chunk(array_keys($tables['lorry']['columns']), 4) as $chunk)
-            @php $filler = 60 - 15 * count($chunk); @endphp
+    @foreach (array_chunk($tables['lorry']['columns'], 4) ?: [[]] as $chunk)
+        @php $colWidth = count($chunk) ? round(58 / count($chunk), 2) : 58; @endphp
             <table class="tw">
                 <tr class="head">
-                    <td class="label" style="width:40%">CHARTERED LORRY<span class="under">---------------</span></td>
+                    <td class="label" style="width:42%">CHARTERED LORRY<span class="under">---------------</span></td>
                     @foreach ($chunk as $c)
-                        <td class="num" style="width:15%">{{ $tables['lorry']['columns'][$c] }}<span class="under">{{ $dash($tables['lorry']['columns'][$c], '-') }}</span></td>
+                        <td class="num" style="width:{{ $colWidth }}%">{{ $c }}<span class="under">{{ $dash($c, '-') }}</span></td>
                     @endforeach
-                    @if ($filler > 0)<td style="width:{{ $filler }}%"></td>@endif
                 </tr>
                 @foreach ($tables['lorry']['rows'] as $row)
                     <tr class="row">
                         <td class="label">{{ $row['label'] }}</td>
                         @foreach ($chunk as $c)
-                            <td class="num">{{ $row['prices'][$c] ?? '' }}</td>
+                            <td class="num">{!! nl2br(e($row['prices'][$c] ?? '-')) !!}</td>
                         @endforeach
-                        @if ($filler > 0)<td></td>@endif
                     </tr>
                 @endforeach
             </table>
-        @endforeach
+    @endforeach
     @endif
 
     @if ($tables['groups'] === [] && ! $tables['lorry'])
@@ -163,14 +180,20 @@
         @foreach ($minimums as $line)
             <div>* {{ $line }}</div>
         @endforeach
-        <div>* ADDITIONAL CHARGES APPLY TO DELIVERIES TO SITE LOCATIONS AND OUTSKIRT AREAS.</div>
-        <div>* MAXIMUM TIME FOR LOADING AND UNLOADING IS 2 HOURS.</div>
-        <div style="margin-top:8px">Note:</div>
-        <div>1. Sales &amp; Service Tax (SST) is not included in the transportation charges stated.</div>
-        <div>2. Compensation for lost/damaged goods is capped at 50 times the transportation charge.</div>
-        <div>3. Only claims reported within 7 days of delivery will be considered.</div>
-        <div style="margin-top:8px">* This is a computer generated document. No signature is required. *</div>
-        <div style="margin-top:14px">***** PRICE NOT INCLUDE 6% SST *****{{ $effective ? '     (Effective '.$effective.')' : '' }}</div>
+        <div>* ADDITIONAL SURCHARGE WILL BE APPLY FOR DELIVERIES TO NON-STANDARD LOCATION, CONSTRUCTION SITE AND OUTSKIRT AREA.</div>
+        {{-- the closing lines of the client's quotation (user, 29 Oct 2026) --}}
+        @php
+            $closing = array_values(array_filter([
+                $party['credit_term_days'] ? 'Terms of payment: '.$party['credit_term_days'].' Days' : null,
+                $issuedBy ? 'Contact Person : '.strtoupper($issuedBy).($salesperson?->phone ? ' ( '.$salesperson->phone.' )' : '') : null,
+                'If you have any doubts, please contact us.',
+            ]));
+        @endphp
+        @unless ($priceList)
+            @foreach ($closing as $i => $line)
+                <div @if ($i === 0) style="margin-top:8px" @endif>{{ $line }}</div>
+            @endforeach
+        @endunless
     </div>
 </body>
 </html>

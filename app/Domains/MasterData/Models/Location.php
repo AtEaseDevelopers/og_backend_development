@@ -7,7 +7,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Location extends Model
 {
-    protected $fillable = ['code', 'name', 'type', 'postcode', 'state', 'city', 'is_active'];
+    // quote_column (user, 29 Oct 2026): destinations with the same label print as one column on the quotation PDF
+    protected $fillable = ['code', 'name', 'quote_column', 'type', 'postcode', 'state', 'city', 'is_active'];
 
     protected function casts(): array
     {

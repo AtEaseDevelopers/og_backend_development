@@ -233,6 +233,82 @@
         padding-left: 12px;
     }
 
+    /* the client's layout (user, 30 Oct 2026): letterhead left, title + QR right; Bill To and Consignor boxes with
+       the numbers beside them; a chop & sign box per consignee at the bottom */
+    .csn-doc-company-cell-left {
+        text-align: left;
+        font-size: 9.5px;
+        width: 58%;
+    }
+    .csn-doc-company-cell-left .csn-doc-company-name {
+        font-size: 13px;
+    }
+    .csn-doc-title-cell {
+        text-align: right;
+        vertical-align: top;
+    }
+    .csn-doc-title-cell .csn-doc-title {
+        font-size: 16px;
+        margin-bottom: 4px;
+    }
+    .csn-doc-qr-title img {
+        width: 60px;
+        height: 60px;
+        display: inline-block;
+    }
+    .csn-doc-party-box {
+        width: 33%;
+        border: 1px solid #000;
+        padding: 6px 8px !important;
+    }
+    .csn-doc-party-box + .csn-doc-party-box {
+        border-left: 0;
+    }
+    .csn-doc-parties .csn-doc-meta-col {
+        width: 34%;
+        padding-left: 10px;
+    }
+    .csn-doc-parties .csn-doc-qr {
+        float: none;
+        margin: 0 0 4px auto;
+        text-align: right;
+    }
+    .csn-doc-parties .csn-doc-qr img {
+        width: 56px;
+        height: 56px;
+        display: inline-block;
+    }
+    .csn-doc-remark {
+        margin-top: 8px;
+    }
+    .csn-doc-remark td {
+        border: 1px solid #000;
+        padding: 8px;
+        min-height: 40px;
+        vertical-align: top;
+    }
+    .csn-doc-consignees {
+        margin-top: 8px;
+    }
+    .csn-doc-consignee-box {
+        width: 50%;
+        border: 1px solid #000;
+        padding: 8px;
+        vertical-align: top;
+    }
+    .csn-doc-sign-area {
+        margin-top: 10px;
+        text-align: center;
+    }
+    .csn-doc-sign-area .csn-doc-sign-line {
+        height: 30px;
+        margin: 0 10px 4px;
+    }
+    .csn-doc-sign-area .csn-doc-sign-date {
+        text-align: center;
+        padding-left: 0;
+        margin-top: 6px;
+    }
     .csn-document--screen {
         background: #fff;
         border: 1px solid #d6d3d1;

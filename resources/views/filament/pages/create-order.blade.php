@@ -153,6 +153,8 @@
             $pairs = $this->orders[$oi]['pairs'];
             // the errors under the fields belong to the order that was checked
             $ep = $this->errorOrder === null || $this->errorOrder === $oi ? '' : 'other-order.';
+            // a price list (user, 29 Oct 2026): the type is chosen first; it needs no customer, so those fields are not shown
+            $priceList = $isQuote && (($form['quote_type'] ?? 'customer') === \App\Domains\Quotation\Models\Quote::TYPE_PRICE_LIST);
             $showPrices = $this->showPrices();
             $totals = $this->pairTotals();
             $uomOptions = $this->catalogOptions('uom');
@@ -190,6 +192,23 @@
             </style>
             <div class="ow-fgrid ow-fgrid-cust">
                 @if ($isQuote)
+                    {{-- the client's two quotation types (user, 29 Oct 2026): chosen first; a price list needs no customer --}}
+                    <div class="ow-field">
+                        <label for="ow-quote-type-{{ $oi }}">Quotation type <span class="ow-req">*</span></label>
+                        <select id="ow-quote-type-{{ $oi }}" wire:model.live="orders.{{ $oi }}.form.quote_type" class="ow-select">
+                            @foreach (\App\Domains\Quotation\Models\Quote::TYPES as $value => $label)
+                                <option value="{{ $value }}">{{ $label }}</option>
+                            @endforeach
+                        </select>
+                        @error($ep.'form.quote_type')<div class="ow-field-error">{{ $message }}</div>@enderror
+                    </div>
+                    <div class="ow-field">
+                        <label for="ow-quote-date-{{ $oi }}">Quotation date <span class="ow-req">*</span></label>
+                        <input id="ow-quote-date-{{ $oi }}" type="date" wire:model="orders.{{ $oi }}.form.quote_date" class="ow-input">
+                        @error($ep.'form.quote_date')<div class="ow-field-error">{{ $message }}</div>@enderror
+                    </div>
+                @endif
+                @if ($isQuote && ! $priceList)
                     {{-- a customer, or a lead (a new customer without a record: "+ New lead" adds one to Master Data → Leads) --}}
                     <div class="ow-field ow-field-lead">
                         <label class="ow-label-row">
@@ -205,7 +224,7 @@
                         </select>
                         @error($ep.'form.party')<div class="ow-field-error">{{ $message }}</div>@enderror
                     </div>
-                @else
+                @elseif (! $isQuote)
                     <div class="ow-field ow-field-lead">
                         <label class="ow-label-row">
                             <span>Customer <span class="ow-req">*</span></span>
@@ -223,6 +242,7 @@
                         @error($ep.'form.customer_id')<div class="ow-field-error">{{ $message }}</div>@enderror
                     </div>
                 @endif
+                @unless ($priceList)
                 <div class="ow-field ow-field-wide" wire:key="ow-billing-address">
                     <label for="ow-billing-address-{{ $oi }}">Billing address</label>
                     <textarea id="ow-billing-address-{{ $oi }}" wire:model="orders.{{ $oi }}.form.customer_address" rows="2" class="ow-textarea" placeholder="{{ filled($form['customer_id'] ?? null) ? 'Customer\'s billing address' : 'Select a customer to fill in the billing address' }}" @disabled(! $headerEditable)></textarea>
@@ -252,13 +272,7 @@
                     <input id="ow-customer-phone-{{ $oi }}" type="tel" inputmode="tel" wire:model.live.debounce.400ms="orders.{{ $oi }}.form.customer_pic_phone" class="ow-input" autocomplete="off" @disabled(! $headerEditable)>
                     @error($ep.'form.customer_pic_phone')<div class="ow-field-error">{{ $message }}</div>@enderror
                 </div>
-                @if ($isQuote)
-                    <div class="ow-field">
-                        <label for="ow-quote-date-{{ $oi }}">Quotation date <span class="ow-req">*</span></label>
-                        <input id="ow-quote-date-{{ $oi }}" type="date" wire:model="orders.{{ $oi }}.form.quote_date" class="ow-input">
-                        @error($ep.'form.quote_date')<div class="ow-field-error">{{ $message }}</div>@enderror
-                    </div>
-                @endif
+                @endunless
                 @unless ($isQuote)
                 <div class="ow-field">
                     <label>Salesperson</label>

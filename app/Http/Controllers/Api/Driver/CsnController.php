@@ -18,7 +18,7 @@ class CsnController extends Controller
     {
         $csn = ConsignmentNote::query()
             ->with(['claimer', 'deliveryOrder.lorry', 'deliveryOrder.driver', 'sourceBranch'])
-            ->where('qr_token', $qrToken)
+            ->where(fn ($q) => $q->where('qr_token', $qrToken)->orWhere('number', $qrToken)) // the QR carries the number since 30 Oct 2026
             ->first();
 
         if (! $csn) {

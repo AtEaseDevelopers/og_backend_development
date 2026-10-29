@@ -46,6 +46,44 @@
         margin-bottom: 2px;
     }
 
+    /* no logo (user, 30 Oct 2026): the letterhead on the left */
+    .inv-company-cell-full {
+        text-align: left;
+        font-size: 9.5px;
+    }
+
+    .inv-company-cell-full .inv-company-name {
+        font-size: 13px;
+    }
+
+    .inv-qr { margin-bottom: 4px; }
+    .inv-qr img { width: 54px; height: 54px; }
+
+    /* the boxed layout (user, 30 Oct 2026) */
+    .inv-title-cell { width: 26%; text-align: right; vertical-align: top; }
+    .inv-boxes { width: 100%; border-collapse: separate; border-spacing: 0; margin: 4px 0 8px; }
+    .inv-box { width: 50%; border: 1px solid #000; padding: 6px 8px; vertical-align: top; font-size: 9.5px; }
+    .inv-box + .inv-box { border-left: 0; }
+    .inv-box-title { font-weight: bold; font-size: 9px; text-transform: uppercase; letter-spacing: .03em; margin-bottom: 3px; }
+    .inv-box .inv-bill-name { font-weight: bold; font-size: 10.5px; }
+    .inv-box-muted { color: #444; margin-top: 3px; }
+    .inv-meta-table { width: 100%; border-collapse: collapse; }
+    .inv-meta-table td { padding: 1px 0; vertical-align: top; }
+    .inv-meta-k { width: 38%; color: #444; }
+    .inv-meta-v { font-weight: bold; }
+    .inv-items-boxed th, .inv-items-boxed td { border: 1px solid #000; padding: 4px 5px; vertical-align: top; }
+    .inv-items-boxed th { background: #f0f0f0; text-align: left; font-size: 9px; }
+    .inv-items-boxed .inv-col-goods { width: 26%; }
+    .inv-items-boxed .inv-col-amt, .inv-items-boxed .inv-col-sst { text-align: right; white-space: nowrap; }
+    .inv-totals-boxed td { border: 1px solid #000; padding: 4px 6px; }
+    .inv-totals-boxed .inv-totals-grand td { background: #f0f0f0; font-weight: bold; }
+
+    .inv-item-line {
+        color: #444;
+        font-size: 8.5px;
+        padding-left: 6px;
+    }
+
     .inv-title-row td {
         vertical-align: top;
         padding: 0 0 8px;

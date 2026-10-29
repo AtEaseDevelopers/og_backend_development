@@ -38,6 +38,11 @@ class AcceptQuote
                 throw new InvalidArgumentException('already accepted');
             }
 
+            // a price list is a document only (user, 29 Oct 2026): the default price list stays the price for everyone
+            if ($quote->isPriceList()) {
+                throw new InvalidArgumentException('a price list is a document only: it sets no special price');
+            }
+
             if (trim($acceptedBy) === '') {
                 throw new InvalidArgumentException('who accepted it is missing');
             }

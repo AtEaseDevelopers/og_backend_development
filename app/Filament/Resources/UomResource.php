@@ -186,6 +186,9 @@ class UomResource extends Resource
                 }]) : null;
             $price = $money("range_{$letter}_price", "Price for This Range (RM) {$upper}")
                 ->requiredWith("range_{$letter}_from");
+            // a fixed amount on top of price × quantity (user, 29 Oct 2026): the client's "(250+4.0X)"
+            $fixed = $money("range_{$letter}_fixed", "Fixed Charge (RM) {$upper}")
+                ->helperText('Optional: added once on top of the price × quantity, printed as "(250+4.0X)".');
 
             if ($previous === null) {
                 $from->required()->default(1);
@@ -209,7 +212,7 @@ class UomResource extends Resource
                 }]);
             }
 
-            array_push($ranges, ...array_filter([$from, $to, $price]));
+            array_push($ranges, ...array_filter([$from, $to, $price, $fixed]));
         }
 
         $minimumLabels = [

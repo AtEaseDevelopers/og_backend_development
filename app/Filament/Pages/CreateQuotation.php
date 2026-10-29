@@ -52,6 +52,7 @@ class CreateQuotation extends CreateOrder
                 'lead_id' => $quote->lead_id ? (string) $quote->lead_id : '',
                 'party' => $quote->customer_id ? 'customer:'.$quote->customer_id : ($quote->lead_id ? 'lead:'.$quote->lead_id : ''),
                 'quote_date' => $quote->quote_date?->toDateString() ?? today()->toDateString(),
+                'quote_type' => $quote->type ?: Quote::TYPE_CUSTOMER,
             ]);
             // one product per row (an older quotation's block of several products becomes one row each)
             $rows = [];
@@ -110,6 +111,7 @@ class CreateQuotation extends CreateOrder
             'party' => '',
             'lead_id' => '',
             'quote_date' => today()->toDateString(),
+            'quote_type' => Quote::TYPE_CUSTOMER,
         ];
     }
 
@@ -267,8 +269,10 @@ class CreateQuotation extends CreateOrder
         unset($rules['form.customer_id']);
 
         return array_merge($rules, [
-            'form.party' => ['required', 'regex:/^(customer|lead):\d+$/'],
+            // a price list needs no customer or lead (user, 29 Oct 2026): the PDF is addressed to the company itself
+            'form.party' => ['required_if:form.quote_type,'.Quote::TYPE_CUSTOMER, 'nullable', 'regex:/^(customer|lead):\d+$/'],
             'form.quote_date' => 'required|date',
+            'form.quote_type' => 'required|in:'.implode(',', array_keys(Quote::TYPES)),
             // no salesperson and no DO number on a quotation (user, 21 Oct 2026)
             'form.salesperson_id' => 'nullable|exists:users,id',
             'pairs.*.customer_do_number' => 'nullable|string|max:100',
@@ -280,7 +284,7 @@ class CreateQuotation extends CreateOrder
             'pairs.*.items.*.special.pickup_location' => 'nullable|string|max:150',
             ...array_fill_keys(array_map(fn (string $column) => 'pairs.*.items.*.product.'.$column, array_keys(UomResource::LIMITS)), 'nullable|numeric|min:0'),
             ...array_fill_keys(array_map(fn (string $column) => 'pairs.*.items.*.special.'.$column, ['pickup_min_charge', 'construction_min_charge', 'drop_off_min_charge']), 'nullable|numeric|min:0'),
-            ...array_fill_keys(array_merge(...array_map(fn (string $l) => ["pairs.*.items.*.special.range_{$l}_from", "pairs.*.items.*.special.range_{$l}_to", "pairs.*.items.*.special.range_{$l}_price"], UomPriceRows::RANGES)), 'nullable|numeric|min:0'),
+            ...array_fill_keys(array_merge(...array_map(fn (string $l) => ["pairs.*.items.*.special.range_{$l}_from", "pairs.*.items.*.special.range_{$l}_to", "pairs.*.items.*.special.range_{$l}_price", "pairs.*.items.*.special.range_{$l}_fixed"], UomPriceRows::RANGES)), 'nullable|numeric|min:0'),
             // range A is the price offered: every row needs it (no unit price box on a quotation); after the
             // nullable rules above, which it replaces
             'pairs.*.items.*.special.range_a_from' => 'required|numeric|min:0',
@@ -294,6 +298,7 @@ class CreateQuotation extends CreateOrder
             'form.party.required' => 'Select a customer or a lead (or create a new lead).',
             'pairs.*.to_location_id.required' => 'Select the drop-off location.',
             'pairs.*.items.*.item_name.required' => 'Select the product, or type the new product\'s name.',
+            'form.party.required_if' => 'Select a customer or lead (a price list needs none).',
             'pairs.*.items.*.special.range_a_from.required' => 'Enter range A: the quantity from and its price.',
             'pairs.*.items.*.special.range_a_price.required' => 'Enter range A\'s price.',
         ];
@@ -497,9 +502,10 @@ class CreateQuotation extends CreateOrder
         $item = &$this->pairs[$index]['items'][$itemIndex];
         $quantity = max(1.0, (float) ($item['quantity'] ?: 1));
 
-        foreach (UomPriceRows::ranges($item['special'] ?? []) as [$from, $to, $price]) {
+        foreach (UomPriceRows::ranges($item['special'] ?? []) as [$from, $to, $price, $fixed]) {
             if ($from <= $quantity + 0.0001 && ($to === null || $quantity <= $to + 0.0001)) {
-                $item['unit_price'] = $price;
+                // a fixed amount on top ("(250+4.0X)", user 29 Oct 2026): spread over the quantity
+                $item['unit_price'] = round($price + ($fixed ?? 0) / $quantity, 2);
                 $item['source'] = 'quote_range';
                 $item['tier'] = 'Qty '.rtrim(rtrim(number_format($from, 2, '.', ''), '0'), '.').($to === null ? '+' : '–'.rtrim(rtrim(number_format($to, 2, '.', ''), '0'), '.'));
                 $this->fillPriceBox($item);
@@ -539,7 +545,7 @@ class CreateQuotation extends CreateOrder
                     'created_by' => auth()->id(),
                 ]);
 
-                [$type, $id] = explode(':', (string) $this->form['party'], 2);
+                [$type, $id] = filled($this->form['party'] ?? null) ? explode(':', (string) $this->form['party'], 2) : [null, null];
 
                 $quote->fill([
                     'company_id' => CurrentCompany::id(),
@@ -547,6 +553,7 @@ class CreateQuotation extends CreateOrder
                     'customer_id' => $type === 'customer' ? (int) $id : null,
                     'lead_id' => $type === 'lead' ? (int) $id : null,
                     'quote_date' => $this->form['quote_date'],
+                    'type' => $this->form['quote_type'] ?? Quote::TYPE_CUSTOMER,
                     'form' => [
                         'customer_address' => trim((string) ($this->form['customer_address'] ?? '')),
                         'customer_pic_name' => trim((string) ($this->form['customer_pic_name'] ?? '')),

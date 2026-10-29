@@ -32,7 +32,8 @@ class ClaimCsn
 
     public function executeByQrToken(string $qrToken, User $user, ?Lorry $lorry = null, ?string $operatingDate = null): ConsignmentNote
     {
-        $csn = ConsignmentNote::query()->where('qr_token', trim($qrToken))->first();
+        // the QR on a CSN is its number since 30 Oct 2026 (older prints carry the token)
+        $csn = ConsignmentNote::query()->where(fn ($q) => $q->where('qr_token', trim($qrToken))->orWhere('number', trim($qrToken)))->first();
 
         if (! $csn) {
             throw new InvalidArgumentException('No CSN matches the scanned code.');
