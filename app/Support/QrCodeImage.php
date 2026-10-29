@@ -23,8 +23,11 @@ class QrCodeImage
         }
 
         try {
+            // a PNG needs the GD extension; without it (user, 30 Oct 2026: no QR on the server's documents) an SVG,
+            // which DomPDF and the browser show just as well
+            $svg = ! extension_loaded('gd') || (bool) config('og.qr_svg', false);
             $options = new QROptions([
-                'outputType' => QROutputInterface::GDIMAGE_PNG,
+                'outputType' => $svg ? QROutputInterface::MARKUP_SVG : QROutputInterface::GDIMAGE_PNG,
                 'outputBase64' => true,
                 'eccLevel' => EccLevel::M,
                 'scale' => $scale,

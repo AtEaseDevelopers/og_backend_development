@@ -41,6 +41,7 @@
         table.tw tr.group td { background: #f7f7f7; }
         table.tw td.qty { padding-left: 14px; }
         .notes { font-family: Courier, monospace; font-weight: bold; font-size: 9.5px; margin-top: 8px; }
+        .keep { page-break-inside: avoid; }
         .notes div { margin-bottom: 2px; }
     </style>
 </head>
@@ -149,6 +150,9 @@
     @endforeach
     @endif
 
+    {{-- the chartered lorry block and the notes under it stay on one page (user, 30 Oct 2026: no page with only
+         the closing line on it): when they do not fit under the products they move to the next page together --}}
+    <div class="keep">
     {{-- chartered lorries: their own block, as the client's CHARTED LORRY, with its own destination columns --}}
     @if ($tables['lorry'])
     @foreach (array_chunk($tables['lorry']['columns'], 4) ?: [[]] as $chunk)
@@ -194,6 +198,7 @@
                 <div @if ($i === 0) style="margin-top:8px" @endif>{{ $line }}</div>
             @endforeach
         @endunless
+    </div>
     </div>
 </body>
 </html>
