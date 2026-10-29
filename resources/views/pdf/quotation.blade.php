@@ -6,9 +6,9 @@
     {{-- the Order Form (user, 29 Oct 2026): the letterhead of the quotation, then the order in boxes — customer, consignor
          and consignee side by side, delivery details, the items with their prices, instructions and the signatures --}}
     <style>
-        @page { margin: 226px 36px 46px 36px; }
+        @page { margin: 168px 36px 46px 36px; }
         body { font-family: DejaVu Sans, sans-serif; font-size: 9.5px; color: #000; line-height: 1.35; }
-        header { position: fixed; top: -208px; left: 0; right: 0; }
+        header { position: fixed; top: -150px; left: 0; right: 0; }
         .lh-name { font-size: 17px; font-weight: bold; }
         .lh-small { font-size: 9px; line-height: 1.35; }
         .lh-rule { border-top: 4px solid #000; margin: 5px 0 6px; }
@@ -17,8 +17,8 @@
         .lh-meta .k { font-weight: bold; font-size: 10px; }
         .lh-title { font-size: 19px; font-weight: bold; text-align: right; }
         /* a QR of the document number (user, 30 Oct 2026): scanned into the system's search fields */
-        .lh-qr { margin-bottom: 2px; }
-        .lh-qr img { width: 54px; height: 54px; }
+        .lh-qr { width: 60px; text-align: right; vertical-align: top; }
+        .lh-qr img { width: 56px; height: 56px; }
         .pagenum:before { content: counter(page); }
 
         table.box { width: 100%; border-collapse: collapse; margin: 0 0 8px; page-break-inside: avoid; }
@@ -117,6 +117,7 @@
 
     {{-- letterhead, repeated on every page (the quotation's) --}}
     <header>
+        <table class="lh-meta"><tr><td style="vertical-align:top">
         <div class="lh-name">{{ $companyName }}</div>
         <div class="lh-small">
             @if ($regNo)(REG NO. : {{ $regNo }} )<br>@endif
@@ -127,11 +128,12 @@
                 <td class="lh-small">@if ($sstNo)SST No. : {{ $sstNo }}@endif</td>
             </tr></table>
         </div>
+        </td><td class="lh-qr"><img src="{{ \App\Support\QrCodeImage::dataUri($quotation->orderNumber()) }}" alt="QR {{ $quotation->orderNumber() }}"></td></tr></table>
         <div class="lh-rule"></div>
         <table class="lh-meta"><tr>
             <td class="k" style="width:34%">Order No. : {{ $quotation->orderNumber() }}</td>
             <td class="k" style="width:30%">Page No. : <span class="pagenum"></span></td>
-            <td class="lh-title"><div class="lh-qr"><img src="{{ \App\Support\QrCodeImage::dataUri($quotation->orderNumber()) }}" alt="QR {{ $quotation->orderNumber() }}"></div>ORDER FORM</td>
+            <td class="lh-title">ORDER FORM</td>
         </tr></table>
     </header>
 
