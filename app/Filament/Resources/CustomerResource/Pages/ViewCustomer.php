@@ -3,7 +3,10 @@
 namespace App\Filament\Resources\CustomerResource\Pages;
 
 use App\Filament\Resources\CustomerResource;
+use Filament\Actions;
+use Filament\Forms;
 use Filament\Resources\Pages\ViewRecord;
+use Illuminate\Support\Facades\URL;
 
 class ViewCustomer extends ViewRecord
 {
@@ -14,7 +17,21 @@ class ViewCustomer extends ViewRecord
     // CSN form.
     protected function getHeaderActions(): array
     {
-        return [];
+        return [
+            Actions\Action::make('portalOrderLink')
+                ->label('Portal ordering link')
+                ->icon('heroicon-o-link')
+                ->color('gray')
+                ->modalHeading('Customer portal ordering link')
+                ->modalDescription('Send this link to the customer. After signing in with a login approved for this company, it opens the order form for this account.')
+                ->fillForm(fn () => ['url' => URL::signedRoute('portal.customer-order-link', ['customer' => $this->record->getKey()])])
+                ->form([
+                    Forms\Components\TextInput::make('url')->label('Link')->readOnly()
+                        ->extraInputAttributes(['onclick' => 'this.select()']),
+                ])
+                ->modalSubmitAction(false)
+                ->modalCancelActionLabel('Close'),
+        ];
     }
 
     // no page header (breadcrumbs + "View …" title) on the customer page (user, 28 Oct 2026): the cards start at the top

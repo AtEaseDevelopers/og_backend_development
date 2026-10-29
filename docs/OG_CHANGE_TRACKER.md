@@ -4,7 +4,7 @@
 > what is done, what is left, and the rules the user has set. Update it whenever an item changes status,
 > and refresh "Last updated" with the output of plain `date` (local Malaysia time).
 
-**Last updated:** Wed Oct 28 01:56:55 MPST 2026 · Round 8 committed and pushed
+**Last updated:** Thu Oct 29 18:47:16 +08 2026 · first-draft customer portal committed (driver app still local)
 
 **Previous round:** finished and pushed as commit `a29b179` on `main` (8 Oct 2026: orders, order details,
 billing / COD / Term, CSN bulk actions, QR codes, returned-CSN scanning, cash bill calculator). Its details are
@@ -22,6 +22,8 @@ in the git history of this file and that commit's message; they are not tracked 
   (after a deploy: `composer install --no-dev --optimize-autoloader`, `php artisan migrate`, `php artisan optimize:clear`).
 
 ## Environment notes (Windows, Laragon)
+
+- **Since 16 Oct the work is on macOS** (`/Users/jackiets/og_logistics`): plain `php artisan ...`, `php artisan serve` on port 8000, MySQL dev DB, `MAIL_MAILER=log`. The Windows notes below apply only on the old machine.
 
 - Run PHP only via: `C:/laragon/bin/php/php-8.3.3-Win32-vs16-x64/php.exe -d display_startup_errors=0`
   (lint with `-l`, then `artisan view:clear` and `artisan optimize:clear`; `artisan test` has 1 expected failure in `tests/Feature/ExampleTest.php`).
@@ -437,6 +439,12 @@ Legend: [x] done · [~] done in code, not yet browser-checked · [ ] not started
 - The pick-up minimum is applied per record (each consignor → consignee). Two records collected from the same consignor are each topped up: confirm with the client, or should it be once per order?
 - The Import price list button (Master Data → UOM) can still load a special price file. Keep it, or limit it to default prices so quotations are the only way?
 - Credit / Term orders need branch manager approval only when a credit check fails. Should every Credit / Term order need approval?
+
+## Local (not on GitHub) — Section O driver app (user, 16–29 Oct)
+- [~] **Section O** Flutter app in `driver_app/` and driver API. Demo `driver.kl@og.local` / `password`. Android key gitignored. **Not committed.**
+- [x] **Section P first draft** (this commit): `/portal` login + **+ New order**; admin Orders badge + orange toast. Extra portal pages stay in `.local/portal-full/` (gitignored).
+- Server: `php artisan migrate` for `2026_10_17_120000_customer_portal_section_p`, then `optimize:clear`. Driver-app migration is still local.
+- [x] **Local migrate after pull:** `2026_10_19_100100` failed because `Uom` wrote `branch_id` before `2026_10_28_120000` added that column. Creating hook now skips it when the column is missing. `php artisan migrate` completed. Uom.php fix **not committed**.
 
 ## Next steps
 

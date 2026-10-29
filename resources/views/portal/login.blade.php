@@ -8,14 +8,29 @@
     <form method="POST" action="{{ route('portal.login') }}">
         @csrf
         <label>Email</label>
-        <input type="email" name="email" value="{{ old('email') }}" required>
+        <input type="email" name="email" value="{{ old('email') }}" required autofocus>
         @error('email') <div class="error">{{ $message }}</div> @enderror
+        @error('token') <div class="error">{{ $message }}</div> @enderror
 
         <label>Password</label>
         <input type="password" name="password" required>
 
-        <button type="submit" class="btn" style="width:100%">Sign in</button>
+        <label style="display:flex;align-items:center;margin-bottom:1rem"><input type="checkbox" name="remember" value="1"> Keep me signed in</label>
+
+        <button type="submit" style="width:100%">Sign in</button>
     </form>
-    <p class="muted" style="margin-top:1rem">Demo: portal@demo.local / password</p>
+
+    @if (session('unverified_email'))
+        <form method="POST" action="{{ route('portal.verify-email.resend') }}" style="margin-top:1rem">
+            @csrf
+            <input type="hidden" name="email" value="{{ session('unverified_email') }}">
+            <button type="submit" class="secondary" style="width:100%">Resend verification email</button>
+        </form>
+    @endif
+
+    <p style="margin:1rem 0 0;display:flex;justify-content:space-between;font-size:.9rem">
+        <a href="{{ route('portal.password.request') }}">Forgot password?</a>
+        <a href="{{ route('portal.register') }}">Register your company</a>
+    </p>
 </div>
 @endsection

@@ -34,9 +34,14 @@ class EnquiryController extends Controller
             ->orderBy('name')
             ->get();
 
-        $customer = $request->user()->customer;
+        $customer = PortalSelection::customer();
+        $customer?->loadMissing(['addresses', 'pics']);
 
         return view('portal.enquiry-create', [
+            'customer' => $customer,
+            'pickupAddresses' => $customer?->addresses->where('type', 'pickup')->values() ?? collect(),
+            'deliveryAddresses' => $customer?->addresses->where('type', '!=', 'pickup')->values() ?? collect(),
+            'categories' => \App\Domains\MasterData\Models\ItemCategory::query()->where('is_active', true)->orderBy('name')->pluck('name'),
             'branches' => $branches,
             'selectedBranch' => $selectedBranch,
             'linkedSalesperson' => $linkedSalesperson,
@@ -51,7 +56,7 @@ class EnquiryController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $customer = $request->user()->customer;
+        $customer = PortalSelection::customer();
         $allowedOrderTypes = array_keys($this->orderTypeOptions($customer?->is_credit ?? false));
 
         $data = $request->validate([
@@ -62,7 +67,7 @@ class EnquiryController extends Controller
             'payment_method' => ['required', Rule::in(array_keys(PaymentMethod::options(customerFacing: true)))],
             'customer_do_number' => ['required', 'string', 'max:100'],
             'pickup_address' => ['required', 'string'],
-            'pickup_maps_url' => ['nullable', 'url'],
+            'pickup_maps_url' => ['nullable', 'url', 'max:500'],
             'preferred_delivery_date' => ['nullable', 'date'],
             'special_requirements' => ['nullable', 'string'],
             'destinations' => ['required', 'array', 'min:1'],
@@ -73,18 +78,26 @@ class EnquiryController extends Controller
             'destinations.*.state' => ['nullable', 'string'],
             'destinations.*.city' => ['nullable', 'string'],
             'destinations.*.drop_off_type' => ['required', Rule::in(array_keys(DropOffType::options()))],
+            'destinations.*.maps_url' => ['nullable', 'url', 'max:500'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.item_name' => ['required', 'string'],
             'items.*.quantity' => ['required', 'numeric', 'min:0.001'],
             'items.*.uom' => ['nullable', 'string'],
-            'items.*.weight' => ['nullable', 'numeric'],
+            'items.*.weight' => ['nullable', 'numeric', 'min:0'],
+            'items.*.category' => ['nullable', 'string', 'max:100'],
+            'items.*.dimensions' => ['nullable', 'string', 'max:100'],
+            'items.*.handling' => ['nullable', 'string', 'max:255'],
+            'contacts' => ['nullable', 'array', 'max:10'],
+            'contacts.*.name' => ['nullable', 'string', 'max:255'],
+            'contacts.*.phone' => ['nullable', 'string', 'max:50'],
+            'contacts.*.role' => ['nullable', 'string', 'max:100'],
             'items.*.destination_index' => ['nullable', 'integer', 'min:0'],
             'photos' => ['nullable', 'array', 'max:10'],
-            'photos.*' => ['file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:8192'],
+            'photos.*' => ['file', 'mimes:jpg,jpeg,png,webp,pdf,doc,docx,xls,xlsx,csv', 'max:10240'],
         ]);
 
-        $customerId = $request->user()->customer_id
-            ?? $request->user()->customers()->wherePivot('status', 'approved')->value('customers.id');
+        $customerId = $customer?->id;
+        $contacts = collect($data['contacts'] ?? [])->filter(fn ($c) => filled($c['name'] ?? null) || filled($c['phone'] ?? null))->values()->all();
 
         $branch = Branch::query()->findOrFail($data['branch_id']);
         $companyId = PortalSelection::companyId()
@@ -94,7 +107,7 @@ class EnquiryController extends Controller
         $chosenSalesperson = $linkedSalesperson
             ?? (filled($data['salesperson_id'] ?? null) ? User::query()->find($data['salesperson_id']) : null);
 
-        $enquiry = DB::transaction(function () use ($request, $data, $customerId, $companyId, $linkedSalesperson, $chosenSalesperson, $branch) {
+        $enquiry = DB::transaction(function () use ($request, $data, $customerId, $companyId, $linkedSalesperson, $chosenSalesperson, $branch, $contacts) {
             $enquiry = PortalEnquiry::query()->create([
                 'company_id' => $companyId,
                 'customer_id' => $customerId,
@@ -115,6 +128,7 @@ class EnquiryController extends Controller
                 'payload' => [
                     'destinations' => array_values($data['destinations']),
                     'items' => array_values($data['items']),
+                    'contacts' => $contacts,
                 ],
             ]);
 
@@ -150,6 +164,8 @@ class EnquiryController extends Controller
         });
 
         $request->session()->forget(SalespersonLinkController::SESSION_KEY);
+
+        event(new \App\Events\PortalOrderSubmitted($enquiry->loadMissing('customer')));
 
         return redirect()->route('portal.dashboard')
             ->with('status', 'Order '.$enquiry->reference_no.' submitted for review.');

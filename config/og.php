@@ -25,6 +25,8 @@ return [
         'auto_submit' => (bool) env('OG_MYINVOIS_AUTO_SUBMIT', false),
     ],
 
+    'portal_whatsapp' => env('OG_PORTAL_WHATSAPP', ''),
+
     'ocr' => [
         'mode' => env('OG_OCR_MODE', 'document'),
         'tesseract_path' => env('OG_TESSERACT_PATH', 'tesseract'),

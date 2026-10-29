@@ -7,27 +7,22 @@ use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
+/** Portal pages need a selected customer account (BRN) that the user is still approved for. */
 class EnsurePortalContext
 {
-    /** @var list<string> */
-    private array $except = [
-        'portal.select-branch',
-        'portal.select-company',
-        'portal.logout',
-    ];
-
     public function handle(Request $request, Closure $next): Response
     {
-        if (in_array($request->route()?->getName(), $this->except, true)) {
-            return $next($request);
-        }
+        $customerId = PortalSelection::customerId();
 
-        if (! PortalSelection::branchId()) {
-            return redirect()->route('portal.select-branch');
-        }
-
-        if (! PortalSelection::companyId()) {
+        if (! $customerId) {
             return redirect()->route('portal.select-company');
+        }
+
+        if (! $request->user()->approvedCustomerIds()->contains($customerId)) {
+            PortalSelection::clear();
+
+            return redirect()->route('portal.select-company')
+                ->withErrors(['account' => 'Your access to that company account is no longer approved.']);
         }
 
         return $next($request);

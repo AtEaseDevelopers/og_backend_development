@@ -4,7 +4,9 @@ namespace App\Filament\Pages;
 
 use App\Domains\MasterData\Models\Customer;
 use App\Domains\MasterData\Models\SaLocation;
+use App\Domains\Quotation\Models\PortalEnquiry;
 use App\Enums\OrderType;
+use App\Enums\PortalEnquiryStatus;
 use App\Enums\ServiceType;
 use App\Models\User;
 use App\Support\CurrentCompany;
@@ -43,6 +45,33 @@ class Orders extends Page
     protected static ?string $slug = 'orders';
 
     protected static string $view = 'filament.pages.orders';
+
+    /** Customer portal orders not yet picked up by staff (pending, no quotation yet) in this company. */
+    public static function getNavigationBadge(): ?string
+    {
+        $count = static::newPortalOrdersQuery()->count();
+
+        return $count > 0 ? (string) $count : null;
+    }
+
+    public static function newPortalOrdersQuery(): \Illuminate\Database\Eloquent\Builder
+    {
+        return PortalEnquiry::query()
+            ->whereIn('source', [PortalEnquiry::SOURCE_PORTAL, PortalEnquiry::SOURCE_SALESPERSON_LINK])
+            ->where('status', PortalEnquiryStatus::Pending->value)
+            ->whereDoesntHave('quotations')
+            ->when(CurrentCompany::id(), fn ($q, $companyId) => $q->where('company_id', $companyId));
+    }
+
+    public static function getNavigationBadgeColor(): ?string
+    {
+        return 'warning';
+    }
+
+    public static function getNavigationBadgeTooltip(): ?string
+    {
+        return 'New customer portal orders waiting for review';
+    }
 
     #[Url(as: 'q', except: '')]
     public string $search = '';

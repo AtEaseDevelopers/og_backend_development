@@ -70,6 +70,19 @@ class User extends Authenticatable implements FilamentUser, HasTenants
         'remember_token',
     ];
 
+    /** Logins created by staff or seeders count as verified; only portal self-registration must verify its email. */
+    protected static function booted(): void
+    {
+        static::creating(function (User $user) {
+            if (! $user->requiresEmailVerification && ! $user->email_verified_at) {
+                $user->email_verified_at = now();
+            }
+        });
+    }
+
+    /** Set by portal self-registration before saving. */
+    public bool $requiresEmailVerification = false;
+
     protected function casts(): array
     {
         return [
@@ -236,7 +249,10 @@ class User extends Authenticatable implements FilamentUser, HasTenants
     {
         $ids = $this->customers()->wherePivot('status', 'approved')->pluck('customers.id');
 
-        if ($ids->isEmpty() && $this->customer_id) {
+        // older logins linked only through users.customer_id (no access row): allowed once the customer is approved
+        if ($ids->isEmpty() && $this->customer_id
+            && ! $this->customers()->where('customers.id', $this->customer_id)->exists()
+            && $this->customer?->portal_approved) {
             return collect([$this->customer_id]);
         }
 

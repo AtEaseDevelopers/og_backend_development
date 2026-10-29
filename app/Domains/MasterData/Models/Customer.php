@@ -158,4 +158,9 @@ class Customer extends Model
     {
         return $this->belongsToMany(User::class)->withPivot('status')->withTimestamps();
     }
+
+    public function portalLinks(): HasMany
+    {
+        return $this->hasMany(CustomerPortalLink::class);
+    }
 }

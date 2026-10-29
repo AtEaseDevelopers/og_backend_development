@@ -3,38 +3,27 @@
 @section('title', 'Dashboard')
 
 @section('content')
-<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem">
-    <h1>Your orders</h1>
-    <a class="btn" href="{{ route('portal.enquiry.create') }}" style="color:white">+ New order</a>
-</div>
+<h1>Welcome, {{ auth()->user()->name }}</h1>
+
 <div class="card">
+    <h3 style="margin-top:0">Your submitted orders</h3>
+    <p class="muted">O&amp;G reviews each order and contacts you with the quotation.</p>
+    <div class="table-scroll">
     <table>
-        <thead>
-        <tr>
-            <th>Number</th>
-            <th>Branch</th>
-            <th>Type</th>
-            <th>Stage</th>
-            <th>Billing</th>
-            <th style="text-align:right">Total</th>
-            <th></th>
-        </tr>
-        </thead>
+        <thead><tr><th>Reference</th><th>Submitted</th><th>Preferred delivery</th><th>Status</th></tr></thead>
         <tbody>
-        @forelse($quotations as $quotation)
+        @forelse ($enquiries as $enquiry)
             <tr>
-                <td>{{ $quotation->number }} <span class="muted">v{{ $quotation->version }}</span></td>
-                <td>{{ $quotation->branch?->name }}</td>
-                <td>{{ $quotation->orderType()?->getLabel() ?? '—' }}</td>
-                <td>{{ $quotation->status->label() }}</td>
-                <td class="muted">{{ $quotation->billingStatus()->getLabel() }}</td>
-                <td style="text-align:right">RM {{ number_format($quotation->total_amount, 2) }}</td>
-                <td><a href="{{ route('portal.quotations.show', $quotation) }}">View</a></td>
+                <td>{{ $enquiry->order_number ?: $enquiry->reference_no }}</td>
+                <td>{{ $enquiry->created_at->format('d/m/Y H:i') }}</td>
+                <td>{{ $enquiry->preferred_delivery_date?->format('d/m/Y') ?? '—' }}</td>
+                <td>{{ $enquiry->status instanceof \App\Enums\PortalEnquiryStatus ? $enquiry->status->label() : ucfirst((string) $enquiry->status) }}</td>
             </tr>
         @empty
-            <tr><td colspan="7" class="muted">No orders yet. Submit an order form to get started.</td></tr>
+            <tr><td colspan="4" class="muted">No orders yet. Click "+ New order" to send your first one.</td></tr>
         @endforelse
         </tbody>
     </table>
+    </div>
 </div>
 @endsection

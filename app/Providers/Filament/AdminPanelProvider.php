@@ -4,11 +4,7 @@ namespace App\Providers\Filament;
 
 use App\Domains\MasterData\Models\Company;
 use App\Filament\Pages\Auth\Login;
-use App\Filament\Pages\CreateOrder;
 use App\Filament\Pages\Dashboard;
-use App\Filament\Pages\EditOrder;
-use App\Filament\Pages\OrderDetail;
-use App\Filament\Pages\Orders;
 use App\Http\Controllers\Admin\ConsignmentNotePdfController;
 use App\Http\Controllers\Admin\DeliveryOrderPdfController;
 use App\Http\Controllers\Admin\InvoicePdfController;
@@ -28,8 +24,6 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
-use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
@@ -94,6 +88,8 @@ class AdminPanelProvider extends PanelProvider
                 // Job Sheet print in the client's layout, a page per job sheet code (user, 27 Oct 2026)
                 Route::get('/job-sheets/{jobSheet}/pdf', \App\Http\Controllers\Admin\JobSheetPdfController::class)
                     ->name('job-sheets.pdf');
+                Route::get('/new-portal-orders', \App\Http\Controllers\Admin\NewPortalOrdersController::class)
+                    ->name('new-portal-orders');
                 Route::get('/consignment-notes/{consignmentNote}/pdf', ConsignmentNotePdfController::class)
                     ->name('consignment-notes.pdf');
                 Route::get('/invoices/{invoice}/pdf', InvoicePdfController::class)
@@ -122,6 +118,10 @@ class AdminPanelProvider extends PanelProvider
             ->renderHook(
                 PanelsRenderHook::BODY_END,
                 fn (): View => view('filament.hooks.back-to-top'),
+            )
+            ->renderHook(
+                PanelsRenderHook::BODY_END,
+                fn (): View => view('filament.hooks.new-order-alert'),
             )
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
