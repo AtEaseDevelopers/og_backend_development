@@ -21,7 +21,8 @@
         .lh-qr img { width: 56px; height: 56px; }
         .pagenum:before { content: counter(page); }
 
-        .party { width: 100%; border-collapse: collapse; margin-top: 2px; }
+        .party { width: 100%; border-collapse: collapse; margin-top: 2px; table-layout: fixed; }
+        .party td.who { word-wrap: break-word; }
         .party td { vertical-align: top; padding: 0; font-weight: bold; font-size: 10px; }
         .party .gap { height: 10px; }
         .re { margin: 10px 0 12px; font-size: 12px; font-weight: bold; text-decoration: underline; }
@@ -89,9 +90,10 @@
     {{-- the customer (or lead), date and issued by: first page only --}}
     <table class="party">
         <tr>
-            <td style="width:62%">
+            <td style="width:62%" class="who">
                 {{ strtoupper($party['name']) }}
-                @if ($party['address'])<br>{!! nl2br(e(strtoupper($party['address']))) !!}@endif
+                {{-- a long one-line address is split at a comma near the middle (user, 30 Oct 2026: it ran into the date) --}}
+                @if ($party['address'])<br>{!! nl2br(e(strtoupper(\App\Support\AddressLines::wrap($party['address'])))) !!}@endif
             </td>
             <td>
                 <table style="border-collapse:collapse">
