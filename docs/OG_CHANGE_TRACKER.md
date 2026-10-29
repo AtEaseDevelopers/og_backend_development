@@ -461,3 +461,4 @@ Legend: [x] done · [~] done in code, not yet browser-checked · [ ] not started
 1. Wait for the user's next requirement.
 | 8.37 | QR codes render as SVG when the server's PHP has no GD extension (the documents showed no QR there); the quotation's lorry block + notes stay on one page | Done, tested |
 | 8.38 | Quotation: a long customer address is split onto two lines at a comma (it ran into the Date column); the party block has a fixed column layout | Done, rendered |
+| 8.39 | Proforma invoice: one line "Total amount payable" (Total / Paid / Balance due only once a payment was recorded); the item and totals tables are a bordered grid | Done, rendered |

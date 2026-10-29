@@ -15,12 +15,13 @@
         .meta td { padding: 2px 0; vertical-align: top; }
         .label { color: #6b7280; width: 110px; }
         table.lines { width: 100%; border-collapse: collapse; margin-top: 6px; table-layout: fixed; }
-        table.lines th { background: #f3f4f6; text-align: left; padding: 6px; font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; color: #374151; border-bottom: 1px solid #d1d5db; }
-        table.lines td { padding: 6px; border-bottom: 1px solid #e5e7eb; }
+        /* a bordered grid (user, 30 Oct 2026) */
+        table.lines th { background: #f3f4f6; text-align: left; padding: 6px; font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; color: #374151; border: 1px solid #111827; }
+        table.lines td { padding: 6px; border: 1px solid #111827; }
         .num, table.lines th.num { text-align: right; white-space: nowrap; }
         .totals { width: 45%; margin-left: 55%; margin-top: 10px; border-collapse: collapse; }
-        .totals td { padding: 4px 6px; }
-        .totals .grand td { border-top: 2px solid #111827; font-weight: bold; font-size: 12px; }
+        .totals td { padding: 4px 6px; border: 1px solid #111827; }
+        .totals .grand td { font-weight: bold; font-size: 12px; background: #f3f4f6; }
         .box { margin-top: 18px; border: 1px solid #d1d5db; border-radius: 4px; padding: 8px 10px; }
         .stamp { display: inline-block; padding: 2px 8px; border: 1px solid #1d4ed8; color: #1d4ed8; font-weight: bold; font-size: 9px; letter-spacing: .06em; }
     </style>
@@ -106,10 +107,15 @@
         </tbody>
     </table>
 
+    {{-- the amount payable (user, 30 Oct 2026); Paid and Balance due only once a payment was recorded --}}
     <table class="totals">
-        <tr><td>Total</td><td class="num">RM {{ number_format((float) $proforma->total_amount, 2) }}</td></tr>
-        <tr><td>Paid</td><td class="num">RM {{ number_format((float) $proforma->paid_amount, 2) }}</td></tr>
-        <tr class="grand"><td>Amount due</td><td class="num">RM {{ number_format($outstanding, 2) }}</td></tr>
+        @if ((float) $proforma->paid_amount > 0)
+            <tr><td>Total</td><td class="num">RM {{ number_format((float) $proforma->total_amount, 2) }}</td></tr>
+            <tr><td>Paid</td><td class="num">RM {{ number_format((float) $proforma->paid_amount, 2) }}</td></tr>
+            <tr class="grand"><td>Balance due</td><td class="num">RM {{ number_format($outstanding, 2) }}</td></tr>
+        @else
+            <tr class="grand"><td>Total amount payable</td><td class="num">RM {{ number_format((float) $proforma->total_amount, 2) }}</td></tr>
+        @endif
     </table>
 
     <div class="box">
