@@ -114,7 +114,8 @@
         </tbody>
     </table>
 
-    {{-- Remark (the driver note) and marking --}}
+    {{-- Remark (the driver note) and marking, only when there is one (user, 30 Oct 2026) --}}
+    @if (filled($footer['remarks'] ?? null) || filled($footer['marking'] ?? null))
     <table class="csn-doc-remark">
         <tr>
             <td>
@@ -125,6 +126,7 @@
             </td>
         </tr>
     </table>
+    @endif
 
     {{-- Every consignee with its chop & sign box --}}
     <table class="csn-doc-consignees">
