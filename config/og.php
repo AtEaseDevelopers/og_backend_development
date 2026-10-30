@@ -50,4 +50,10 @@ return [
             ] : null,
         ])),
     ],
+
+    // the quotation's standard minimum charges (client, 30 Oct 2026), printed when the quoted rows carry none
+    'quotation' => [
+        'pickup_min_charge' => 250,
+        'construction_min_charge' => 80,
+    ],
 ];

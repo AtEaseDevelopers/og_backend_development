@@ -12,8 +12,8 @@
     $logoSrc = $letterhead['logo_src'] ?? null;
     $nl = fn (?string $value): string => filled($value) ? nl2br(e($value)) : '';
     $hasSst = collect($lines)->contains(fn (array $line) => filled($line['sst'] ?? null)) || filled($totals['tax_amount'] ?? null);
-    // the QR of the invoice number (user, 30 Oct 2026): scanned into the system's search fields
-    $qr = \App\Support\QrCodeImage::dataUri($meta['number'] ?? null);
+    // the barcode of the invoice number (user, 30 Oct 2026): scanned into the system's search fields
+    $qr = \App\Support\BarcodeImage::code128DataUri($meta['number'] ?? null);
 @endphp
 
 {{-- the invoice laid out in boxes (user, 30 Oct 2026: clearer to read): letterhead + title, Bill To beside the invoice
@@ -46,7 +46,7 @@
                 @endif
             </td>
             <td class="inv-title-cell">
-                @if($qr)<div class="inv-qr"><img src="{{ $qr }}" alt="QR {{ $meta['number'] }}"></div>@endif
+                @if($qr)<div class="inv-qr"><img src="{{ $qr }}" alt="Barcode {{ $meta['number'] }}"></div>@endif
                 <div class="inv-title">{{ ($meta['type'] ?? '') === 'Cash Bill' ? 'CASH BILL' : 'INVOICE' }}</div>
                 <div class="inv-number">{{ $meta['number'] ?? '—' }}</div>
             </td>
@@ -82,7 +82,6 @@
                     @if(filled($meta['due_date'] ?? null) && ($meta['due_date'] !== ($meta['invoice_date'] ?? null)))
                         <tr><td class="inv-meta-k">Due date</td><td class="inv-meta-v">{{ $meta['due_date'] }}</td></tr>
                     @endif
-                    @if(filled($meta['order_no'] ?? null))<tr><td class="inv-meta-k">Order No.</td><td class="inv-meta-v">{{ $meta['order_no'] }}</td></tr>@endif
                 </table>
             </td>
         </tr>
@@ -94,8 +93,7 @@
                 <th class="inv-col-date">Date</th>
                 <th class="inv-col-csn">Consignment Note</th>
                 <th class="inv-col-goods">Goods</th>
-                <th class="inv-col-ref">DO / Ref.</th>
-                <th class="inv-col-dest">From → To</th>
+                <th class="inv-col-ref">Customer D/O</th>
                 @if($hasSst)<th class="inv-col-sst">SST (RM)</th>@endif
                 <th class="inv-col-amt">Amount (RM)</th>
             </tr>
@@ -117,13 +115,12 @@
                             <div class="inv-ref-line">{{ $ref }}</div>
                         @endforeach
                     </td>
-                    <td class="inv-col-dest">{{ trim((($line['from'] ?? '—') === '—' ? '' : $line['from'].' → ').($line['to'] ?? '—')) }}</td>
                     @if($hasSst)<td class="inv-col-sst">{{ $line['sst'] ?? '' }}</td>@endif
                     <td class="inv-col-amt">{{ $line['amount'] ?? '' }}</td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="{{ $hasSst ? 7 : 6 }}" style="padding: 10px 5px; text-align: center; color: #666;">No invoice lines.</td>
+                    <td colspan="{{ $hasSst ? 6 : 5 }}" style="padding: 10px 5px; text-align: center; color: #666;">No invoice lines.</td>
                 </tr>
             @endforelse
         </tbody>

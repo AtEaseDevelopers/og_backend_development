@@ -55,8 +55,8 @@ class CreateSubsheet
      * or Break bulk (break_bulk, set from the driver app).
      */
     /**
-     * The subsheet number (user, 28 Oct 2026): the CSN number + the transfer code, e.g. CSN-KL-JB-261000005A; a
-     * second subsheet with the same code on the CSN is CSN-KL-JB-261000005A-2. Without a code the running SS number.
+     * The subsheet number (user, 28 Oct 2026): the CSN number + the transfer code, e.g. JB-261000005A; a
+     * second subsheet with the same code on the CSN is JB-261000005A-2. Without a code the running SS number.
      */
     protected function subsheetNumber(ConsignmentNote $csn, ?string $transferCode): string
     {

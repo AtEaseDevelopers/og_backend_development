@@ -17,8 +17,10 @@
         .lh-meta .k { font-weight: bold; font-size: 10px; }
         .lh-title { font-size: 19px; font-weight: bold; text-align: right; }
         /* a QR of the document number (user, 30 Oct 2026): scanned into the system's search fields */
-        .lh-qr { width: 60px; text-align: right; vertical-align: top; }
-        .lh-qr img { width: 56px; height: 56px; }
+        /* a Code 128 barcode of the document number (user, 30 Oct 2026, in place of the QR) */
+        .lh-qr { width: 190px; text-align: right; vertical-align: top; padding-top: 4px; }
+        .lh-qr img { width: 180px; height: 40px; }
+        .lh-qr-text { font-size: 8px; letter-spacing: .4px; margin-top: 1px; }
         .pagenum:before { content: counter(page); }
 
         .party { width: 100%; border-collapse: collapse; margin-top: 2px; table-layout: fixed; }
@@ -41,6 +43,7 @@
         table.tw.items td { padding-top: 1px; padding-bottom: 1px; }
         table.tw tr.group td { background: #f7f7f7; }
         table.tw td.qty { padding-left: 14px; }
+        table.tw tr.minimum td { font-style: italic; font-weight: normal; }
         .notes { font-family: Courier, monospace; font-weight: bold; font-size: 9.5px; margin-top: 8px; }
         .keep { page-break-inside: avoid; }
         .notes div { margin-bottom: 2px; }
@@ -78,7 +81,7 @@
                 <td class="lh-small">@if ($sstNo)SST No. : {{ $sstNo }}@endif</td>
             </tr></table>
         </div>
-        </td><td class="lh-qr"><img src="{{ \App\Support\QrCodeImage::dataUri($quote->number) }}" alt="QR {{ $quote->number }}"></td></tr></table>
+        </td><td class="lh-qr"><img src="{{ \App\Support\BarcodeImage::code128DataUri($quote->number) }}" alt="Barcode {{ $quote->number }}"><div class="lh-qr-text">{{ $quote->number }}</div></td></tr></table>
         <div class="lh-rule"></div>
         <table class="lh-meta"><tr>
             <td class="k" style="width:28%">Ref No. : {{ $quote->number }}</td>
@@ -130,7 +133,7 @@
                     @endforeach
                 </tr>
                 @foreach ($tables['groups'] as $group)
-                    @php $singleLine = count($group['rows']) === 1 && $group['rows'][0]['label'] === ''; @endphp
+                    @php $singleLine = ($group['rows'][0]['label'] ?? null) === ''; @endphp
                     <tr class="group">
                         <td class="label" colspan="{{ $singleLine ? 1 : count($chunk) + 1 }}">{{ $group['name'] }}@unless ($singleLine)<span class="under">{{ $dash($group['name'], '=') }}</span>@endunless</td>
                         @if ($singleLine)
@@ -139,16 +142,15 @@
                             @endforeach
                         @endif
                     </tr>
-                    @unless ($singleLine)
-                        @foreach ($group['rows'] as $row)
-                            <tr class="row">
-                                <td class="label qty">{{ $row['label'] }}</td>
-                                @foreach ($chunk as $c)
-                                    <td class="num">{!! nl2br(e($row['prices'][$c] ?? '-')) !!}</td>
-                                @endforeach
-                            </tr>
-                        @endforeach
-                    @endunless
+                    {{-- the range rows, then the product's drop-off minimum when it has one (client, 30 Oct 2026) --}}
+                    @foreach (array_slice($group['rows'], $singleLine ? 1 : 0) as $row)
+                        <tr @class(['row', 'minimum' => $row['minimum'] ?? false])>
+                            <td class="label qty">{{ $row['label'] }}</td>
+                            @foreach ($chunk as $c)
+                                <td class="num">{!! nl2br(e($row['prices'][$c] ?? '-')) !!}</td>
+                            @endforeach
+                        </tr>
+                    @endforeach
                 @endforeach
             </table>
     @endforeach

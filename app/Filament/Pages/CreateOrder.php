@@ -1270,7 +1270,14 @@ class CreateOrder extends Page
 
             // ticked: the side's first extra address starts with the DO number of the record (which moves up here)
             if (! empty($pair['multi_'.$side]) && empty($pair[$side.'_stops'])) {
-                $pair[$side.'_stops'] = [array_merge(\App\Support\OrderStops::blank($side === 'pickup' ? \App\Support\OrderStops::PICKUP : \App\Support\OrderStops::DROPOFF), ['location' => (string) ($pair[$side === 'pickup' ? 'pickup_location' : 'drop_off_location'] ?? ''), 'do_number' => (string) ($pair['customer_do_number'] ?? '')])];
+                $party = $side === 'pickup' ? 'consignor' : 'consignee';
+                $pair[$side.'_stops'] = [array_merge(\App\Support\OrderStops::blank($side === 'pickup' ? \App\Support\OrderStops::PICKUP : \App\Support\OrderStops::DROPOFF), [
+                    'name' => (string) ($pair[$party.'_name'] ?? ''),
+                    'pic_name' => (string) ($pair[$party.'_pic_name'] ?? ''),
+                    'pic_phone' => (string) ($pair[$party.'_pic_phone'] ?? ''),
+                    'location' => (string) ($pair[$side === 'pickup' ? 'pickup_location' : 'drop_off_location'] ?? ''),
+                    'do_number' => (string) ($pair['customer_do_number'] ?? ''),
+                ])];
             } elseif (empty($pair['multi_pickup']) && empty($pair['multi_dropoff']) && blank($pair['customer_do_number'] ?? null)) {
                 $pair['customer_do_number'] = (string) (\App\Support\OrderStops::doNumbers([...($pair['pickup_stops'] ?? []), ...($pair['dropoff_stops'] ?? [])])[0] ?? '');
             }
@@ -2336,9 +2343,15 @@ class CreateOrder extends Page
                 }
             }],
             'pairs.*.pickup_stops' => 'array',
+            'pairs.*.pickup_stops.*.name' => 'nullable|string|max:150',
+            'pairs.*.pickup_stops.*.pic_name' => 'nullable|string|max:100',
+            'pairs.*.pickup_stops.*.pic_phone' => 'nullable|string|max:50',
             'pairs.*.pickup_stops.*.location' => 'nullable|string|max:500',
             'pairs.*.pickup_stops.*.do_number' => 'required_if:pairs.*.multi_pickup,true|nullable|string|max:100',
             'pairs.*.dropoff_stops' => 'array',
+            'pairs.*.dropoff_stops.*.name' => 'nullable|string|max:150',
+            'pairs.*.dropoff_stops.*.pic_name' => 'nullable|string|max:100',
+            'pairs.*.dropoff_stops.*.pic_phone' => 'nullable|string|max:50',
             'pairs.*.dropoff_stops.*.location' => 'nullable|string|max:500',
             'pairs.*.dropoff_stops.*.do_number' => 'required_if:pairs.*.multi_dropoff,true|nullable|string|max:100',
             // becomes the CSN date when the record's CSN is created

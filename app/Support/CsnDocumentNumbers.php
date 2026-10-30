@@ -17,7 +17,7 @@ class CsnDocumentNumbers
      */
     public function assign(array $data, Branch|int $branch, ?string $csnPrefix = null, ?\DateTimeInterface $orderedAt = null): array
     {
-        // the client's CSN number format CSN-EE-XX-YYMM##### (user, 28 Oct 2026)
+        // the client's CSN number format XX-YYMM##### (user, 30 Oct 2026)
         $data['number'] ??= $this->numbering->nextCsn($branch, $csnPrefix, $orderedAt);
         $data['do_number'] ??= $this->numbering->next($branch, DocumentType::Do);
         $data['job_no'] ??= $this->numbering->next($branch, DocumentType::JobSheet);

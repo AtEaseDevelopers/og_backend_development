@@ -49,9 +49,10 @@ class DocumentNumberingService
     }
 
     /**
-     * Next CSN number (user, 28 Oct 2026): CSN-EE-XX-YYMM#####, e.g. CSN-KL-JB-261000001. EE = the company code,
-     * XX = the branch's CSN code (KL, SA, MK, KG, PK, PP, PA, JB; else the company code), YYMM = the year and month
-     * the order was placed, ##### = a 5-digit running number that starts again each month for each company and code.
+     * Next CSN number (user, 30 Oct 2026): XX-YYMM#####, e.g. KL-260800015. XX = the branch's CSN code (KL, SA, MK, KG,
+     * PK, PP, PA, JB; else the company code), YYMM = the year and month the order was placed, ##### = a 5-digit running
+     * number that starts again each month for each code. The number is unique across companies: the counter is kept per
+     * company, so it continues after the highest number in use for the code and month.
      */
     public function nextCsn(Branch|int $branch, ?string $locationCode = null, ?\DateTimeInterface $orderedAt = null): string
     {
@@ -65,7 +66,7 @@ class DocumentNumberingService
         // a counter per company, location code and month (the type key carries the code)
         $type = DocumentType::Csn->value.':'.$code;
 
-        return DB::transaction(function () use ($branchId, $type, $period, $company, $code) {
+        return DB::transaction(function () use ($branchId, $type, $period, $code) {
             $sequence = DocumentNumberSequence::query()
                 ->where('branch_id', $branchId)
                 ->where('document_type', $type)
@@ -74,12 +75,12 @@ class DocumentNumberingService
                 ->first()
                 ?? DocumentNumberSequence::query()->create(['branch_id' => $branchId, 'document_type' => $type, 'period' => $period, 'last_number' => 0]);
 
-            // continue after the highest number in use (renumbered CSNs, a counter out of step)
-            $inUse = (int) substr((string) DB::table('consignment_notes')->where('number', 'like', 'CSN-'.$company.'-'.$code.'-'.$period.'%')->max('number'), -5);
+            // continue after the highest number in use for the code and month (another company's CSNs, renumbered ones)
+            $inUse = (int) DB::table('consignment_notes')->where('number', 'like', $code.'-'.$period.'%')->pluck('number')->map(fn ($n) => (int) substr((string) $n, -5))->max();
             $sequence->last_number = max((int) $sequence->last_number, $inUse) + 1;
             $sequence->save();
 
-            return sprintf('CSN-%s-%s-%s%05d', $company, $code, $period, $sequence->last_number);
+            return sprintf('%s-%s%05d', $code, $period, $sequence->last_number);
         });
     }
 }

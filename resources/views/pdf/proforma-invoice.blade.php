@@ -38,8 +38,8 @@
                 @if ($branch?->sst_no)<div class="muted">SST No.: {{ $branch->sst_no }}</div>@endif
             </td>
             <td>
-                {{-- a QR of the proforma number above the title (user, 30 Oct 2026): scanned into the system's search fields --}}
-                <div style="text-align:right;margin-bottom:4px"><img src="{{ \App\Support\QrCodeImage::dataUri($proforma->number) }}" alt="QR {{ $proforma->number }}" style="width:54px;height:54px"></div>
+                {{-- a barcode of the proforma number above the title (user, 30 Oct 2026): scanned into the system's search fields --}}
+                <div style="text-align:right;margin-bottom:4px"><img src="{{ \App\Support\BarcodeImage::code128DataUri($proforma->number) }}" alt="Barcode {{ $proforma->number }}" style="width:180px;height:40px"><div style="font-size:8px;letter-spacing:.4px">{{ $proforma->number }}</div></div>
                 <div class="doc-title">PROFORMA INVOICE</div>
                 <div style="text-align:right;margin-top:4px"><span class="stamp">NOT A TAX INVOICE</span></div>
             </td>

@@ -133,6 +133,7 @@ class QuotePdfController
             ->get(['id', 'name', 'category', 'sub_category'])->keyBy('id');
         $columns = [];
         $groups = [];
+        $dropOffMins = [];
         $lorry = [];
 
         foreach ((array) $quote->pairs as $pair) {
@@ -171,6 +172,11 @@ class QuotePdfController
                 foreach ($ranges as $range) {
                     $groups[$label][$single ? '' : $this->quantityLabel($range[0], $range[1], $unit)][$destination][] = [$range[2], $range[3] ?? null];
                 }
+
+                // the product's drop-off minimum charge, shown under the product (client, 30 Oct 2026)
+                if (is_numeric($item['special']['drop_off_min_charge'] ?? null) && (float) $item['special']['drop_off_min_charge'] > 0) {
+                    $dropOffMins[$label][$destination][] = [(float) $item['special']['drop_off_min_charge'], null];
+                }
             }
         }
 
@@ -189,7 +195,10 @@ class QuotePdfController
         return [
             'columns' => $productColumns,
             'groups' => array_map(
-                fn (string $name, array $lines) => ['name' => $name, 'rows' => array_map(fn (string $label, array $prices) => ['label' => $label, 'prices' => $rows($prices, $productColumns)], array_keys($lines), array_values($lines))],
+                fn (string $name, array $lines) => ['name' => $name, 'rows' => array_merge(
+                    array_map(fn (string $label, array $prices) => ['label' => $label, 'prices' => $rows($prices, $productColumns)], array_keys($lines), array_values($lines)),
+                    isset($dropOffMins[$name]) ? [['label' => 'MIN. DROP-OFF CHARGE', 'prices' => $rows($dropOffMins[$name], $productColumns), 'minimum' => true]] : [],
+                )],
                 array_keys($groups),
                 array_values($groups),
             ),
@@ -230,8 +239,9 @@ class QuotePdfController
     }
 
     /**
-     * The minimum charge lines under the tables (as "* Minimum charge Door To Door Service is RM 250-00 per trip"): the
-     * quoted products' minimums, else the price list's for a pick-up.
+     * The minimum charge lines under the tables (as "* Minimum charge Door To Door Service is RM 250.00 per trip"): the
+     * pick-up and construction-site minimums of the whole quotation — the quoted rows' when they carry one, else the
+     * standard RM 250 / RM 80 (client, 30 Oct 2026). A product's drop-off minimum is shown under the product instead.
      *
      * @return list<string>
      */
@@ -244,7 +254,7 @@ class QuotePdfController
             foreach ($pair['items'] ?? [] as $item) {
                 $row = (array) ($item['special'] ?? []);
 
-                if (is_numeric($row['pickup_min_charge'] ?? null) && filled($pair['from_location_id'] ?? null)) {
+                if (is_numeric($row['pickup_min_charge'] ?? null)) {
                     $notes['pickup'][] = (float) $row['pickup_min_charge'];
                 }
 
@@ -252,9 +262,6 @@ class QuotePdfController
                     $notes['construction'][] = (float) $row['construction_min_charge'];
                 }
 
-                if (is_numeric($row['drop_off_min_charge'] ?? null)) {
-                    $notes['drop_off'][] = (float) $row['drop_off_min_charge'];
-                }
             }
         }
 
@@ -264,12 +271,16 @@ class QuotePdfController
             }
         }
 
+        // the standard minimums when the quoted rows carry none
+        $notes['pickup'] = $notes['pickup'] ?? [(float) config('og.quotation.pickup_min_charge', 250)];
+        $notes['construction'] = $notes['construction'] ?? [(float) config('og.quotation.construction_min_charge', 80)];
+
         $lines = [];
 
         // the wording of each type (user, 29 Oct 2026): the price list's "Door To Door … per trip", the customer quotation's "per point / DO" and "per pick up"
         $texts = $customerType
-            ? ['drop_off' => 'Minimum charge per point / DO %s', 'pickup' => 'Minimum charges per pick up %s', 'construction' => 'Minimum charge to construction site %s per trip']
-            : ['pickup' => 'Minimum charge Door To Door Service is %s per trip', 'construction' => 'Minimum charge to construction site is %s per trip', 'drop_off' => 'Minimum charge per drop-off is %s'];
+            ? ['pickup' => 'Minimum charges per pick up %s', 'construction' => 'Minimum charge to construction site %s per trip']
+            : ['pickup' => 'Minimum charge Door To Door Service is %s per trip', 'construction' => 'Minimum charge to construction site is %s per trip'];
 
         foreach ($texts as $key => $text) {
             if (! empty($notes[$key])) {

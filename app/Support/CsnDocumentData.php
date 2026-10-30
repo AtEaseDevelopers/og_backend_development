@@ -48,12 +48,15 @@ class CsnDocumentData
                 'qr_value' => $csn->number,
                 // the billing customer (user, 30 Oct 2026)
                 'customer_name' => $csn->customer_name ?: $csn->customer?->company_name,
+                'customer_code' => $csn->customer?->code,
                 'customer_brn' => $csn->customer_brn ?: $csn->customer?->brn,
                 'customer_address' => $csn->customer?->address,
                 'customer_contact' => $this->dropOffContact($csn->customer?->attention, $csn->customer_phone ?: $csn->customer?->phone),
                 'consignor_phone' => $csn->consignor_phone,
                 // every consignee (the main one and the extra drop-off stops), each to chop & sign
                 'consignees' => $this->consignees($csn),
+                // every consignor (the main one and the extra pick-up stops; client, 30 Oct 2026: there can be more than one)
+                'consignors' => $this->consignors($csn),
                 // '' = left blank on the order (shown as "—"); not set at all (older CSNs) = the customer
                 'consignor_name' => $csn->consignor_name === '' ? null : ($csn->consignor_name ?: $csn->customer_name),
                 'consignor_address' => $csn->consignor_address,
@@ -81,6 +84,24 @@ class CsnDocumentData
     }
 
     /**
+     * The consignors of a CSN: the main one (its address and phone) and each extra pick-up stop (its address and DO).
+     *
+     * @return list<array{name: ?string, address: ?string, contact: ?string, do_number: ?string}>
+     */
+    private function consignors(ConsignmentNote $csn): array
+    {
+        $name = $csn->consignor_name === '' ? null : ($csn->consignor_name ?: $csn->customer_name);
+        $main = ['name' => $name, 'address' => $csn->consignor_address, 'contact' => $csn->consignor_phone, 'do_number' => null];
+        $stops = collect($csn->stops ?? [])
+            ->filter(fn ($stop) => is_array($stop) && ($stop['type'] ?? '') === OrderStops::PICKUP)
+            ->map(fn (array $stop) => ['name' => ($stop['name'] ?? null) ?: $name, 'address' => $stop['location'] ?? null, 'contact' => $this->dropOffContact($stop['pic_name'] ?? null, $stop['pic_phone'] ?? null), 'do_number' => $stop['do_number'] ?? null])
+            ->values()
+            ->all();
+
+        return [$main, ...$stops];
+    }
+
+    /**
      * The consignees of a CSN: the main one (its delivery address, PIC and DO) and each extra drop-off stop.
      *
      * @return list<array{name: ?string, address: ?string, contact: ?string, do_number: ?string}>
@@ -95,7 +116,7 @@ class CsnDocumentData
         ];
         $stops = collect($csn->stops ?? [])
             ->filter(fn ($stop) => is_array($stop) && ($stop['type'] ?? '') !== OrderStops::PICKUP)
-            ->map(fn (array $stop) => ['name' => $csn->consignee_name, 'address' => $stop['location'] ?? null, 'contact' => null, 'do_number' => $stop['do_number'] ?? null])
+            ->map(fn (array $stop) => ['name' => ($stop['name'] ?? null) ?: $csn->consignee_name, 'address' => $stop['location'] ?? null, 'contact' => $this->dropOffContact($stop['pic_name'] ?? null, $stop['pic_phone'] ?? null), 'do_number' => $stop['do_number'] ?? null])
             ->values()
             ->all();
 
@@ -193,6 +214,7 @@ class CsnDocumentData
             ],
             'bill_to' => [
                 'name' => $fields['customer_name'] ?? '—',
+                'code' => $fields['customer_code'] ?? null,
                 'reg_no' => $fields['customer_brn'] ?? null,
                 'address' => $fields['customer_address'] ?? null,
                 'contact' => $fields['customer_contact'] ?? null,
@@ -202,6 +224,12 @@ class CsnDocumentData
                 'address' => $fields['consignor_address'] ?? '—',
                 'contact' => $fields['consignor_phone'] ?? null,
             ],
+            'consignors' => $fields['consignors'] ?? [[
+                'name' => $fields['consignor_name'] ?? '—',
+                'address' => $fields['consignor_address'] ?? null,
+                'contact' => $fields['consignor_phone'] ?? null,
+                'do_number' => null,
+            ]],
             'consignees' => $fields['consignees'] ?? [[
                 'name' => $fields['consignee_name'] ?? '—',
                 'address' => $dropOffAddress ?: null,

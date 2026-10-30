@@ -57,7 +57,7 @@
     }
 
     .inv-qr { margin-bottom: 4px; }
-    .inv-qr img { width: 54px; height: 54px; }
+    .inv-qr img { width: 180px; height: 40px; }
 
     /* the boxed layout (user, 30 Oct 2026) */
     .inv-title-cell { width: 26%; text-align: right; vertical-align: top; }
@@ -73,7 +73,7 @@
     .inv-meta-v { font-weight: bold; }
     .inv-items-boxed th, .inv-items-boxed td { border: 1px solid #000; padding: 4px 5px; vertical-align: top; }
     .inv-items-boxed th { background: #f0f0f0; text-align: left; font-size: 9px; }
-    .inv-items-boxed .inv-col-goods { width: 26%; }
+    .inv-items-boxed .inv-col-goods { width: 32%; }
     .inv-items-boxed .inv-col-amt, .inv-items-boxed .inv-col-sst { text-align: right; white-space: nowrap; }
     .inv-totals-boxed td { border: 1px solid #000; padding: 4px 6px; }
     .inv-totals-boxed .inv-totals-grand td { background: #f0f0f0; font-weight: bold; }

@@ -17,8 +17,10 @@
         .lh-meta .k { font-weight: bold; font-size: 10px; }
         .lh-title { font-size: 19px; font-weight: bold; text-align: right; }
         /* a QR of the document number (user, 30 Oct 2026): scanned into the system's search fields */
-        .lh-qr { width: 60px; text-align: right; vertical-align: top; }
-        .lh-qr img { width: 56px; height: 56px; }
+        /* a Code 128 barcode of the document number (user, 30 Oct 2026, in place of the QR) */
+        .lh-qr { width: 190px; text-align: right; vertical-align: top; padding-top: 4px; }
+        .lh-qr img { width: 180px; height: 40px; }
+        .lh-qr-text { font-size: 8px; letter-spacing: .4px; margin-top: 1px; }
         .pagenum:before { content: counter(page); }
 
         table.box { width: 100%; border-collapse: collapse; margin: 0 0 8px; page-break-inside: avoid; }
@@ -128,7 +130,7 @@
                 <td class="lh-small">@if ($sstNo)SST No. : {{ $sstNo }}@endif</td>
             </tr></table>
         </div>
-        </td><td class="lh-qr"><img src="{{ \App\Support\QrCodeImage::dataUri($quotation->orderNumber()) }}" alt="QR {{ $quotation->orderNumber() }}"></td></tr></table>
+        </td><td class="lh-qr"><img src="{{ \App\Support\BarcodeImage::code128DataUri($quotation->orderNumber()) }}" alt="Barcode {{ $quotation->orderNumber() }}"><div class="lh-qr-text">{{ $quotation->orderNumber() }}</div></td></tr></table>
         <div class="lh-rule"></div>
         <table class="lh-meta"><tr>
             <td class="k" style="width:34%">Order No. : {{ $quotation->orderNumber() }}</td>
@@ -173,7 +175,7 @@
                 <tr><td class="k">PIC / Tel</td><td class="v">{{ $contact($quotation->consignor_pic_name, $quotation->consignor_pic_phone) }}</td></tr>
                 <tr><td class="k">{{ $isStore ? 'Store' : 'Address' }}</td><td class="v">{!! nl2br(e($consignorAddress ?: '—')) !!}
                     @if ($stops['multi_pickup'])
-                        @foreach ($stops['pickup_stops'] as $stop)<div class="muted">+ {{ $stop['location'] ?: '—' }}@if ($stop['do_number']) · DO {{ $stop['do_number'] }}@endif</div>@endforeach
+                        @foreach ($stops['pickup_stops'] as $stop)<div class="muted">+ @if ($stop['name'] ?? null)<b>{{ $stop['name'] }}</b>@if (($stop['pic_name'] ?? null) || ($stop['pic_phone'] ?? null)) ({{ trim(implode(' · ', array_filter([$stop['pic_name'] ?? null, $stop['pic_phone'] ?? null]))) }})@endif · @endif{{ $stop['location'] ?: '—' }}@if ($stop['do_number']) · DO {{ $stop['do_number'] }}@endif</div>@endforeach
                     @endif
                 </td></tr>
                 @if ($quotation->fromLocation?->name)<tr><td class="k">Area</td><td class="v">{{ $quotation->fromLocation->name }}</td></tr>@endif
@@ -186,7 +188,7 @@
                 <tr><td class="k">PIC / Tel</td><td class="v">{{ $contact($quotation->consignee_pic_name, $quotation->consignee_pic_phone) }}</td></tr>
                 <tr><td class="k">{{ $consigneeStore ? 'Store' : 'Address' }}</td><td class="v">{!! nl2br(e($consigneeAddress ?: '—')) !!}
                     @if ($stops['multi_dropoff'])
-                        @foreach ($stops['dropoff_stops'] as $stop)<div class="muted">+ {{ $stop['location'] ?: '—' }}@if ($stop['do_number']) · DO {{ $stop['do_number'] }}@endif</div>@endforeach
+                        @foreach ($stops['dropoff_stops'] as $stop)<div class="muted">+ @if ($stop['name'] ?? null)<b>{{ $stop['name'] }}</b>@if (($stop['pic_name'] ?? null) || ($stop['pic_phone'] ?? null)) ({{ trim(implode(' · ', array_filter([$stop['pic_name'] ?? null, $stop['pic_phone'] ?? null]))) }})@endif · @endif{{ $stop['location'] ?: '—' }}@if ($stop['do_number']) · DO {{ $stop['do_number'] }}@endif</div>@endforeach
                     @endif
                 </td></tr>
                 <tr><td class="k">Destination</td><td class="v">{{ $destination ?? '—' }}@if ($dropOffLabel) <span class="muted">· {{ $dropOffLabel }}</span>@endif</td></tr>

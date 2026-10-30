@@ -15,10 +15,15 @@ class OrderStops
 
     public const TYPES = [self::PICKUP => 'Pick-up', self::DROPOFF => 'Drop-off'];
 
-    /** A blank stop row of the order form. @return array{type: string, location: string, do_number: string} */
+    /**
+     * A blank stop row of the order form: the party at the stop (name, PIC, tel; user 30 Oct 2026 — a second consignor
+     * or consignee may be someone else), its address and DO number.
+     *
+     * @return array{type: string, name: string, pic_name: string, pic_phone: string, location: string, do_number: string}
+     */
     public static function blank(string $type = self::DROPOFF): array
     {
-        return ['type' => $type, 'location' => '', 'do_number' => ''];
+        return ['type' => $type, 'name' => '', 'pic_name' => '', 'pic_phone' => '', 'location' => '', 'do_number' => ''];
     }
 
     /**
@@ -38,13 +43,17 @@ class OrderStops
 
             $location = trim((string) ($row['location'] ?? ''));
             $do = trim((string) ($row['do_number'] ?? ''));
+            $name = trim((string) ($row['name'] ?? ''));
 
-            if ($location === '' && $do === '') {
+            if ($location === '' && $do === '' && $name === '') {
                 continue;
             }
 
             $out[] = [
                 'type' => ($row['type'] ?? '') === self::PICKUP ? self::PICKUP : self::DROPOFF,
+                'name' => $name !== '' ? $name : null,
+                'pic_name' => trim((string) ($row['pic_name'] ?? '')) ?: null,
+                'pic_phone' => trim((string) ($row['pic_phone'] ?? '')) ?: null,
                 'location' => $location !== '' ? $location : null,
                 'do_number' => $do !== '' ? $do : null,
                 // kept when a CSN's stop was scanned already (the order form never sets these)

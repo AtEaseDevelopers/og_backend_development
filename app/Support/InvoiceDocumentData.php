@@ -88,6 +88,8 @@ class InvoiceDocumentData
     private function lines(Invoice $invoice): array
     {
         return $invoice->lines
+            // one line per CSN (an invoice holding the same CSN several times prints it once)
+            ->unique(fn ($line) => $line->consignment_note_id ? 'csn:'.$line->consignment_note_id : 'line:'.$line->id)
             ->map(function ($line) {
                 $csn = $line->consignmentNote;
 
@@ -105,6 +107,8 @@ class InvoiceDocumentData
                     'amount' => $this->formatAmount((float) $line->amount),
                 ];
             })
+            // one statement in date order (client, 30 Oct 2026: 1/9 → 30/9), then by CSN number
+            ->sortBy(fn (array $line) => [$line['sort_date'] ?? '9999-99-99', $line['csn_number'] ?? ''])
             ->values()
             ->all();
     }
@@ -124,13 +128,11 @@ class InvoiceDocumentData
             $lineTax = 0;
         }
 
+        // the customer's D/O numbers (client, 30 Oct 2026: not our delivery order's), one per drop-off
         $refs = collect([
-            filled($csn->do_number) ? 'DO No. '.$csn->do_number : null,
+            filled($csn->customer_do_number) ? (string) $csn->customer_do_number : null,
+            ...OrderStops::doNumbers($csn->stops),
             filled($csn->customer_reference) ? 'Ref. '.$csn->customer_reference : null,
-            ...collect($csn->other_do_numbers ?? [])
-                ->filter()
-                ->map(fn (string $ref) => 'DO No. '.$ref)
-                ->all(),
         ])->filter()->unique()->values()->all();
 
         if ($refs === []) {
@@ -145,12 +147,15 @@ class InvoiceDocumentData
             $date = Carbon::parse($date);
         }
 
-        // the goods on the CSN (user, 30 Oct 2026): "15 × 1100L Recycle Bin @ 130.00"
-        $items = $csn->lines->map(fn ($line) => trim(QuantityLabel::format($line->quantity, $line->uom).' × '.$line->item_name
-            .($line->unit_price !== null ? ' @ '.number_format((float) $line->unit_price, 2) : '')))->values()->all();
+        // the goods on the CSN (user, 30 Oct 2026): "15 × 1100L Recycle Bin" — no charges per line (client, 30 Oct 2026)
+        $items = $csn->lines
+            // the pick-up / drop-off / minimum charge lines are not goods (client, 30 Oct 2026)
+            ->reject(fn ($line) => in_array(trim((string) $line->item_name), \App\Domains\Quotation\Actions\CreateOrderFromEnquiry::CHARGE_LINES, true))
+            ->map(fn ($line) => trim(QuantityLabel::format($line->quantity, $line->uom).' × '.$line->item_name))->values()->all();
 
         return [
             'date' => $date?->format('d/m/Y') ?? '—',
+            'sort_date' => $date?->format('Y-m-d'),
             'csn_number' => $csn->number,
             'items' => $items,
             'your_ref' => $refs,

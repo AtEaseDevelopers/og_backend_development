@@ -15,8 +15,8 @@
         : ($letterhead['logo_url'] ?? null);
 
     $nl = fn (?string $value): string => filled($value) ? nl2br(e($value)) : '—';
-    // the QR of the document number (user, 30 Oct 2026: a QR only, no barcode) — scanned into the system's search fields
-    $qr = \App\Support\QrCodeImage::dataUri($meta['qr_value'] ?? ($meta['number'] ?? null));
+    // the barcode of the document number (user, 30 Oct 2026) — scanned into the system's search fields
+    $qr = \App\Support\BarcodeImage::code128DataUri($meta['qr_value'] ?? ($meta['number'] ?? null));
 @endphp
 
 {{-- the client's CSN layout (user, 30 Oct 2026): no pricing; the billing customer on the left and the consignor on the
@@ -49,46 +49,60 @@
             </td>
             <td class="csn-doc-title-cell">
                 @if ($qr)
-                    <div class="csn-doc-qr-title"><img src="{{ $qr }}" alt="QR {{ $meta['number'] ?? '' }}"></div>
+                    <div class="csn-doc-qr-title"><img src="{{ $qr }}" alt="Barcode {{ $meta['number'] ?? '' }}"><div class="csn-doc-qr-text">{{ $meta['number'] ?? '' }}</div></div>
                 @endif
                 <div class="csn-doc-title">{{ $documentTitle }}</div>
             </td>
         </tr>
     </table>
 
-    {{-- Bill to (left), consignor (right), the document numbers with the QR --}}
+    {{-- Bill To (no box, with the customer's code) and the document numbers; then every consignor (client, 30 Oct 2026:
+         there can be more than one), then the route in large type --}}
     <table class="csn-doc-parties">
         <tr>
-            <td class="csn-doc-party-col csn-doc-party-box">
+            <td class="csn-doc-party-col">
                 <div class="csn-doc-label">Bill To:</div>
                 <div class="csn-doc-party-name">{{ $billTo['name'] ?? '—' }}</div>
+                @if(filled($billTo['code'] ?? null))<div>Customer code: {{ $billTo['code'] }}</div>@endif
                 @if(filled($billTo['reg_no'] ?? null))<div>Co. Reg. {{ $billTo['reg_no'] }}</div>@endif
                 <div class="csn-doc-party-address">{!! $nl($billTo['address'] ?? null) !!}</div>
                 @if(filled($billTo['contact'] ?? null))<div>{{ $billTo['contact'] }}</div>@endif
             </td>
-            <td class="csn-doc-party-col csn-doc-party-box">
-                <div class="csn-doc-label">Consignor:</div>
-                <div class="csn-doc-party-name">{{ $consignor['name'] ?? '—' }}</div>
-                <div class="csn-doc-party-address">{!! $nl($consignor['address'] ?? null) !!}</div>
-                @if(filled($consignor['contact'] ?? null))<div>{{ $consignor['contact'] }}</div>@endif
-            </td>
             <td class="csn-doc-meta-col">
                 <table class="csn-doc-meta-table">
+                    {{-- the client's order (30 Oct 2026): No., Date, Invoice No., Job Sheet, Lorry No. — no internal D/O number
+                         (the customer's D/O numbers are in the consignee boxes) --}}
                     <tr><td class="csn-doc-meta-label">NO</td><td>{{ $meta['number'] ?? '—' }}</td></tr>
                     <tr><td class="csn-doc-meta-label">Date</td><td>{{ $meta['issued_at'] ?? '—' }}</td></tr>
-                    <tr><td class="csn-doc-meta-label">{{ $meta['reference_label'] ?? 'D/O No' }}</td><td>{{ $meta['reference_number'] ?? ($meta['do_number'] ?? '—') }}</td></tr>
-                    <tr><td class="csn-doc-meta-label">Job Sheet</td><td>{{ $meta['job_sheet_number'] ?? '—' }}</td></tr>
                     <tr><td class="csn-doc-meta-label">Invoice No</td><td>{{ $meta['invoice_number'] ?? '—' }}</td></tr>
+                    <tr><td class="csn-doc-meta-label">Job Sheet</td><td>{{ $meta['job_sheet_number'] ?? '—' }}</td></tr>
                     <tr><td class="csn-doc-meta-label">Lorry No</td><td>{{ $meta['lorry_number'] ?? '—' }}</td></tr>
                 </table>
             </td>
         </tr>
     </table>
 
+    @php $consignors = $consignors ?? []; @endphp
+    <table class="csn-doc-consignees csn-doc-consignors">
+        @foreach (array_chunk($consignors ?: [['name' => '—', 'address' => null, 'contact' => null, 'do_number' => null]], 2) as $pair)
+            <tr>
+                @foreach ($pair as $party)
+                    <td class="csn-doc-consignee-box csn-doc-consignor-box" @if (count($pair) === 1) colspan="2" @endif>
+                        <div class="csn-doc-label">Consignor{{ count($consignors) > 1 ? ' '.($loop->parent->index * 2 + $loop->iteration) : '' }}:</div>
+                        <div class="csn-doc-party-name">{{ $party['name'] ?? '—' }}</div>
+                        <div class="csn-doc-party-address">{!! $nl($party['address'] ?? null) !!}</div>
+                        @if(filled($party['contact'] ?? null))<div>{{ $party['contact'] }}</div>@endif
+                        @if(filled($party['do_number'] ?? null))<div><span class="csn-doc-label">D/O No:</span> {{ $party['do_number'] }}</div>@endif
+                    </td>
+                @endforeach
+            </tr>
+        @endforeach
+    </table>
+
     <div class="csn-doc-route">
-        <strong>From:</strong> {{ $route['from'] ?? '—' }}
-        &nbsp;&nbsp;&nbsp;
-        <strong>To:</strong> {{ $route['to'] ?? '—' }}
+        <span class="csn-doc-route-label">From:</span> {{ $route['from'] ?? '—' }}
+        <span class="csn-doc-route-arrow">&rarr;</span>
+        <span class="csn-doc-route-label">To:</span> {{ $route['to'] ?? '—' }}
     </div>
 
     {{-- Line items (no pricing) --}}
@@ -114,8 +128,7 @@
         </tbody>
     </table>
 
-    {{-- Remark (the driver note) and marking, only when there is one (user, 30 Oct 2026) --}}
-    @if (filled($footer['remarks'] ?? null) || filled($footer['marking'] ?? null))
+    {{-- Remark (the driver note) and marking: always there, to write on when empty (client, 30 Oct 2026) --}}
     <table class="csn-doc-remark">
         <tr>
             <td>
@@ -126,7 +139,6 @@
             </td>
         </tr>
     </table>
-    @endif
 
     {{-- Every consignee with its chop & sign box --}}
     <table class="csn-doc-consignees">

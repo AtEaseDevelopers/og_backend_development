@@ -120,10 +120,18 @@
         white-space: pre-line;
     }
 
+    /* the route in large type (client, 30 Oct 2026: "From KL to Johor" was hard to see) */
     .csn-doc-route {
-        margin: 0 0 8px;
-        font-size: 10px;
+        margin: 8px 0;
+        padding: 5px 8px;
+        font-size: 13px;
+        font-weight: bold;
+        border-top: 2px solid #000;
+        border-bottom: 2px solid #000;
+        text-transform: uppercase;
     }
+    .csn-doc-route-label { font-weight: normal; font-size: 10px; text-transform: none; }
+    .csn-doc-route-arrow { padding: 0 10px; }
 
     .csn-doc-items th,
     .csn-doc-items td {
@@ -252,21 +260,26 @@
         margin-bottom: 4px;
     }
     .csn-doc-qr-title img {
-        width: 60px;
-        height: 60px;
+        width: 180px;
+        height: 40px;
         display: inline-block;
     }
-    .csn-doc-party-box {
-        width: 33%;
-        border: 1px solid #000;
-        padding: 6px 8px !important;
+    .csn-doc-qr-text {
+        font-size: 8px;
+        letter-spacing: .4px;
     }
-    .csn-doc-party-box + .csn-doc-party-box {
-        border-left: 0;
+    .csn-doc-parties .csn-doc-party-col {
+        width: 58%;
     }
     .csn-doc-parties .csn-doc-meta-col {
-        width: 34%;
+        width: 42%;
         padding-left: 10px;
+    }
+    .csn-doc-consignors {
+        margin-top: 0;
+    }
+    .csn-doc-consignor-box {
+        min-height: 0;
     }
     .csn-doc-parties .csn-doc-qr {
         float: none;
