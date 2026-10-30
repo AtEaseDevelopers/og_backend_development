@@ -14,7 +14,7 @@
         <tbody>
         @forelse ($enquiries as $enquiry)
             <tr>
-                <td>{{ $enquiry->order_number ?: $enquiry->reference_no }}</td>
+                <td><a href="{{ route('portal.enquiry.pdf', $enquiry) }}" target="_blank" rel="noopener">{{ $enquiry->order_number ?: $enquiry->reference_no }}</a></td>
                 <td>{{ $enquiry->created_at->format('d/m/Y H:i') }}</td>
                 <td>{{ $enquiry->preferred_delivery_date?->format('d/m/Y') ?? '—' }}</td>
                 <td>{{ $enquiry->status instanceof \App\Enums\PortalEnquiryStatus ? $enquiry->status->label() : ucfirst((string) $enquiry->status) }}</td>

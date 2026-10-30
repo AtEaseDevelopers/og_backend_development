@@ -212,7 +212,12 @@ class CreateOrderFromEnquiry
             return [];
         }
 
-        return $destinations->map(function (array $destination, int $index) use ($items, $destinations, $enquiry): array {
+        $payloadName = filled($payload['customer_name'] ?? null) ? trim((string) $payload['customer_name']) : null;
+        $payloadAddress = array_key_exists('customer_address', $payload) ? (filled($payload['customer_address']) ? trim((string) $payload['customer_address']) : null) : null;
+        $payloadPic = array_key_exists('customer_pic_name', $payload) ? (filled($payload['customer_pic_name']) ? trim((string) $payload['customer_pic_name']) : null) : null;
+        $payloadPhone = array_key_exists('customer_pic_phone', $payload) ? (filled($payload['customer_pic_phone']) ? trim((string) $payload['customer_pic_phone']) : null) : null;
+
+        return $destinations->map(function (array $destination, int $index) use ($items, $destinations, $enquiry, $payload, $payloadName, $payloadAddress, $payloadPic, $payloadPhone): array {
             $own = $items->filter(function (array $item) use ($index, $destinations): bool {
                 $target = isset($item['destination_index']) && $item['destination_index'] !== '' ? (int) $item['destination_index'] : 0;
 
@@ -228,10 +233,10 @@ class CreateOrderFromEnquiry
             return [
                 'explicit' => $edited,
                 // saved on the order form (blank stays blank); a portal destination has no consignor: the customer
-                'consignor_name' => array_key_exists('consignor_name', $destination) ? $stored('consignor_name') : $enquiry->customer?->company_name,
+                'consignor_name' => array_key_exists('consignor_name', $destination) ? $stored('consignor_name') : ($payloadName ?? $enquiry->customer?->company_name),
                 'from_location_id' => $stored('from_location_id'),
                 'consignor_brn' => $stored('consignor_brn'),
-                'customer_address' => $stored('customer_address'),
+                'customer_address' => array_key_exists('customer_address', $destination) ? $stored('customer_address') : $payloadAddress,
                 'pickup_location' => $stored('pickup_location'),
                 // Store block: the store the consignor brings the goods to (and its branch); person in charge on each side
                 'store_branch_id' => $stored('store_branch_id'),
@@ -239,7 +244,12 @@ class CreateOrderFromEnquiry
                 'consignee_mode' => $stored('consignee_mode'),
                 'consignee_store_id' => $stored('consignee_store_id'),
                 // the customer's person in charge and contact number saved on the order form (when it has them)
-                ...array_intersect_key($destination, ['attention' => true, 'customer_pic_phone' => true]),
+                ...((array_key_exists('attention', $destination) || array_key_exists('customer_pic_name', $payload))
+                    ? ['attention' => array_key_exists('attention', $destination) ? $stored('attention') : $payloadPic]
+                    : []),
+                ...((array_key_exists('customer_pic_phone', $destination) || array_key_exists('customer_pic_phone', $payload))
+                    ? ['customer_pic_phone' => array_key_exists('customer_pic_phone', $destination) ? $stored('customer_pic_phone') : $payloadPhone]
+                    : []),
                 'consignor_pic_name' => $stored('consignor_pic_name'),
                 'consignor_pic_phone' => $stored('consignor_pic_phone'),
                 'consignee_pic_name' => $stored('consignee_pic_name'),

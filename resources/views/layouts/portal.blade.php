@@ -33,7 +33,18 @@
         .card h3 { margin-top: 0; }
         label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: .35rem; }
         input, select, textarea { width: 100%; padding: .65rem .75rem; border: 1px solid var(--line); border-radius: .4rem; margin-bottom: .9rem; box-sizing: border-box; background: white; font: inherit; }
-        input[type=checkbox] { width: auto; margin: 0 .4rem 0 0; }
+        input[type=checkbox], input[type=radio] { width: auto; margin: 0 .4rem 0 0; padding: 0; border: 0; }
+        .og-radios { display: flex; flex-direction: column; gap: .35rem; max-width: 28rem; }
+        .og-radio { display: flex !important; align-items: center; gap: .5rem; margin: 0; color: var(--ink); cursor: pointer; }
+        .og-order { margin-bottom: .25rem; }
+        .og-order.og-order-multi { border: 2px solid var(--og-order-color, #2563eb); border-radius: .85rem; padding: .9rem 1rem .2rem; margin-bottom: 1.15rem; background: color-mix(in srgb, var(--og-order-color, #2563eb) 7%, #fff); }
+        .og-order-head { display: none; justify-content: space-between; align-items: center; gap: .75rem; flex-wrap: wrap; margin-bottom: .75rem; color: var(--og-order-color, #2563eb); font-weight: 700; }
+        .og-order.og-order-multi .og-order-head { display: flex; }
+        .og-order-head strong { display: inline-flex; align-items: center; gap: .45rem; font-size: 1rem; color: inherit; }
+        .og-order-dot { width: .7rem; height: .7rem; border-radius: 50%; background: var(--og-order-color, #2563eb); display: inline-block; }
+        .og-cust-grid { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(220px, 1.6fr); gap: 0 1rem; align-items: start; }
+        .og-cust-grid .og-field-billing textarea { min-height: 4.4rem; }
+        @media (max-width: 700px) { .og-cust-grid { grid-template-columns: 1fr; } }
         table { width: 100%; border-collapse: collapse; }
         th, td { text-align: left; padding: .65rem .4rem; border-bottom: 1px solid var(--line); font-size: .92rem; vertical-align: top; }
         th { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }

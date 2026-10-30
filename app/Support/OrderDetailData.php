@@ -274,10 +274,18 @@ class OrderDetailData
                     'sub' => collect([$d['consignee_name'] ?? null, $d['address'] ?? null, $d['postcode'] ?? null, $d['state'] ?? null])->filter()->implode(', ') ?: '—',
                 ])->all(),
                 'items' => $items->map(fn (array $item) => [
-                    'name' => $item['item_name'] ?? '—',
-                    'qty' => QuantityLabel::format($item['quantity'] ?? 1, $item['uom'] ?? null),
+                    'name' => trim(($item['item_name'] ?? '—').(filled($item['category'] ?? null) ? ' ('.$item['category'].')' : '')),
+                    'qty' => collect([
+                        QuantityLabel::format($item['quantity'] ?? 1, $item['uom'] ?? null),
+                        filled($item['weight'] ?? null) ? rtrim(rtrim(number_format((float) $item['weight'], 2, '.', ''), '0'), '.').' kg' : null,
+                        filled($item['dimensions'] ?? null) ? $item['dimensions'].' cm' : null,
+                        $item['handling'] ?? null,
+                    ])->filter()->implode(' · '),
                 ])->all(),
-                'instructions' => $enquiry->special_requirements,
+                'instructions' => collect([
+                    $enquiry->special_requirements,
+                    $this->enquiryContacts($payload),
+                ])->filter()->implode("\n") ?: null,
                 'attachments' => $this->attachments($enquiry->attachments ?? []),
             ],
             'admin_action' => [
@@ -300,6 +308,16 @@ class OrderDetailData
                 'acceptance' => $enquiry->customer?->consentSkipsReconfirmation() ? 'Consent letter on file' : 'Separate confirmation required',
             ],
         ];
+    }
+
+    /** Contact persons the customer listed on the portal order form, as one line. */
+    private function enquiryContacts(array $payload): ?string
+    {
+        $contacts = collect($payload['contacts'] ?? [])
+            ->map(fn (array $c) => trim(($c['name'] ?? '').' '.($c['phone'] ?? '').(filled($c['role'] ?? null) ? ' ('.$c['role'].')' : '')))
+            ->filter();
+
+        return $contacts->isEmpty() ? null : 'Contact persons: '.$contacts->implode('; ');
     }
 
     /**

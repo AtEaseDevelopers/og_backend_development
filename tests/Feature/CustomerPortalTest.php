@@ -95,7 +95,21 @@ class CustomerPortalTest extends TestCase
         foreach (['/portal/orders', '/portal/deliveries', '/portal/statement', '/portal/profile', '/portal/documents'] as $url) {
             $this->get($url)->assertNotFound();
         }
-        $this->get('/portal/enquiry/create')->assertOk();
+        $this->get('/portal/enquiry/create')->assertOk()
+            ->assertSee('+ Add another item', false)
+            ->assertSee('id="order-template"', false)
+            ->assertSee('function addOrder', false)
+            ->assertSee('+ Add item', false)
+            ->assertSee('1. Customer &amp; ownership', false)
+            ->assertSee('Billing address', false)
+            ->assertSee('PIC name', false)
+            ->assertSee('Contact number', false)
+            ->assertDontSee('Received through', false)
+            ->assertDontSee('Your DO number', false)
+            ->assertDontSee('Payment method', false)
+            ->assertDontSee('Order type', false)
+            ->assertDontSee('Chartered lorry trip', false)
+            ->assertSee('Add New Destination', false);
     }
 
     public function test_customer_submits_order_and_admin_badge_counts_it(): void
@@ -114,16 +128,44 @@ class CustomerPortalTest extends TestCase
             'payment_method' => 'bank_transfer',
             'customer_do_number' => 'DO-T-1',
             'pickup_address' => 'No. 1, Jalan Test',
+            'destinations' => [
+                ['address' => 'No. 8, Jalan Contoh', 'drop_off_type' => 'other'],
+                ['address' => 'No. 9, Jalan Extra', 'drop_off_type' => 'other'],
+            ],
+            'items' => [['kind' => 'measurement', 'sub_category' => 'Carton', 'item_name' => 'Carton', 'quantity' => 2]],
+            'contacts' => [['name' => 'Ali', 'phone' => '012']],
+        ])->assertSessionHasErrors('orders.0.destinations');
+
+        $this->post('/portal/enquiry', [
+            'branch_id' => $customer->branch_id,
+            'order_type' => 'cash',
+            'service_type' => 'pickup',
+            'payment_method' => 'bank_transfer',
+            'customer_do_number' => 'DO-T-1',
+            'customer_name' => 'Edited Portal Co',
+            'customer_address' => '99 Billing Road',
+            'customer_pic_name' => 'Siti',
+            'customer_pic_phone' => '012999',
+            'pickup_address' => 'No. 1, Jalan Test',
             'destinations' => [['address' => 'No. 8, Jalan Contoh', 'drop_off_type' => 'other']],
-            'items' => [['item_name' => 'Carton', 'quantity' => 2]],
+            'items' => [['kind' => 'measurement', 'sub_category' => 'Carton', 'item_name' => 'Carton', 'quantity' => 2]],
             'contacts' => [['name' => 'Ali', 'phone' => '012']],
         ])->assertSessionHasNoErrors()->assertRedirect('/portal');
 
         $enquiry = \App\Domains\Quotation\Models\PortalEnquiry::query()->latest('id')->firstOrFail();
         \Illuminate\Support\Facades\Event::assertDispatched(\App\Events\PortalOrderSubmitted::class, fn ($e) => $e->enquiry->is($enquiry));
         $this->assertSame($customer->id, $enquiry->customer_id);
+        $this->assertSame('Edited Portal Co', $enquiry->payload['customer_name']);
+        $this->assertSame('99 Billing Road', $enquiry->payload['customer_address']);
+        $this->assertSame('Siti', $enquiry->payload['customer_pic_name']);
+        $this->assertSame('012999', $enquiry->payload['customer_pic_phone']);
         $this->assertSame('Ali', $enquiry->payload['contacts'][0]['name']);
-        $this->get('/portal')->assertOk()->assertSee($enquiry->order_number ?: $enquiry->reference_no);
+        $this->get('/portal')->assertOk()
+            ->assertSee($enquiry->order_number ?: $enquiry->reference_no)
+            ->assertSee(route('portal.enquiry.pdf', $enquiry), false);
+        $this->get(route('portal.enquiry.pdf', $enquiry))
+            ->assertOk()
+            ->assertHeader('content-type', 'application/pdf');
 
         $this->actingAs(User::query()->where('is_hq', true)->firstOrFail());
         \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('admin'));
@@ -140,6 +182,35 @@ class CustomerPortalTest extends TestCase
             ->assertSee('OgNewOrderAlert', false)
             ->assertSee('setInterval(run, 1000)', false);
         $this->get(\App\Filament\Pages\Dashboard::getUrl())->assertOk()->assertSee('OgNewOrderAlert', false);
+
+        $this->actingAs($user);
+        $this->get('/portal/select-company')->assertRedirect('/portal');
+        $before = \App\Domains\Quotation\Models\PortalEnquiry::query()->count();
+        $this->post('/portal/enquiry', [
+            'orders' => [
+                [
+                    'branch_id' => $customer->branch_id,
+                    'order_type' => 'cash',
+                    'service_type' => 'pickup',
+                    'payment_method' => 'bank_transfer',
+                    'customer_do_number' => 'DO-T-2A',
+                    'pickup_address' => 'No. 1, Jalan Test',
+                    'destinations' => [['address' => 'No. 8, Jalan Contoh', 'drop_off_type' => 'other']],
+                    'items' => [['kind' => 'measurement', 'sub_category' => 'Carton', 'item_name' => 'Carton', 'quantity' => 2]],
+                ],
+                [
+                    'branch_id' => $customer->branch_id,
+                    'order_type' => 'cash',
+                    'service_type' => 'pickup',
+                    'payment_method' => 'bank_transfer',
+                    'customer_do_number' => 'DO-T-2B',
+                    'pickup_address' => 'No. 2, Jalan Test',
+                    'destinations' => [['address' => 'No. 10, Jalan Contoh', 'drop_off_type' => 'other']],
+                    'items' => [['kind' => 'measurement', 'sub_category' => 'Carton', 'item_name' => 'Carton', 'quantity' => 1]],
+                ],
+            ],
+        ])->assertSessionHasNoErrors()->assertRedirect('/portal');
+        $this->assertSame($before + 2, \App\Domains\Quotation\Models\PortalEnquiry::query()->count());
     }
 
     public function test_admin_approves_registrations(): void

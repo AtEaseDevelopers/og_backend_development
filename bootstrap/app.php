@@ -27,5 +27,13 @@ return Application::configure(basePath: dirname(__DIR__))
         });
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        $exceptions->respond(function (\Symfony\Component\HttpFoundation\Response $response, \Throwable $e, \Illuminate\Http\Request $request) {
+            if ($response->getStatusCode() !== 419 || ! $request->is('portal', 'portal/*')) {
+                return $response;
+            }
+
+            $to = $request->user() ? '/portal' : '/portal/login';
+
+            return redirect()->to($to)->with('status', 'That page expired. Please try again.');
+        });
     })->create();

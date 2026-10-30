@@ -48,6 +48,7 @@ Route::prefix('portal')->name('portal.')->group(function () {
             Route::get('/', DashboardController::class)->name('dashboard');
             Route::get('enquiry/create', [EnquiryController::class, 'create'])->name('enquiry.create');
             Route::post('enquiry', [EnquiryController::class, 'store'])->name('enquiry.store');
+            Route::get('enquiry/{enquiry}/pdf', [EnquiryController::class, 'pdf'])->name('enquiry.pdf');
         });
     });
 });
