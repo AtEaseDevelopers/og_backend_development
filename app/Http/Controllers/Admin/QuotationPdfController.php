@@ -38,12 +38,17 @@ class QuotationPdfController
             abort_unless($user->canAccessTenant($record->company), 403);
         }
 
+        // two documents from the order record (user, 30 Oct 2026): the Order Form (?amounts=0, no prices) comes first,
+        // the Order Quotation (default, with prices) is what the customer confirms
+        $showAmounts = request()->boolean('amounts', true);
+
         $pdf = Pdf::loadView('pdf.quotation', [
             'quotation' => $record,
             'rateMatrix' => $this->buildRateMatrix($record),
+            'showAmounts' => $showAmounts,
         ])->setPaper('a4');
 
-        return $pdf->stream($record->orderNumber().'.pdf');
+        return $pdf->stream($record->orderNumber().($showAmounts ? ' Order Quotation' : ' Order Form').'.pdf');
     }
 
     /**

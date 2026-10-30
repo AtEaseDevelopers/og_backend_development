@@ -90,9 +90,21 @@
                     <td class="csn-doc-consignee-box csn-doc-consignor-box" @if (count($pair) === 1) colspan="2" @endif>
                         <div class="csn-doc-label">Consignor{{ count($consignors) > 1 ? ' '.($loop->parent->index * 2 + $loop->iteration) : '' }}:</div>
                         <div class="csn-doc-party-name">{{ $party['name'] ?? '—' }}</div>
-                        <div class="csn-doc-party-address">{!! $nl($party['address'] ?? null) !!}</div>
                         @if(filled($party['contact'] ?? null))<div>{{ $party['contact'] }}</div>@endif
-                        @if(filled($party['do_number'] ?? null))<div><span class="csn-doc-label">D/O No:</span> {{ $party['do_number'] }}</div>@endif
+                        @if (($party['pickups'] ?? []) !== [])
+                            {{-- one consignor, several pick-up addresses (user, 30 Oct 2026): numbered inside the box, each with its DO --}}
+                            <table class="csn-doc-pickups">
+                                @foreach ($party['pickups'] as $pickup)
+                                    <tr>
+                                        <td class="csn-doc-pickup-no">Pick-up {{ $loop->iteration }}</td>
+                                        <td class="csn-doc-pickup-addr">{!! $nl($pickup['address'] ?? null) !!}@if(filled($pickup['do_number'] ?? null)) <span class="csn-doc-pickup-do"><span class="csn-doc-label">D/O No:</span> {{ $pickup['do_number'] }}</span>@endif</td>
+                                    </tr>
+                                @endforeach
+                            </table>
+                        @else
+                            <div class="csn-doc-party-address">{!! $nl($party['address'] ?? null) !!}</div>
+                            @if(filled($party['do_number'] ?? null))<div><span class="csn-doc-label">D/O No:</span> {{ $party['do_number'] }}</div>@endif
+                        @endif
                     </td>
                 @endforeach
             </tr>

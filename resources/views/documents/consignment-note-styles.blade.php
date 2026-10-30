@@ -281,6 +281,26 @@
     .csn-doc-consignor-box {
         min-height: 0;
     }
+    .csn-doc-pickups {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 3px;
+    }
+    .csn-doc-pickups td {
+        padding: 2px 0;
+        vertical-align: top;
+        border-top: 1px dotted #999;
+    }
+    .csn-doc-pickup-no {
+        width: 60px;
+        font-weight: bold;
+        white-space: nowrap;
+        padding-right: 6px !important;
+    }
+    .csn-doc-pickup-do {
+        white-space: nowrap;
+        padding-left: 6px;
+    }
     .csn-doc-parties .csn-doc-qr {
         float: none;
         margin: 0 0 4px auto;

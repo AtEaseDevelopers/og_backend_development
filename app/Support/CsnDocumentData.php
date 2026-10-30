@@ -84,21 +84,22 @@ class CsnDocumentData
     }
 
     /**
-     * The consignors of a CSN: the main one (its address and phone) and each extra pick-up stop (its address and DO).
+     * The consignor box of a CSN: the one consignor (user, 30 Oct 2026: an order has a single consignor) with its
+     * pick-up addresses listed inside the box, each with its DO (the order form's list starts with the main address,
+     * so it is the full list); the main address alone when there is no list.
      *
-     * @return list<array{name: ?string, address: ?string, contact: ?string, do_number: ?string}>
+     * @return list<array{name: ?string, address: ?string, contact: ?string, do_number: ?string, pickups: list<array{address: ?string, do_number: ?string}>}>
      */
     private function consignors(ConsignmentNote $csn): array
     {
         $name = $csn->consignor_name === '' ? null : ($csn->consignor_name ?: $csn->customer_name);
-        $main = ['name' => $name, 'address' => $csn->consignor_address, 'contact' => $csn->consignor_phone, 'do_number' => null];
-        $stops = collect($csn->stops ?? [])
+        $pickups = collect($csn->stops ?? [])
             ->filter(fn ($stop) => is_array($stop) && ($stop['type'] ?? '') === OrderStops::PICKUP)
-            ->map(fn (array $stop) => ['name' => ($stop['name'] ?? null) ?: $name, 'address' => $stop['location'] ?? null, 'contact' => $this->dropOffContact($stop['pic_name'] ?? null, $stop['pic_phone'] ?? null), 'do_number' => $stop['do_number'] ?? null])
+            ->map(fn (array $stop) => ['address' => $stop['location'] ?? null, 'do_number' => $stop['do_number'] ?? null])
             ->values()
             ->all();
 
-        return [$main, ...$stops];
+        return [['name' => $name, 'address' => $csn->consignor_address, 'contact' => $csn->consignor_phone, 'do_number' => null, 'pickups' => $pickups]];
     }
 
     /**
@@ -120,7 +121,7 @@ class CsnDocumentData
             ->values()
             ->all();
 
-        return [$main, ...$stops];
+        return $stops !== [] ? $stops : [$main];
     }
 
     /**

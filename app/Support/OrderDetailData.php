@@ -403,7 +403,9 @@ class OrderDetailData
             $order->sent_at !== null => ['Issued', 'done'],
             default => [(string) $order->status->getLabel(), 'gray'],
         };
-        $linked[] = $item($order->number, 'Quotation · Version '.$order->version, $quoteStatus, $quoteColor, $this->pdfUrl('quotations', 'quotation', $order));
+        // the Order Form (no prices) first, then the Order Quotation (with prices) the customer confirms (user, 30 Oct 2026)
+        $orderPdf = $this->pdfUrl('quotations', 'quotation', $order);
+        $linked[] = $item($order->number, 'Order Form · Version '.$order->version, $quoteStatus, $quoteColor, $orderPdf ? $orderPdf.'?amounts=0' : null, [['label' => 'Order Quotation', 'url' => $orderPdf]]);
         $linked[] = $order->proformaInvoice
             ? $item('Proforma Invoice', $order->proformaInvoice->number, 'Issued', 'done', $this->pdfUrl('proforma-invoices', 'proformaInvoice', $order->proformaInvoice))
             : $item('Proforma Invoice', 'Issued on customer confirmation', 'Not issued', 'gray', null);

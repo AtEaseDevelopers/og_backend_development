@@ -440,14 +440,11 @@
                                 {{-- the other addresses of this side, each with its own DO number (user, 28 Oct 2026) --}}
                                 <div class="ow-table-scroll" style="margin-top:.4rem">
                                     <table class="ow-price-table ow-stops">
-                                        {{-- each stop has its own party (user, 30 Oct 2026): a second Consignor may be someone else --}}
-                                        <thead><tr><th style="width:12rem">Consignor</th><th style="width:9rem">PIC</th><th style="width:8rem">Tel</th><th>Address</th><th style="width:10rem">DO number <span class="ow-req">*</span></th><th style="width:2.5rem"></th></tr></thead>
+                                        {{-- one consignor with several pick-up addresses (user, 30 Oct 2026): address + DO only; the consignees side may hold other parties --}}
+                                        <thead><tr><th>Pick-up address</th><th style="width:12rem">DO number <span class="ow-req">*</span></th><th style="width:2.5rem"></th></tr></thead>
                                         <tbody>
                                             @foreach ($pair['pickup_stops'] ?? [] as $si => $stop)
                                                 <tr wire:key="ow-o{{ $oi }}-pair-{{ $i }}-pickup-stop-{{ $si }}">
-                                                    <td><input type="text" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.pickup_stops.{{ $si }}.name" class="ow-input" placeholder="Consignor name" @disabled($locked)></td>
-                                                    <td><input type="text" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.pickup_stops.{{ $si }}.pic_name" class="ow-input" placeholder="PIC" @disabled($locked)></td>
-                                                    <td><input type="tel" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.pickup_stops.{{ $si }}.pic_phone" class="ow-input" placeholder="Tel" @disabled($locked)></td>
                                                     <td><textarea wire:model="orders.{{ $oi }}.pairs.{{ $i }}.pickup_stops.{{ $si }}.location" rows="1" class="ow-textarea" style="resize:vertical" placeholder="Address" @disabled($locked)></textarea></td>
                                                     <td>
                                                         <input type="text" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.pickup_stops.{{ $si }}.do_number" class="ow-input" placeholder="DO number" @disabled($locked)>
@@ -521,7 +518,7 @@
                                 <label for="{{ $fieldId }}-dropoff">Consignee Address</label>
                                 @unless ($isQuote || $locked)
                                     {{-- several addresses on this side, each with its own DO number (user, 28 Oct 2026) --}}
-                                    <label class="ow-check" style="display:inline-flex;align-items:center;gap:.3rem;font-weight:400"><input type="checkbox" wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.multi_dropoff"> <span>Multiple address</span></label>
+                                    <label class="ow-check" style="display:inline-flex;align-items:center;gap:.3rem;font-weight:400"><input type="checkbox" wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.multi_dropoff"> <span>Multiple consignees</span></label>
                                 @endunless
                             </div>
                             {{-- a text box (user, 26 Oct 2026): filled from the consignee's address, still editable --}}

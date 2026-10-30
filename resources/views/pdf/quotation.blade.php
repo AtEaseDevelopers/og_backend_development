@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>{{ $quotation->orderNumber() }}</title>
+    <title>{{ $quotation->orderNumber() }} {{ ($showAmounts ?? true) ? 'Order Quotation' : 'Order Form' }}</title>
     {{-- the Order Form (user, 29 Oct 2026): the letterhead of the quotation, then the order in boxes — customer, consignor
          and consignee side by side, delivery details, the items with their prices, instructions and the signatures --}}
     <style>
@@ -68,6 +68,9 @@
         $fax = $branch?->fax ?? '';
         $sstNo = ($company?->tin ?: $branch?->sst_no) ?? '';
 
+        // the Order Form (no prices) and the Order Quotation (with prices) share this layout (user, 30 Oct 2026)
+        $showAmounts = $showAmounts ?? true;
+        $documentTitle = $showAmounts ? 'ORDER QUOTATION' : 'ORDER FORM';
         $orderDate = optional($quotation->confirmed_at ?? $quotation->quoted_at ?? $quotation->created_at)->format('d/m/Y');
         $issuedBy = $quotation->issued_by_name ?: ($salesperson?->name ?? '');
         $rm = fn ($amount) => 'RM '.number_format((float) $amount, 2, '.', ',');
@@ -96,6 +99,17 @@
         $dropOffType = collect($quotation->destination_types ?? [])->first()['drop_off_type'] ?? $quotation->destinations->first()?->drop_off_type;
         $dropOffLabel = $dropOffType && $dropOffType !== 'default' ? (\App\Enums\DropOffType::tryFrom((string) $dropOffType)?->getLabel() ?? ucfirst((string) $dropOffType)) : null;
         $stops = \App\Support\OrderStops::split($quotation->stops);
+        // a pick-up / drop-off point's lines: party (PIC · tel), address, DO
+        $stopLines = function (array $stop, ?string $fallbackName): string {
+            $pic = trim(implode(' · ', array_filter([$stop['pic_name'] ?? null, $stop['pic_phone'] ?? null])));
+            $lines = ['<b>'.e(($stop['name'] ?? null) ?: ($fallbackName ?: '—')).'</b>'.($pic !== '' ? ' <span class="muted">('.e($pic).')</span>' : '')];
+            $lines[] = nl2br(e($stop['location'] ?: '—'));
+            if ($stop['do_number'] ?? null) {
+                $lines[] = '<span class="muted">DO '.e($stop['do_number']).'</span>';
+            }
+
+            return implode('<br>', $lines);
+        };
         $doNumbers = array_values(array_unique(array_filter(array_merge([(string) $quotation->customer_do_number], \App\Support\OrderStops::doNumbers($quotation->stops)))));
 
         $lines = $quotation->lines->sortBy('id')->values();
@@ -135,7 +149,7 @@
         <table class="lh-meta"><tr>
             <td class="k" style="width:34%">Order No. : {{ $quotation->orderNumber() }}</td>
             <td class="k" style="width:30%">Page No. : <span class="pagenum"></span></td>
-            <td class="lh-title">ORDER FORM</td>
+            <td class="lh-title">{{ $documentTitle }}</td>
         </tr></table>
     </header>
 
@@ -170,27 +184,32 @@
     <table class="two"><tbody><tr>
         <td>
             <table class="box">
-                <tr><th colspan="2">Consignor <span class="tag">{{ $consignorMode }}</span></th></tr>
+                <tr><th colspan="2">Consignor <span class="tag">{{ $consignorMode }}</span>@if ($stops['multi_pickup'] && $stops['pickup_stops'] !== []) <span class="tag">{{ count($stops['pickup_stops']) }} pick-up addresses</span>@endif</th></tr>
                 <tr><td class="k">Name</td><td class="v">{{ $quotation->consignor_name ?: ($quotation->portal_enquiry_id ? '—' : ($customer?->company_name ?? '—')) }}</td></tr>
                 <tr><td class="k">PIC / Tel</td><td class="v">{{ $contact($quotation->consignor_pic_name, $quotation->consignor_pic_phone) }}</td></tr>
-                <tr><td class="k">{{ $isStore ? 'Store' : 'Address' }}</td><td class="v">{!! nl2br(e($consignorAddress ?: '—')) !!}
-                    @if ($stops['multi_pickup'])
-                        @foreach ($stops['pickup_stops'] as $stop)<div class="muted">+ @if ($stop['name'] ?? null)<b>{{ $stop['name'] }}</b>@if (($stop['pic_name'] ?? null) || ($stop['pic_phone'] ?? null)) ({{ trim(implode(' · ', array_filter([$stop['pic_name'] ?? null, $stop['pic_phone'] ?? null]))) }})@endif · @endif{{ $stop['location'] ?: '—' }}@if ($stop['do_number']) · DO {{ $stop['do_number'] }}@endif</div>@endforeach
-                    @endif
-                </td></tr>
+                @if ($stops['multi_pickup'] && $stops['pickup_stops'] !== [])
+                    {{-- one consignor with several pick-up addresses (user, 30 Oct 2026): one numbered row each, address and DO --}}
+                    @foreach ($stops['pickup_stops'] as $stop)
+                        <tr><td class="k">Pick-up {{ $loop->iteration }}</td><td class="v">{!! nl2br(e($stop['location'] ?: '—')) !!}@if ($stop['do_number'])<br><span class="muted">DO {{ $stop['do_number'] }}</span>@endif</td></tr>
+                    @endforeach
+                @else
+                <tr><td class="k">{{ $isStore ? 'Store' : 'Address' }}</td><td class="v">{!! nl2br(e($consignorAddress ?: '—')) !!}</td></tr>
+                @endif
                 @if ($quotation->fromLocation?->name)<tr><td class="k">Area</td><td class="v">{{ $quotation->fromLocation->name }}</td></tr>@endif
             </table>
         </td>
         <td>
             <table class="box">
-                <tr><th colspan="2">Consignee <span class="tag">{{ $consigneeMode }}</span></th></tr>
+                <tr><th colspan="2">Consignee <span class="tag">{{ $consigneeMode }}</span>@if ($stops['multi_dropoff'] && $stops['dropoff_stops'] !== []) <span class="tag">{{ count($stops['dropoff_stops']) }} consignees</span>@endif</th></tr>
+                @if ($stops['multi_dropoff'] && $stops['dropoff_stops'] !== [])
+                    @foreach ($stops['dropoff_stops'] as $stop)
+                        <tr><td class="k">Consignee {{ $loop->iteration }}</td><td class="v">{!! $stopLines($stop, $quotation->consignee_name ?: ($quotation->destinations->sortBy('sequence')->first()?->consignee_name ?? null)) !!}</td></tr>
+                    @endforeach
+                @else
                 <tr><td class="k">Name</td><td class="v">{{ $quotation->consignee_name ?: ($quotation->destinations->sortBy('sequence')->first()?->consignee_name ?? '—') }}</td></tr>
                 <tr><td class="k">PIC / Tel</td><td class="v">{{ $contact($quotation->consignee_pic_name, $quotation->consignee_pic_phone) }}</td></tr>
-                <tr><td class="k">{{ $consigneeStore ? 'Store' : 'Address' }}</td><td class="v">{!! nl2br(e($consigneeAddress ?: '—')) !!}
-                    @if ($stops['multi_dropoff'])
-                        @foreach ($stops['dropoff_stops'] as $stop)<div class="muted">+ @if ($stop['name'] ?? null)<b>{{ $stop['name'] }}</b>@if (($stop['pic_name'] ?? null) || ($stop['pic_phone'] ?? null)) ({{ trim(implode(' · ', array_filter([$stop['pic_name'] ?? null, $stop['pic_phone'] ?? null]))) }})@endif · @endif{{ $stop['location'] ?: '—' }}@if ($stop['do_number']) · DO {{ $stop['do_number'] }}@endif</div>@endforeach
-                    @endif
-                </td></tr>
+                <tr><td class="k">{{ $consigneeStore ? 'Store' : 'Address' }}</td><td class="v">{!! nl2br(e($consigneeAddress ?: '—')) !!}</td></tr>
+                @endif
                 <tr><td class="k">Destination</td><td class="v">{{ $destination ?? '—' }}@if ($dropOffLabel) <span class="muted">· {{ $dropOffLabel }}</span>@endif</td></tr>
             </table>
         </td>
@@ -210,8 +229,10 @@
                 <th>Item</th>
                 <th class="num" style="width:9%">Qty</th>
                 <th class="c" style="width:12%">UOM</th>
-                <th class="num" style="width:15%">Unit price (RM)</th>
-                <th class="num" style="width:15%">Amount (RM)</th>
+                @if ($showAmounts)
+                    <th class="num" style="width:15%">Unit price (RM)</th>
+                    <th class="num" style="width:15%">Amount (RM)</th>
+                @endif
             </tr>
         </thead>
         <tbody>
@@ -221,17 +242,21 @@
                     <td>{{ $line->item_name }}@if ($line->dimensions || $line->weight)<div class="muted">{{ trim(implode(' · ', array_filter([$line->dimensions, $line->weight ? $line->weight.' kg' : null]))) }}</div>@endif@if ($line->handling_notes)<div class="muted">{{ $line->handling_notes }}</div>@endif</td>
                     <td class="num">{{ $qty($line->quantity) }}</td>
                     <td class="c">{{ $unitOf($line->uom) }}</td>
-                    <td class="num">{{ $line->unit_price !== null ? number_format((float) $line->unit_price, 2) : '—' }}</td>
-                    <td class="num">{{ $line->line_total !== null ? number_format((float) $line->line_total, 2) : '—' }}</td>
+                    @if ($showAmounts)
+                        <td class="num">{{ $line->unit_price !== null ? number_format((float) $line->unit_price, 2) : '—' }}</td>
+                        <td class="num">{{ $line->line_total !== null ? number_format((float) $line->line_total, 2) : '—' }}</td>
+                    @endif
                 </tr>
             @empty
-                <tr><td colspan="6" class="c muted">No items</td></tr>
+                <tr><td colspan="{{ $showAmounts ? 6 : 4 }}" class="c muted">No items</td></tr>
             @endforelse
-            @if ($minimumTopUp > 0)
+            @if ($showAmounts && $minimumTopUp > 0)
                 <tr><td colspan="3" class="blank"></td><td colspan="2" class="num">Subtotal</td><td class="num">{{ number_format($subtotal, 2) }}</td></tr>
                 <tr><td colspan="3" class="blank"></td><td colspan="2" class="num">Minimum charge top-up</td><td class="num">{{ number_format($minimumTopUp, 2) }}</td></tr>
             @endif
-            <tr class="total"><td colspan="3" class="blank"></td><td colspan="2" class="num">TOTAL</td><td class="num">{{ $rm($total) }}</td></tr>
+            @if ($showAmounts)
+                <tr class="total"><td colspan="3" class="blank"></td><td colspan="2" class="num">TOTAL</td><td class="num">{{ $rm($total) }}</td></tr>
+            @endif
         </tbody>
     </table>
 
