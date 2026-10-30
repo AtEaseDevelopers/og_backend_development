@@ -4,7 +4,7 @@
 > what is done, what is left, and the rules the user has set. Update it whenever an item changes status,
 > and refresh "Last updated" with the output of plain `date` (local Malaysia time).
 
-**Last updated:** Fri Oct 30 17:43:24 +08 2026 · portal New order on main; snoodle removed; driver app still local
+**Last updated:** Fri Oct 30 17:49:49 +08 2026 · portal submit no longer requires customer_do_number
 
 **Previous round:** finished and pushed as commit `a29b179` on `main` (8 Oct 2026: orders, order details,
 billing / COD / Term, CSN bulk actions, QR codes, returned-CSN scanning, cash bill calculator). Its details are
@@ -458,6 +458,7 @@ Legend: [x] done · [~] done in code, not yet browser-checked · [ ] not started
 - [x] **Live `/portal/login` 419 (30 Oct):** CSRF from a stale page (old 500 tab, or retrying the expired POST). Server POST with a fresh token is 302, not 419. Portal 419 now redirects back to login. Extra portal pages still in `.local/portal-full/`.
 - [x] **Local migrate after pull:** `2026_10_19_100100` failed because `Uom` wrote `branch_id` before `2026_10_28_120000` added that column. Creating hook now skips it when the column is missing. `php artisan migrate` completed. Uom.php fix **not committed**.
 - [x] **Portal New order (30 Oct, `main`):** type first (Measurement / Item / Chartered Lorry) like Admin. Customer & ownership prefills this customer's details (editable). Item can have several goods lines. Chartered lorry: **Add New Destination** on pickup or drop-off (not both); each address has its own special requirements. Extra item = Order 1 / Order 2. Dashboard reference opens the submitted-order PDF. Driver app / extra portal pages not in this commit.
+- [x] **Portal submit 500 (30 Oct):** form no longer sends DO number; store treated a missing `customer_do_number` as required and crashed. It is now optional (null).
 
 ## Next steps
 

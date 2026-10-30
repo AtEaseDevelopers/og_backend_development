@@ -93,6 +93,7 @@ class EnquiryController extends Controller
             $block['service_type'] = $block['service_type'] ?? \App\Enums\ServiceType::Pickup->value;
             $block['payment_method'] = $block['payment_method']
                 ?? array_key_first(PaymentMethod::options(customerFacing: true));
+            $block['customer_do_number'] = $block['customer_do_number'] ?? null;
 
             return $block;
         })->all();
@@ -266,7 +267,7 @@ class EnquiryController extends Controller
             'order_type' => $block['order_type'],
             'service_type' => $block['service_type'],
             'payment_method' => $block['payment_method'],
-            'customer_do_number' => $block['customer_do_number'],
+            'customer_do_number' => $block['customer_do_number'] ?? null,
             'pickup_address' => $block['pickup_address'],
             'pickup_maps_url' => $block['pickup_maps_url'] ?? null,
             'preferred_delivery_date' => $block['preferred_delivery_date'] ?? null,

@@ -141,7 +141,6 @@ class CustomerPortalTest extends TestCase
             'order_type' => 'cash',
             'service_type' => 'pickup',
             'payment_method' => 'bank_transfer',
-            'customer_do_number' => 'DO-T-1',
             'customer_name' => 'Edited Portal Co',
             'customer_address' => '99 Billing Road',
             'customer_pic_name' => 'Siti',
@@ -159,6 +158,7 @@ class CustomerPortalTest extends TestCase
         $this->assertSame('99 Billing Road', $enquiry->payload['customer_address']);
         $this->assertSame('Siti', $enquiry->payload['customer_pic_name']);
         $this->assertSame('012999', $enquiry->payload['customer_pic_phone']);
+        $this->assertNull($enquiry->customer_do_number);
         $this->assertSame('Ali', $enquiry->payload['contacts'][0]['name']);
         $this->get('/portal')->assertOk()
             ->assertSee($enquiry->order_number ?: $enquiry->reference_no)
@@ -193,7 +193,6 @@ class CustomerPortalTest extends TestCase
                     'order_type' => 'cash',
                     'service_type' => 'pickup',
                     'payment_method' => 'bank_transfer',
-                    'customer_do_number' => 'DO-T-2A',
                     'pickup_address' => 'No. 1, Jalan Test',
                     'destinations' => [['address' => 'No. 8, Jalan Contoh', 'drop_off_type' => 'other']],
                     'items' => [['kind' => 'measurement', 'sub_category' => 'Carton', 'item_name' => 'Carton', 'quantity' => 2]],
@@ -203,7 +202,6 @@ class CustomerPortalTest extends TestCase
                     'order_type' => 'cash',
                     'service_type' => 'pickup',
                     'payment_method' => 'bank_transfer',
-                    'customer_do_number' => 'DO-T-2B',
                     'pickup_address' => 'No. 2, Jalan Test',
                     'destinations' => [['address' => 'No. 10, Jalan Contoh', 'drop_off_type' => 'other']],
                     'items' => [['kind' => 'measurement', 'sub_category' => 'Carton', 'item_name' => 'Carton', 'quantity' => 1]],
