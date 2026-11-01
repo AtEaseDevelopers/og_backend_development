@@ -130,6 +130,10 @@ class UomResource extends Resource
                         ->maxLength(255)
                         ->helperText('Leave blank to build it from the item and its limits.'),
                     Forms\Components\Toggle::make('is_active')->label('Active')->default(true)->inline(false),
+                    $lorry ? null : Forms\Components\Toggle::make('priced_per_kg')
+                        ->label('Priced per kg')
+                        ->helperText('The range price is a rate per kg ("Weight * 0.14"): a line is priced at the rate × the piece\'s weight.')
+                        ->default(false)->inline(false),
                 ])))->columns(3),
             Forms\Components\Section::make($lorry ? 'Weight limit' : 'Size and weight limits')
                 ->schema(array_map(
@@ -338,6 +342,7 @@ class UomResource extends Resource
             'code' => Str::upper(Str::limit(Str::slug($uom->name, '_'), 50, '')),
             'max_weight' => $uom->max_weight,
             'is_active' => $uom->is_active,
+            'priced_per_kg' => (bool) $uom->priced_per_kg,
         ]);
     }
 
@@ -352,6 +357,7 @@ class UomResource extends Resource
                 Tables\Columns\TextColumn::make('rate_tiers_count')
                     ->counts('rateTiers')
                     ->label('Price ranges'),
+                Tables\Columns\IconColumn::make('priced_per_kg')->label('Per kg')->boolean()->toggleable()->visible(fn () => static::category() !== Uom::LORRY),
                 Tables\Columns\IconColumn::make('is_active')->boolean(),
             ])
             ->defaultSort('name')

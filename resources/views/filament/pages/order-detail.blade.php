@@ -59,6 +59,29 @@
             @endforeach
         </div>
 
+        {{-- the documents to print after "Confirm, pay & print" (client, 1 Nov 2026): opened in new tabs on arrival, and
+             kept here as buttons in case the browser blocks pop-ups --}}
+        @if ($this->printDocs !== [])
+            <div class="ow-banner ow-banner-success" x-data x-init="$nextTick(() => { @foreach ($this->printDocs as $doc) window.open(@js($doc['url']), '_blank'); @endforeach })">
+                <div>
+                    <div class="ow-banner-title">Ready to print</div>
+                    <div class="ow-banner-text">The documents open in new tabs. If the browser blocked them, use the buttons.</div>
+                </div>
+                <div class="ow-actions" style="margin-left:auto">
+                    @foreach ($this->printDocs as $doc)
+                        <a href="{{ $doc['url'] }}" target="_blank" rel="noopener" class="ow-btn ow-btn-sm ow-btn-primary">Print {{ $doc['label'] }}</a>
+                    @endforeach
+                </div>
+            </div>
+        @elseif (request()->boolean('print'))
+            <div class="ow-banner ow-banner-warning">
+                <div>
+                    <div class="ow-banner-title">Nothing to print yet</div>
+                    <div class="ow-banner-text">The Cash Bill and CSN were not created on save — see the message above and the Linked records card.</div>
+                </div>
+            </div>
+        @endif
+
         {{-- Action banner --}}
         @if ($banner)
             <div class="ow-banner ow-banner-{{ $banner['tone'] }}">

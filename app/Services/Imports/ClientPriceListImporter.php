@@ -27,6 +27,8 @@ use RuntimeException;
  * Re-runnable: the default prices of the file's branches (and the old price list, which had no branch) are replaced
  * when the file has default rows; a customer's special prices are replaced when the file has rows for that customer.
  * UOM products left without any price afterwards (the old price list) are deactivated: past orders keep their names.
+ * Or, imported as "add / update" (user, 2 Nov 2026): only the prices the file holds are written, each overwriting the
+ * price of the same product, destination, drop-off type, company and customer; nothing else is deleted.
  */
 class ClientPriceListImporter
 {
@@ -130,11 +132,12 @@ class ClientPriceListImporter
      * Write the parsed rows (one transaction).
      *
      * @param  array<string, mixed>  $data  from parse()
-     * @return array{products: int, products_new: int, lorries: int, locations_new: list<string>, default_rates: int, special_rates: array<string, int>, unknown_customers: list<string>, deactivated: int, warnings: list<string>}
+     * @param  bool  $replace  true: the file replaces the price list it covers; false: its prices are added / updated only
+     * @return array{products: int, products_new: int, lorries: int, locations_new: list<string>, default_rates: int, special_rates: array<string, int>, unknown_customers: list<string>, deactivated: int, replaced: bool, warnings: list<string>}
      */
-    public function import(array $data): array
+    public function import(array $data, bool $replace = true): array
     {
-        return DB::transaction(function () use ($data) {
+        return DB::transaction(function () use ($data, $replace) {
             $warnings = $data['warnings'];
             $branches = $this->resolveBranches($data['branches'], $warnings);
             $branchIds = array_values(array_filter($branches));
@@ -162,6 +165,8 @@ class ClientPriceListImporter
                     'sub_category' => $product['sub_category'],
                     'base_item' => $product['base_item'],
                     'is_active' => true,
+                    // "Weight * 0.14" rows: the range price is a rate per kg
+                    'priced_per_kg' => (bool) ($product['priced_per_kg'] ?? false),
                 ] + array_intersect_key($product, array_flip(self::BANDS)))->save();
 
                 $uomIds[$key] = $uom->id;
@@ -173,7 +178,7 @@ class ClientPriceListImporter
             $customerCodes = collect($data['rates'])->pluck('customer_code')->filter()->unique()->values()->all();
             $scope = fn ($query) => $query->where(fn ($q) => $q->whereNull('branch_id')->when($branchIds !== [], fn ($q) => $q->orWhereIn('branch_id', $branchIds)));
 
-            if ($hasDefault) {
+            if ($hasDefault && $replace) {
                 UomRateTier::query()->whereNull('customer_code')->where($scope)->delete();
             }
 
@@ -187,9 +192,11 @@ class ClientPriceListImporter
                     $quoted[$row->uom_id.'|'.$row->location_id.'|'.strtoupper((string) $row->customer_code)] = true;
                 }
 
-                UomRateTier::query()->whereIn('customer_code', $customerCodes)->where($scope)
-                    ->where(fn ($q) => $q->whereNull('source')->orWhereNot($fromQuotation))
-                    ->delete();
+                if ($replace) {
+                    UomRateTier::query()->whereIn('customer_code', $customerCodes)->where($scope)
+                        ->where(fn ($q) => $q->whereNull('source')->orWhereNot($fromQuotation))
+                        ->delete();
+                }
             }
 
             $defaultRates = 0;
@@ -200,6 +207,17 @@ class ClientPriceListImporter
             foreach ($data['rates'] as $rate) {
                 if ($rate['customer_code'] !== null && isset($quoted[$uomIds[$rate['product']].'|'.$locations[$rate['location']]['id'].'|'.strtoupper($rate['customer_code'])])) {
                     continue;
+                }
+
+                // add / update: the price of the same product, destination, drop-off type, company and customer goes
+                if (! $replace) {
+                    UomRateTier::query()
+                        ->where('uom_id', $uomIds[$rate['product']])
+                        ->where('location_id', $locations[$rate['location']]['id'])
+                        ->where('drop_off_type', $rate['drop_off_type'])
+                        ->where(fn ($q) => $rate['customer_code'] === null ? $q->whereNull('customer_code') : $q->where('customer_code', $rate['customer_code']))
+                        ->where(fn ($q) => ($branches[$rate['branch']] ?? null) === null ? $q->whereNull('branch_id') : $q->where('branch_id', $branches[$rate['branch']]))
+                        ->delete();
                 }
 
                 $common = [
@@ -239,7 +257,7 @@ class ClientPriceListImporter
             }
 
             // the old price list: products left without any price are no longer offered
-            $deactivated = $hasDefault
+            $deactivated = $hasDefault && $replace
                 ? Uom::query()->where('is_active', true)->whereNotIn('id', array_values($uomIds))->whereDoesntHave('rateTiers')->update(['is_active' => false])
                 : 0;
 
@@ -255,6 +273,7 @@ class ClientPriceListImporter
                 'special_rates' => $specialRates,
                 'unknown_customers' => array_map(fn ($code) => $code.' '.($data['customers'][$code] ?? ''), $unknown),
                 'deactivated' => $deactivated,
+                'replaced' => $replace,
                 'warnings' => $warnings,
             ];
         });
@@ -264,9 +283,9 @@ class ClientPriceListImporter
     public const BUNDLED = ['client-price-list-default.xlsx', 'client-price-list-special.xlsx'];
 
     /** @return array<string, mixed> the import() report */
-    public function importFile(string $path, ?string $fileName = null): array
+    public function importFile(string $path, ?string $fileName = null, bool $replace = true): array
     {
-        return $this->import($this->parse($path, $fileName));
+        return $this->import($this->parse($path, $fileName), $replace);
     }
 
     /**
@@ -279,6 +298,7 @@ class ClientPriceListImporter
     {
         $special = $report['special_rates'] ?? [];
         $lines = [
+            ($report['replaced'] ?? true) ? 'The price list the file covers was replaced' : 'Prices added / updated only (nothing else deleted)',
             sprintf('%d product(s) (%d new), %d lorry type(s)', $report['products'], $report['products_new'], $report['lorries']),
             sprintf('%d default price row(s), %d special price row(s) for %d customer(s)', $report['default_rates'], array_sum($special), count($special)),
         ];
@@ -369,6 +389,7 @@ class ClientPriceListImporter
                 'category' => $kind,
                 'sub_category' => $this->text($row['sub_category'] ?? null) ?: null,
                 'base_item' => $item,
+                'priced_per_kg' => $perKg,
             ] + $bands;
         }
 

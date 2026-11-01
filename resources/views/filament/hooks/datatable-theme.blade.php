@@ -1,4 +1,12 @@
 <style>
+    /*
+     * File upload boxes (user, 2 Nov 2026): the browser's own "Choose Files" input showed for a moment before
+     * FilePond took over. Until FilePond has mounted, the raw input is hidden and a dashed box of the same
+     * height stands in for it.
+     */
+    .fi-fo-file-upload:not(:has(.filepond--root)) { min-height: 4.75rem; border: 1px dashed rgb(203 213 225); border-radius: .5rem; background: rgb(249 250 251); }
+    .dark .fi-fo-file-upload:not(:has(.filepond--root)) { border-color: rgb(255 255 255 / .15); background: rgb(255 255 255 / .03); }
+    .fi-fo-file-upload input[type="file"]:not(.filepond--browser) { opacity: 0; position: absolute; width: 0; height: 0; }
     /* page headers (user, 28 Oct 2026): the main label only, less space above the content */
     .fi-page .fi-header { margin-bottom: 0; }
     .fi-page .fi-page-header-main-ctn { gap: .25rem; }

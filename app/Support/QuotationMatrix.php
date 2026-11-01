@@ -109,7 +109,7 @@ class QuotationMatrix
                     continue;
                 }
 
-                $standard = $lookup->lookupForCustomer($customerId, $itemName, $column, $quantity, $dropOffTypes[$column] ?? null)['price'] ?? null;
+                $standard = $lookup->lookupForCustomer($customerId, $itemName, $column, $quantity, $dropOffTypes[$column] ?? null, is_numeric($row['weight'] ?? null) ? (float) $row['weight'] : null)['price'] ?? null;
 
                 if ($standard === null) {
                     continue; // nothing to compare against: manual pricing, not an override
@@ -197,6 +197,8 @@ class QuotationMatrix
                     'item_name' => $itemName,
                     'uom' => $uom,
                     'quantity' => $quantity,
+                    // the piece's weight in kg (a product priced per kg is priced from it)
+                    'weight' => is_numeric($row['weight'] ?? null) ? (float) $row['weight'] : null,
                     'unit_price' => $unitPrice,
                     'line_total' => $lineTotal,
                 ]);

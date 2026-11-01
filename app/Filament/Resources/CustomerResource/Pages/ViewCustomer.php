@@ -2,7 +2,9 @@
 
 namespace App\Filament\Resources\CustomerResource\Pages;
 
+use App\Filament\Actions\ImportPriceListAction;
 use App\Filament\Resources\CustomerResource;
+use App\Filament\Resources\UomResource;
 use Filament\Actions;
 use Filament\Forms;
 use Filament\Resources\Pages\ViewRecord;
@@ -18,6 +20,8 @@ class ViewCustomer extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
+            // the Special Price workbook can be imported from here too (user, 2 Nov 2026)
+            ImportPriceListAction::make()->visible(fn () => UomResource::canCreate()),
             Actions\Action::make('portalOrderLink')
                 ->label('Portal ordering link')
                 ->icon('heroicon-o-link')

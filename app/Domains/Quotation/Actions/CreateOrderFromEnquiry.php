@@ -271,14 +271,28 @@ class CreateOrderFromEnquiry
                 'stops' => $destination['stops'] ?? null,
                 // photos uploaded for this consignor & consignee block
                 'attachments' => array_values(array_filter($destination['attachments'] ?? [], 'is_array')),
-                'items' => $own->map(fn (array $item) => [
-                    'item_name' => trim((string) ($item['item_name'] ?? '')),
-                    'uom' => strtoupper(trim((string) ($item['uom'] ?? ''))),
-                    'quantity' => max(1, (int) round((float) ($item['quantity'] ?? 1))),
-                    'catalog_key' => null,
-                    // photos uploaded for this product on the order form
-                    'attachments' => array_values(array_filter($item['attachments'] ?? [], 'is_array')),
-                ])->filter(fn (array $item) => $item['item_name'] !== '')->values()->all(),
+                'items' => $own->map(function (array $item) use ($enquiry): array {
+                    // a portal item (user, 2 Nov 2026): the product picked on the portal (uom_id), else the band its type
+                    // (kind + sub-category) and sizes fit — L, W, H entered as min – max ranges use the min
+                    $kind = (string) ($item['kind'] ?? $item['category_kind'] ?? \App\Domains\MasterData\Models\Uom::MEASUREMENT);
+                    $band = is_numeric($item['uom_id'] ?? null)
+                        ? \App\Domains\MasterData\Models\Uom::query()->withoutGlobalScopes()->whereKey((int) $item['uom_id'])->first()
+                        : (filled($item['sub_category'] ?? null) && in_array($kind, [\App\Domains\MasterData\Models\Uom::MEASUREMENT, \App\Domains\MasterData\Models\Uom::ITEM], true)
+                            ? \App\Support\MeasurementBand::forGoods($enquiry->branch_id ? (int) $enquiry->branch_id : null, $kind, (string) $item['sub_category'], $item['base_item'] ?? null, $item)
+                            : null);
+
+                    return [
+                        'item_name' => $band?->name ?? trim((string) ($item['item_name'] ?? '')),
+                        'uom' => $band?->code ?? strtoupper(trim((string) ($item['uom'] ?? ''))),
+                        'quantity' => max(1, (int) round((float) ($item['quantity'] ?? 1))),
+                        'weight' => is_numeric($item['weight'] ?? null) ? (float) $item['weight'] : null,
+                        'catalog_key' => $band ? 'uom:'.$band->id : null,
+                        // the customer's own description of the goods, kept for the driver note
+                        'description' => $band ? trim((string) ($item['item_name'] ?? '')) : null,
+                        // photos uploaded for this product on the order form
+                        'attachments' => array_values(array_filter($item['attachments'] ?? [], 'is_array')),
+                    ];
+                })->filter(fn (array $item) => $item['item_name'] !== '')->values()->all(),
             ];
         })->all();
     }
@@ -376,6 +390,7 @@ class CreateOrderFromEnquiry
             $catalogKey = $item['catalog_key'] ?? ($this->lookup->resolveCatalogKey($name) ?: ($item['uom'] ?? null ? $this->lookup->resolveCatalogKey((string) $item['uom']) : null));
             $lineType = $item['line_type'] ?? $this->lookup->inferLineType($catalogKey, $name);
             $quantity = $lineType === 'uom' ? max(0.01, (float) ($item['quantity'] ?? 1)) : 1.0;
+            $weight = is_numeric($item['weight'] ?? null) ? (float) $item['weight'] : null;
             // Prices come from the price list (the customer's special price, else the default), and only once a
             // salesperson owns the order; a price entered on the order page (filled in from the list, maybe changed)
             // is used as entered
@@ -383,13 +398,14 @@ class CreateOrderFromEnquiry
                 ? null
                 : (is_numeric($item['unit_price'] ?? null)
                     ? round((float) $item['unit_price'], 2)
-                    : ($this->lookup->lookupForCustomer($enquiry->customer_id ? (int) $enquiry->customer_id : null, $name, $column, $quantity, $dropOffType)['price'] ?? null));
+                    : ($this->lookup->lookupForCustomer($enquiry->customer_id ? (int) $enquiry->customer_id : null, $name, $column, $quantity, $dropOffType, $weight)['price'] ?? null));
 
             return [
                 'line_type' => $lineType,
                 'item_name' => $name,
                 'catalog_key' => $catalogKey,
                 'quantity' => $quantity,
+                'weight' => $weight,
                 'prices' => [$column => $price],
             ];
         })->values()->all();

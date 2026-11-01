@@ -21,12 +21,15 @@ class Uom extends Model
     protected $fillable = [
         'branch_id', 'code', 'name', 'is_active', 'category', 'sub_category', 'base_item',
         'min_lwh', 'max_lwh', 'min_length', 'max_length', 'max_width', 'max_height', 'min_weight', 'max_weight',
+        // priced per kg (client, 1 Nov 2026): the range price is a rate per kg, the unit price = rate × weight
+        'priced_per_kg',
     ];
 
     protected function casts(): array
     {
         return [
             'is_active' => 'boolean',
+            'priced_per_kg' => 'boolean',
             'min_lwh' => 'decimal:2',
             'max_lwh' => 'decimal:2',
             'min_length' => 'decimal:2',

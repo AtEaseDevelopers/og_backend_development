@@ -45,6 +45,7 @@ class SaveOrderPricing
                 'item_name' => trim((string) $row['item_name']),
                 'catalog_key' => $row['catalog_key'] ?? null,
                 'quantity' => max(1, (int) round((float) ($row['quantity'] ?? 1))),
+                'weight' => is_numeric($row['weight'] ?? null) ? (float) $row['weight'] : null,
                 'prices' => collect($columns)->mapWithKeys(fn (string $column) => [
                     $column => filled($row['prices'][$column] ?? null) ? round((float) $row['prices'][$column], 2) : null,
                 ])->all(),

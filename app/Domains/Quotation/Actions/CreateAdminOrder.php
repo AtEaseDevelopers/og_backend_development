@@ -131,6 +131,7 @@ class CreateAdminOrder
                         'item_name' => $item['item_name'] ?? null,
                         'uom' => $item['uom'] ?? null,
                         'quantity' => $item['quantity'] ?? 1,
+                        'weight' => $item['weight'] ?? null,
                         'catalog_key' => $item['catalog_key'] ?? null,
                         'line_type' => $item['line_type'] ?? null,
                         // photos uploaded for this product ({path, name, mime, …})
@@ -179,6 +180,8 @@ class CreateAdminOrder
                         'item_name' => $item['item_name'] ?? null,
                         'uom' => $item['uom'] ?? null,
                         'quantity' => $item['quantity'] ?? 1,
+                        // the piece's weight in kg (a product priced per kg is priced from it)
+                        'weight' => $item['weight'] ?? null,
                         'catalog_key' => $item['catalog_key'] ?? null,
                         'line_type' => $item['line_type'] ?? null,
                         // price keyed in on the page for a product without a rate (used only when there is none)

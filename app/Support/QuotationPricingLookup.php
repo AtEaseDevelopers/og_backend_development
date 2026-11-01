@@ -26,7 +26,7 @@ class QuotationPricingLookup
      *
      * @return array{price: ?float, source: ?string}  source special | master
      */
-    public function lookupForCustomer(?int $customerId, string $itemName, string $locationName, float $quantity = 1, ?string $dropOffType = null): array
+    public function lookupForCustomer(?int $customerId, string $itemName, string $locationName, float $quantity = 1, ?string $dropOffType = null, ?float $weight = null): array
     {
         $locationId = $this->locationId($locationName);
         $uom = Uom::query()->where('name', $itemName)->first();
@@ -39,8 +39,11 @@ class QuotationPricingLookup
             $set = $this->rates->uomTiers($uom, $locationId, $customerId, $dropOffType);
             $tier = $this->rates->tierFor($set['tiers'], $quantity);
 
-            return $tier
-                ? ['price' => $tier->unitPriceFor($quantity), 'source' => $set['special'] ? 'special' : 'master']
+            // a product priced per kg has no price without the piece's weight
+            $price = $tier?->unitPriceFor($quantity, $weight);
+
+            return $price !== null
+                ? ['price' => $price, 'source' => $set['special'] ? 'special' : 'master']
                 : ['price' => null, 'source' => null];
         }
 

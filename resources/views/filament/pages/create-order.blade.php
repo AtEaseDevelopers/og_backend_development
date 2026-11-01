@@ -638,6 +638,14 @@
                                                     @if ($sub === \App\Filament\Pages\CreateOrder::OTHER_PRODUCT)
                                                         {{-- a product not in the system: named here, kept on this order only --}}
                                                         <input type="text" wire:model.live.debounce.600ms="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.item_name" class="ow-input" placeholder="Product name" aria-label="Product name" autocomplete="off">
+                                                    @elseif ($sub !== '' && $kind === 'item')
+                                                        {{-- the item itself (user, 2 Nov 2026): Cable → Cable Drum / Coil; its size band comes from the sizes below --}}
+                                                        <select wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.base_item" class="ow-select" aria-label="Item">
+                                                            <option value="">— Select item —</option>
+                                                            @foreach ($this->baseItemOptions($sub) as $key => $label)
+                                                                <option value="{{ $key }}">{{ $label }}</option>
+                                                            @endforeach
+                                                        </select>
                                                     @elseif ($sub !== '')
                                                         <select wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.catalog_key" class="ow-select" aria-label="Product">
                                                             <option value="">— Select {{ $kind === 'lorry' ? 'lorry' : 'item' }} —</option>
@@ -652,25 +660,41 @@
                                                     <select class="ow-select" disabled aria-label="Product"><option>Choose the type first</option></select>
                                                 @endif
                                             </div>
-                                            @if ($kind === 'measurement' && ($item['sub_category'] ?? '') !== \App\Filament\Pages\CreateOrder::OTHER_PRODUCT)
+                                            @php
+                                                // the sizes asked: a Measurement row L, W, H and weight; an Item row those its bands use (Cable Drum: L and weight)
+                                                $dims = match (true) {
+                                                    ($item['sub_category'] ?? '') === \App\Filament\Pages\CreateOrder::OTHER_PRODUCT => [],
+                                                    $kind === 'measurement' => ['length', 'width', 'height', 'weight'],
+                                                    $kind === 'item' && filled($item['base_item'] ?? null) => $this->itemLimits((string) $item['sub_category'], (string) $item['base_item']),
+                                                    default => [],
+                                                };
+                                            @endphp
+                                            @if ($dims !== [])
                                                 <div class="ow-dims">
-                                                    {{-- L, W, H as min – max ranges (user, 28 Oct 2026): the price list's size bands are ranges too --}}
-                                                    @foreach (['length' => 'L (cm)', 'width' => 'W (cm)', 'height' => 'H (cm)'] as $dim => $dimLabel)
+                                                    {{-- Create quotation: L, W, H as min – max ranges (user, 28 Oct 2026), required; Create order: one value each,
+                                                         optional (user, 2 Nov 2026) — the size band they fit sets the price, else the price is keyed in --}}
+                                                    @foreach (array_intersect_key(['length' => 'L (cm)', 'width' => 'W (cm)', 'height' => 'H (cm)'], array_flip($dims)) as $dim => $dimLabel)
                                                         <div class="ow-dim">
-                                                            <span>{{ $dimLabel }} <span class="ow-req">*</span></span>
-                                                            <div class="ow-dim-range">
-                                                                <input type="text" inputmode="decimal" autocomplete="off" placeholder="Min" aria-label="{{ $dimLabel }} min" wire:model.live.debounce.600ms="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.{{ $dim }}" class="ow-input" x-on:input="$el.value = $el.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1')">
-                                                                <span aria-hidden="true">–</span>
-                                                                <input type="text" inputmode="decimal" autocomplete="off" placeholder="Max" aria-label="{{ $dimLabel }} max" wire:model.live.debounce.600ms="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.{{ $dim }}_max" class="ow-input" x-on:input="$el.value = $el.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1')">
-                                                            </div>
+                                                            <span>{{ $dimLabel }} @if ($isQuote)<span class="ow-req">*</span>@endif</span>
+                                                            @if ($isQuote && $kind === 'measurement')
+                                                                <div class="ow-dim-range">
+                                                                    <input type="text" inputmode="decimal" autocomplete="off" placeholder="Min" aria-label="{{ $dimLabel }} min" wire:model.live.debounce.600ms="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.{{ $dim }}" class="ow-input" x-on:input="$el.value = $el.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1')">
+                                                                    <span aria-hidden="true">–</span>
+                                                                    <input type="text" inputmode="decimal" autocomplete="off" placeholder="Max" aria-label="{{ $dimLabel }} max" wire:model.live.debounce.600ms="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.{{ $dim }}_max" class="ow-input" x-on:input="$el.value = $el.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1')">
+                                                                </div>
+                                                            @else
+                                                                <input type="text" inputmode="decimal" autocomplete="off" aria-label="{{ $dimLabel }}" wire:model.live.debounce.600ms="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.{{ $dim }}" class="ow-input" x-on:input="$el.value = $el.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1')" @disabled($locked)>
+                                                            @endif
                                                         </div>
                                                     @endforeach
+                                                    @if (in_array('weight', $dims, true))
                                                     <label class="ow-dim">
-                                                        <span>Weight (kg) <span class="ow-req">*</span></span>
-                                                        <input type="text" inputmode="decimal" autocomplete="off" wire:model.live.debounce.600ms="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.weight" class="ow-input" x-on:input="$el.value = $el.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1')">
+                                                        <span>Weight (kg) @if ($isQuote)<span class="ow-req">*</span>@endif</span>
+                                                        <input type="text" inputmode="decimal" autocomplete="off" wire:model.live.debounce.600ms="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.weight" class="ow-input" x-on:input="$el.value = $el.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1')" @disabled($locked)>
                                                     </label>
+                                                    @endif
                                                 </div>
-                                                <div class="ow-price-hint">{{ $this->measurementNote($item) }}</div>
+                                                <div class="ow-price-hint">{{ $kind === 'measurement' ? $this->measurementNote($item) : $this->itemNote($item) }}</div>
                                             @endif
                                         @endif
                                         @error($ep.'pairs.'.$i.'.items.'.$j.'.item_name')<div class="ow-field-error">{{ $message }}</div>@enderror
@@ -748,8 +772,17 @@
                                             <span class="ow-note">—</span>
                                         @endif
                                     </td>
-                                    <td class="ow-num" style="width:8rem">
-                                        {{ $showPrices && $this->effectivePrice($item) !== null ? 'RM '.number_format($totals['lines'][$i][$j] ?? 0, 2) : '—' }}
+                                    <td class="ow-num" style="width:9rem">
+                                        @if ($showPrices && filled($item['item_name']) && ! $locked && ! $isQuote)
+                                            {{-- the line total can be keyed in (client, 2 Nov 2026: "2 cartons = RM 24"): the unit price follows --}}
+                                            <label class="ow-manual-price">
+                                                <span>RM</span>
+                                                <input type="text" inputmode="decimal" autocomplete="off" x-on:input="const v = $el.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'); if (v !== $el.value) $el.value = v" x-on:blur="const n = parseFloat($el.value); if ($el.value.trim() !== '' && ! isNaN(n) && $el.value !== n.toFixed(2)) { $el.value = n.toFixed(2); $el.dispatchEvent(new Event('input')) }" wire:model.live.debounce.500ms="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.line_total" class="ow-input ow-price-input" placeholder="0.00" aria-label="Line total for {{ $item['item_name'] }}" title="Key in the total of this line: the unit price becomes total ÷ quantity">
+                                            </label>
+                                            @error($ep.'pairs.'.$i.'.items.'.$j.'.line_total')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                        @else
+                                            {{ $showPrices && $this->effectivePrice($item) !== null ? 'RM '.number_format($totals['lines'][$i][$j] ?? 0, 2) : '—' }}
+                                        @endif
                                     </td>
                                     <td style="width:4.5rem;white-space:nowrap">
                                         <span class="ow-row-actions">
@@ -1039,6 +1072,11 @@
                     };
                 @endphp
                 <button type="button" wire:click="save" wire:loading.attr="disabled" class="ow-btn ow-btn-primary">{{ $submit }}</button>
+                @if (! $editing && ! $isQuote)
+                    {{-- the customer at the counter with the goods (client, 1 Nov 2026): one click confirms, records the Cash
+                         payment, issues the Cash Bill and creates the CSN, then opens both to print --}}
+                    <button type="button" wire:click="saveAndPrint" wire:loading.attr="disabled" class="ow-btn ow-btn-primary" title="Save the order with its Cash records confirmed and paid now; the Cash Bill and CSN open to print">Confirm, pay &amp; print →</button>
+                @endif
             </div>
         </div>
     </div>

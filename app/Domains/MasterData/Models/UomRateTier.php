@@ -39,17 +39,34 @@ class UomRateTier extends Model
 
     /**
      * The unit price for a quantity (user, 29 Oct 2026): the range's price, plus its fixed charge spread over the
-     * quantity when the range is priced as "(250+4.0X)" (RM 250 + RM 4.00 per unit).
+     * quantity when the range is priced as "(250+4.0X)" (RM 250 + RM 4.00 per unit). A product priced per kg
+     * (client, 1 Nov 2026: "Weight * 0.14"): the rate × the piece's weight in kg (null without a weight).
      */
-    public function unitPriceFor(float $quantity): float
+    public function unitPriceFor(float $quantity, ?float $weight = null): ?float
     {
-        return round((float) $this->price + (float) ($this->fixed_charge ?? 0) / max($quantity, 0.01), 2);
+        $each = (float) $this->price;
+
+        if ($this->pricedPerKg()) {
+            if ($weight === null || $weight <= 0) {
+                return null;
+            }
+
+            $each = round($each * $weight, 2);
+        }
+
+        return round($each + (float) ($this->fixed_charge ?? 0) / max($quantity, 0.01), 2);
     }
 
-    /** "RM 4.00 each", or "RM 250.00 + RM 4.00 each" with a fixed charge. */
+    /** The product's price is a rate per kg. */
+    public function pricedPerKg(): bool
+    {
+        return (bool) ($this->uom?->priced_per_kg ?? false);
+    }
+
+    /** "RM 4.00 each", "RM 0.14 per kg", or "RM 250.00 + RM 4.00 each" with a fixed charge. */
     public function priceText(): string
     {
-        $each = 'RM '.number_format((float) $this->price, 2).' each';
+        $each = 'RM '.number_format((float) $this->price, 2).($this->pricedPerKg() ? ' per kg' : ' each');
 
         return $this->fixed_charge !== null && (float) $this->fixed_charge > 0 ? 'RM '.number_format((float) $this->fixed_charge, 2).' + '.$each : $each;
     }

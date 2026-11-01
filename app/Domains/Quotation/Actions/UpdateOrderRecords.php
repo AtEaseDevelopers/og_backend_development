@@ -360,6 +360,7 @@ class UpdateOrderRecords
                 'item_name' => (string) $line->item_name,
                 'uom' => $line->uom,
                 'quantity' => max(1, (int) round((float) $line->quantity)),
+                'weight' => $line->weight !== null ? (float) $line->weight : null,
                 'unit_price' => $line->unit_price !== null ? (float) $line->unit_price : null,
                 'attachments' => array_values(array_filter($order->item_attachments[(string) $line->item_name] ?? [], 'is_array')),
             ];
@@ -462,6 +463,7 @@ class UpdateOrderRecords
             'item_name' => $name,
             'uom' => filled($item['uom'] ?? null) ? strtoupper(trim((string) $item['uom'])) : $this->lookup->resolveUomCode($catalogKey, $name),
             'quantity' => max(1, (int) round((float) ($item['quantity'] ?? 1))),
+            'weight' => is_numeric($item['weight'] ?? null) ? (float) $item['weight'] : null,
             'unit_price' => null,
             'attachments' => array_values(array_filter($item['attachments'] ?? [], 'is_array')),
         ];
@@ -1052,6 +1054,8 @@ class UpdateOrderRecords
             $existing = $original->get($name);
             // whole units (the page only lets UOM products change quantity; others keep the loaded one)
             $quantity = max(1, (int) round((float) ($item['quantity'] ?? 1)));
+            // the piece's weight: as entered, else the line's
+            $weight = is_numeric($item['weight'] ?? null) ? (float) $item['weight'] : ($existing?->weight !== null ? (float) $existing->weight : null);
 
             // the unit price box of the page (the record's price, the list price or one changed by hand)
             if ($ownerId && is_numeric($item['unit_price'] ?? null)) {
@@ -1061,7 +1065,7 @@ class UpdateOrderRecords
             } else {
                 $price = ! $ownerId
                     ? null
-                    : ($this->lookup->lookupForCustomer($customerId, $name, $column, (float) $quantity, $pair['drop_off_type'] ?? null)['price'] ?? null);
+                    : ($this->lookup->lookupForCustomer($customerId, $name, $column, (float) $quantity, $pair['drop_off_type'] ?? null, $weight)['price'] ?? null);
 
                 // no special / price-list rate: the price keyed in on the page
                 if ($price === null && $ownerId && is_numeric($item['unit_price'] ?? null)) {
@@ -1076,6 +1080,7 @@ class UpdateOrderRecords
                 'item_name' => $name,
                 'catalog_key' => $catalogKey,
                 'quantity' => $quantity,
+                'weight' => $weight,
                 'prices' => [$column => $price !== null ? round($price, 2) : null],
             ];
             $newItems[] = ['item_name' => $name, 'quantity' => $quantity];
@@ -1348,6 +1353,7 @@ class UpdateOrderRecords
                     'item_name' => trim((string) $item['item_name']),
                     'uom' => $this->clean($item['uom'] ?? null),
                     'quantity' => max(1, (int) round((float) ($item['quantity'] ?? 1))),
+                    'weight' => is_numeric($item['weight'] ?? null) ? (float) $item['weight'] : null,
                     'catalog_key' => $this->clean($item['catalog_key'] ?? null),
                     'line_type' => $this->clean($item['line_type'] ?? null),
                     'unit_price' => is_numeric($item['unit_price'] ?? null) ? (float) $item['unit_price'] : null,

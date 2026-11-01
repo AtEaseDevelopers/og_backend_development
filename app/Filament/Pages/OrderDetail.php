@@ -76,6 +76,14 @@ class OrderDetail extends Page
     #[Url(as: 'tab', except: 'overview')]
     public string $tab = 'overview';
 
+    /**
+     * Documents to print on arrival (?print=1 after "Confirm, pay & print", client 1 Nov 2026): the Cash Bill / Invoice
+     * and CSN PDFs of the order, opened in new tabs and listed in a banner in case the browser blocks pop-ups.
+     *
+     * @var list<array{label: string, url: string}>
+     */
+    public array $printDocs = [];
+
     /** Admin pricing form state (see OrderDetailData::pricingState). Prices are indexed by column position. */
     public array $pricing = [];
 
@@ -131,6 +139,17 @@ class OrderDetail extends Page
 
         $detail = $this->detail();
         abort_unless($detail, 404);
+
+        if (request()->boolean('print')) {
+            $this->printDocs = collect($detail['overview']['linked'] ?? [])
+                ->flatMap(fn (array $link) => match ($link['title']) {
+                    'Cash Bill', 'Invoice' => filled($link['url']) ? [['label' => $link['title'].' '.\Illuminate\Support\Str::before($link['sub'], ' ·'), 'url' => $link['url']]] : [],
+                    'CSN' => collect($link['links'])->where('label', 'PDF')->map(fn (array $l) => ['label' => 'CSN '.$link['sub'], 'url' => $l['url']])->all(),
+                    default => [],
+                })
+                ->values()
+                ->all();
+        }
 
         $this->initPricing($detail);
 
@@ -639,7 +658,7 @@ class OrderDetail extends Page
         }
 
         $dropOffTypes = $order ? $order->destinations->mapWithKeys(fn ($d) => [(string) $d->consignee_name => $d->drop_off_type])->all() : [];
-        $list = app(OrderDetailData::class)->listPrices($order?->customer_id ? (int) $order->customer_id : null, $row['item_name'], $columns, (float) ($row['quantity'] ?: 1), $dropOffTypes);
+        $list = app(OrderDetailData::class)->listPrices($order?->customer_id ? (int) $order->customer_id : null, $row['item_name'], $columns, (float) ($row['quantity'] ?: 1), $dropOffTypes, is_numeric($row['weight'] ?? null) ? (float) $row['weight'] : null);
         $row['list'] = array_map(fn (string $c) => $list[$c] ?? ['price' => null, 'source' => null, 'tier' => null], $columns);
 
         if (($this->pricing['reference'] ?? 'price_list') !== 'manual') {
@@ -707,6 +726,7 @@ class OrderDetail extends Page
             'item_name' => $row['item_name'],
             'catalog_key' => $row['catalog_key'],
             'quantity' => $row['quantity'],
+            'weight' => $row['weight'] ?? null,
             'prices' => collect($columns)->mapWithKeys(fn (string $c, int $i) => [$c => $row['prices'][$i] ?? null])->all(),
         ], $this->pricing['rows'] ?? []);
 

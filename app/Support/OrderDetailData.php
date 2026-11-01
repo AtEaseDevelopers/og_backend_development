@@ -665,6 +665,7 @@ class OrderDetailData
                     'item_name' => $line->item_name,
                     'uom' => $line->uom,
                     'quantity' => (float) $line->quantity,
+                    'weight' => $line->weight !== null ? (float) $line->weight : null,
                     'prices' => array_fill_keys($columns, null),
                     'list' => [],
                 ];
@@ -694,6 +695,7 @@ class OrderDetailData
                     'item_name' => $item['item_name'],
                     'uom' => $item['uom'],
                     'quantity' => (float) $item['quantity'],
+                    'weight' => is_numeric($item['weight'] ?? null) ? (float) $item['weight'] : null,
                     'prices' => array_fill_keys($columns, null),
                     'list' => [],
                 ];
@@ -705,7 +707,7 @@ class OrderDetailData
         $dropOffTypes = $order->destinations->mapWithKeys(fn ($destination) => [(string) $destination->consignee_name => $destination->drop_off_type])->all();
 
         foreach ($rows as &$row) {
-            $row['list'] = $this->listPrices($customerId, $row['item_name'], $columns, (float) $row['quantity'], $dropOffTypes);
+            $row['list'] = $this->listPrices($customerId, $row['item_name'], $columns, (float) $row['quantity'], $dropOffTypes, $row['weight'] ?? null);
         }
         unset($row);
 
@@ -733,19 +735,21 @@ class OrderDetailData
      * @param  list<string>  $columns
      * @return array<string, array{price: ?float, source: ?string, tier: ?string}>
      */
-    public function listPrices(?int $customerId, string $itemName, array $columns, float $quantity, array $dropOffTypes = []): array
+    public function listPrices(?int $customerId, string $itemName, array $columns, float $quantity, array $dropOffTypes = [], ?float $weight = null): array
     {
         $out = [];
 
         foreach ($columns as $column) {
             $type = $dropOffTypes[$column] ?? null;
-            $resolved = $this->lookup->lookupForCustomer($customerId, $itemName, $column, max(0.01, $quantity), $type);
+            $resolved = $this->lookup->lookupForCustomer($customerId, $itemName, $column, max(0.01, $quantity), $type, $weight);
             $tier = $this->lookup->matchedUomTier($itemName, $column, max(0.01, $quantity), $customerId, $type);
 
             $out[$column] = [
                 'price' => $resolved['price'] !== null ? (float) $resolved['price'] : null,
                 'source' => $resolved['source'],
-                'tier' => $tier ? 'Tier '.($tier->max_qty ? number_format((float) $tier->min_qty, 0).'–'.number_format((float) $tier->max_qty, 0) : number_format((float) $tier->min_qty, 0).'+') : null,
+                'tier' => $tier ? ($tier->pricedPerKg()
+                    ? ($weight > 0 ? number_format($weight, 0).' kg × RM '.number_format((float) $tier->price, 2).'/kg' : 'Per kg · enter the weight')
+                    : 'Tier '.($tier->max_qty ? number_format((float) $tier->min_qty, 0).'–'.number_format((float) $tier->max_qty, 0) : number_format((float) $tier->min_qty, 0).'+')) : null,
             ];
         }
 

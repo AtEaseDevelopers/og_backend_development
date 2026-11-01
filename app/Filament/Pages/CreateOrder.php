@@ -117,6 +117,9 @@ class CreateOrder extends Page
     /** Its proof files (slip / receipt), kept with every order paid now. */
     public array $paymentProofs = [];
 
+    /** "Confirm, pay & print" (client, 1 Nov 2026): after saving, the order page opens the Cash Bill and CSN to print. */
+    protected bool $printAfterSave = false;
+
     /** Colours telling the orders of the page apart: [border / accent, tint]. */
     public const ORDER_COLORS = [
         ['#2563eb', 'rgba(37, 99, 235, .07)'],
@@ -189,7 +192,7 @@ class CreateOrder extends Page
             $pair['customer_do_number'] = '';
             $pair['expected_delivery_date'] = '';
             $pair['items'] = array_values(array_map(fn (array $item) => array_merge($item, [
-                'unit_price' => null, 'tier' => null, 'source' => null, 'manual_price' => '', 'price_edited' => false, 'photos' => [], 'existing_photos' => [],
+                'unit_price' => null, 'tier' => null, 'source' => null, 'manual_price' => '', 'price_edited' => false, 'photos' => [], 'existing_photos' => [], 'base_item' => '',
             ]), $pair['items']));
 
             return array_merge($this->pairTemplate(), $pair);
@@ -272,9 +275,15 @@ class CreateOrder extends Page
                     $kind = $this->itemKind($item);
                     $this->orders[$o]['pairs'][$p]['items'][$i]['kind'] = $kind;
 
-                    // every type picks a sub-category before the product (user, 25 Oct 2026)
+                    // every type picks a sub-category before the product (user, 25 Oct 2026); an Item row its base item too
+                    $uom = Uom::query()->whereKey(explode(':', (string) $item['catalog_key'], 2)[1] ?? 0)->first(['sub_category', 'base_item']);
+
                     if (blank($item['sub_category'] ?? null)) {
-                        $this->orders[$o]['pairs'][$p]['items'][$i]['sub_category'] = (string) Uom::query()->whereKey(explode(':', (string) $item['catalog_key'], 2)[1] ?? 0)->value('sub_category');
+                        $this->orders[$o]['pairs'][$p]['items'][$i]['sub_category'] = (string) $uom?->sub_category;
+                    }
+
+                    if ($kind === Uom::ITEM && blank($item['base_item'] ?? null)) {
+                        $this->orders[$o]['pairs'][$p]['items'][$i]['base_item'] = (string) ($uom?->base_item ?: $uom?->sub_category);
                     }
                 }
             }
@@ -371,6 +380,80 @@ class CreateOrder extends Page
             ->all();
     }
 
+    /**
+     * The items of an Item sub-category (user, 2 Nov 2026): Cable → Cable Drum, Coil — the base items, not their size
+     * bands; the band is found from the sizes entered. @return array<string, string>
+     */
+    public function baseItemOptions(string $subCategory): array
+    {
+        return Uom::query()
+            ->whereIn('id', $this->offeredProductIds())
+            ->where('category', Uom::ITEM)
+            ->where('sub_category', $subCategory)
+            ->get(['base_item', 'name', 'sub_category'])
+            ->map(fn (Uom $uom) => $uom->base_item ?: $uom->sub_category)
+            ->unique()
+            ->sort(SORT_NATURAL | SORT_FLAG_CASE)
+            ->mapWithKeys(fn (string $base) => [$base => $base])
+            ->all();
+    }
+
+    /** The bands of an item (its products), among those offered. @return \Illuminate\Support\Collection<int, Uom> */
+    protected function itemBands(string $subCategory, string $baseItem): \Illuminate\Support\Collection
+    {
+        return Uom::query()
+            ->whereIn('id', $this->offeredProductIds())
+            ->where('category', Uom::ITEM)
+            ->where('sub_category', $subCategory)
+            ->get()
+            ->filter(fn (Uom $uom) => ($uom->base_item ?: $uom->sub_category) === $baseItem)
+            ->values();
+    }
+
+    /** The sizes an item asks for: those its bands use (Cable Drum: L and weight; Coil: weight; a compressor: none). @return list<string> */
+    public function itemLimits(string $subCategory, string $baseItem): array
+    {
+        return \App\Support\MeasurementBand::limitsUsed($this->itemBands($subCategory, $baseItem));
+    }
+
+    /** The band of an Item row from its sizes (one value each); the product itself when it has no limits. */
+    public function itemProduct(array $item): ?Uom
+    {
+        $sub = trim((string) ($item['sub_category'] ?? ''));
+        $base = trim((string) ($item['base_item'] ?? ''));
+
+        if ($sub === '' || $base === '') {
+            return null;
+        }
+
+        return \App\Support\MeasurementBand::pickFromValues($item, $this->itemBands($sub, $base));
+    }
+
+    /** The note under an Item row's size fields. */
+    public function itemNote(array $item): string
+    {
+        $sub = trim((string) ($item['sub_category'] ?? ''));
+        $base = trim((string) ($item['base_item'] ?? ''));
+        $limits = $sub !== '' && $base !== '' ? $this->itemLimits($sub, $base) : [];
+        $labels = ['length' => 'L', 'width' => 'W', 'height' => 'H', 'weight' => 'weight'];
+        $asked = implode(', ', array_map(fn (string $d) => $labels[$d], $limits));
+        $missing = array_filter($limits, fn (string $d) => ! is_numeric($item[$d] ?? null));
+
+        if ($limits === []) {
+            return '';
+        }
+
+        if ($missing !== []) {
+            return $this->isQuote()
+                ? 'Enter the '.$asked.': the size band they fit sets the price.'
+                : 'Optional: enter the '.$asked.' and the size band they fit sets the price · or key in the price.';
+        }
+
+        return filled($item['catalog_key'] ?? null)
+            ? 'Size band: '.$item['item_name']
+            : 'No '.$base.' size band fits · key in the price, or check the size.';
+    }
+
     /** Item or Lorry products to choose, of the sub-category when one is chosen. @return array<string, string> */
     public function kindProductOptions(string $kind, ?string $subCategory = null): array
     {
@@ -388,23 +471,27 @@ class CreateOrder extends Page
         return array_map(fn (string $key) => (int) (explode(':', $key, 2)[1] ?? 0), array_keys($this->catalogOptions('uom') + $this->catalogOptions('lorry')));
     }
 
-    /** The L, W and H of a Measurement row as [min, max] ranges and its weight (user, 28 Oct 2026); null where not entered. */
+    /**
+     * The L, W and H of a Measurement row as [min, max] ranges and its weight; null where not entered. Create quotation
+     * enters ranges (user, 28 Oct 2026); Create order enters one value each (user, 2 Nov 2026), so min = max.
+     */
     protected function measurementRanges(array $item): array
     {
         $num = fn (string $key) => is_numeric($item[$key] ?? null) ? (float) $item[$key] : null;
+        $range = fn (string $key) => $this->isQuote() ? [$num($key), $num($key.'_max')] : [$num($key), $num($key)];
 
         return [
-            'l' => [$num('length'), $num('length_max')],
-            'w' => [$num('width'), $num('width_max')],
-            'h' => [$num('height'), $num('height_max')],
+            'l' => $range('length'),
+            'w' => $range('width'),
+            'h' => $range('height'),
             'kg' => $num('weight'),
         ];
     }
 
     /**
-     * The size band of a Measurement row: the product of its sub-category whose limits the goods' L, W, H ranges and
-     * weight fit (L+W+H, length, width, height and weight ranges of the price list, the whole min – max inside the
-     * band's); the tightest band when several fit.
+     * The size band of a Measurement row: the product of its sub-category whose limits the goods' L, W, H and weight
+     * fit (see MeasurementBand); null while a size is missing (Create order: the size is optional, the line is then
+     * named by the sub-category and its price keyed in).
      */
     public function measurementProduct(array $item): ?Uom
     {
@@ -415,28 +502,11 @@ class CreateOrder extends Page
             return null;
         }
 
-        // the whole entered range lies inside the band
-        $within = fn (float $lo, float $hi, $min, $max) => ($min === null || min($lo, $hi) >= (float) $min - 0.0001) && ($max === null || max($lo, $hi) <= (float) $max + 0.0001);
-        $lwhLo = $size['l'][0] + $size['w'][0] + $size['h'][0];
-        $lwhHi = $size['l'][1] + $size['w'][1] + $size['h'][1];
-
-        return Uom::query()
+        return \App\Support\MeasurementBand::pick($size, Uom::query()
             ->whereIn('id', $this->offeredProductIds())
             ->where('category', Uom::MEASUREMENT)
             ->where('sub_category', $sub)
-            ->get()
-            ->filter(fn (Uom $uom) => $within($lwhLo, $lwhHi, $uom->min_lwh, $uom->max_lwh)
-                && $within($size['l'][0], $size['l'][1], $uom->min_length, $uom->max_length)
-                && $within($size['w'][0], $size['w'][1], null, $uom->max_width)
-                && $within($size['h'][0], $size['h'][1], null, $uom->max_height)
-                && $within($size['kg'], $size['kg'], $uom->min_weight, $uom->max_weight))
-            // a per-kg product only when no per-piece band fits; then the tightest size, then weight
-            ->sortBy([
-                fn (Uom $a, Uom $b) => str_ends_with($a->name, '(per kg)') <=> str_ends_with($b->name, '(per kg)'),
-                fn (Uom $a, Uom $b) => ($a->max_lwh === null ? INF : (float) $a->max_lwh) <=> ($b->max_lwh === null ? INF : (float) $b->max_lwh),
-                fn (Uom $a, Uom $b) => ($a->max_weight === null ? INF : (float) $a->max_weight) <=> ($b->max_weight === null ? INF : (float) $b->max_weight),
-            ])
-            ->first();
+            ->get());
     }
 
     /** "10 – 20" (or "15" when both ends agree) for the size text. */
@@ -464,9 +534,10 @@ class CreateOrder extends Page
     public function measurementNote(array $item): string
     {
         $sub = trim((string) ($item['sub_category'] ?? ''));
+        $quote = $this->isQuote();
 
         if ($sub === '') {
-            return 'Choose the product, then enter its size range and weight.';
+            return $quote ? 'Choose the product, then enter its size range and weight.' : 'Choose the product. Enter its size and weight for the list price, or key in the price.';
         }
 
         $size = $this->measurementRanges($item);
@@ -474,7 +545,12 @@ class CreateOrder extends Page
         $matched = filled($item['catalog_key'] ?? null);
 
         if (! $complete) {
-            return $matched ? 'Size band: '.$item['item_name'].' · enter the L, W, H ranges and weight to check it.' : 'Enter the L, W, H ranges (min – max) and weight: the size band they fit sets the price.';
+            if ($quote) {
+                return $matched ? 'Size band: '.$item['item_name'].' · enter the L, W, H ranges and weight to check it.' : 'Enter the L, W, H ranges (min – max) and weight: the size band they fit sets the price.';
+            }
+
+            // Create order (user, 2 Nov 2026): the size is optional; without it the price is keyed in
+            return 'Optional: enter L, W, H and weight and the size band they fit sets the price · or key in the price.';
         }
 
         return $matched
@@ -623,6 +699,43 @@ class CreateOrder extends Page
         $this->switchToOrder($index);
         $this->payNow = ! $this->payNow && $this->cashRecordCount() > 0;
         $this->stashActive();
+    }
+
+    /**
+     * "Confirm, pay & print" (client, 1 Nov 2026): the customer is at the counter with the goods, the store manager
+     * has the prices — one click saves the order with every Cash record paid now (method Cash, today, unless the
+     * Payment block says otherwise), so its Cash Bill is issued and its CSN created on save, then the order page
+     * opens both documents to print. "Save order & prepare pricing" stays for orders priced later.
+     */
+    public function saveAndPrint(): void
+    {
+        if ($this->isEditing() || $this->isQuote()) {
+            $this->save();
+
+            return;
+        }
+
+        $this->stashActive();
+        $cash = 0;
+
+        foreach ($this->orders as $index => $order) {
+            $records = collect($order['pairs'] ?? [])->where('order_type', OrderType::Cash->value)->count();
+            $this->orders[$index]['pay_now'] = $records > 0;
+            $cash += $records;
+        }
+
+        $this->useOrder($this->activeOrder);
+
+        if ($cash === 0) {
+            Notification::make()->title('Confirm, pay & print needs a consignor & consignee with the Cash payment term')->body('Use "Save order & prepare pricing" for the other payment terms.')->danger()->send();
+
+            return;
+        }
+
+        $this->payment['method'] = filled($this->payment['method'] ?? null) ? $this->payment['method'] : PaymentMethod::Cash->value;
+        $this->payment['payment_date'] = filled($this->payment['payment_date'] ?? null) ? $this->payment['payment_date'] : now()->toDateString();
+        $this->printAfterSave = true;
+        $this->save();
     }
 
     /** Some order of the page is paid now. */
@@ -1146,7 +1259,7 @@ class CreateOrder extends Page
             'line_type' => 'uom', 'catalog_key' => '', 'item_name' => '', 'uom' => '', 'quantity' => 1,
             // the product type first (Measurement / Item / Lorry, user 21 Oct 2026); a Measurement product is its
             // sub-category with the goods' size and weight: the size band they fit is the product priced
-            'kind' => '', 'sub_category' => '', 'length' => '', 'length_max' => '', 'width' => '', 'width_max' => '', 'height' => '', 'height_max' => '', 'weight' => '',
+            'kind' => '', 'sub_category' => '', 'base_item' => '', 'length' => '', 'length_max' => '', 'width' => '', 'width_max' => '', 'height' => '', 'height_max' => '', 'weight' => '',
             // a Measurement row whose size no band fits: named by its size, the price keyed in
             'no_band' => false,
             'unit_price' => null, 'tier' => null, 'source' => null, 'available' => null,
@@ -1502,6 +1615,27 @@ class CreateOrder extends Page
             return;
         }
 
+        // the line total keyed in (client, 2 Nov 2026: the store keeper gives the total, e.g. 2 cartons = RM 24): the
+        // unit price becomes total ÷ quantity, and from there it is a price changed by hand like any other
+        if (preg_match('/^(\d+)\.items\.(\d+)\.line_total$/', $key, $m)) {
+            $item = &$this->pairs[(int) $m[1]]['items'][(int) $m[2]];
+            $qty = max(1, (int) round((float) ($item['quantity'] ?: 1)));
+
+            if (is_numeric($value)) {
+                $item['manual_price'] = $this->priceText(round((float) $value / $qty, 2));
+                $listed = $item['unit_price'] ?? null;
+                $item['price_edited'] = $listed === null || abs((float) $item['manual_price'] - (float) $listed) >= 0.005;
+            } else {
+                // cleared: the list price again
+                $item['price_edited'] = false;
+                $this->fillPriceBox($item);
+            }
+
+            $this->fillLineTotal($item);
+
+            return;
+        }
+
         // the unit price box changed by hand: kept when the quantity or destination changes; cleared = the price again
         if (preg_match('/^(\d+)\.items\.(\d+)\.manual_price$/', $key, $m)) {
             $item = &$this->pairs[(int) $m[1]]['items'][(int) $m[2]];
@@ -1515,10 +1649,12 @@ class CreateOrder extends Page
                 $item['price_edited'] = $entered !== null && ($listed === null || abs($entered - (float) $listed) >= 0.005);
             }
 
+            $this->fillLineTotal($item);
+
             return;
         }
 
-        if (preg_match('/^(\d+)\.items\.(\d+)\.(kind|sub_category|length|length_max|width|width_max|height|height_max|weight)$/', $key, $m)) {
+        if (preg_match('/^(\d+)\.items\.(\d+)\.(kind|sub_category|base_item|length|length_max|width|width_max|height|height_max|weight)$/', $key, $m)) {
             $index = (int) $m[1];
             $itemIndex = (int) $m[2];
             $item = &$this->pairs[$index]['items'][$itemIndex];
@@ -1541,7 +1677,33 @@ class CreateOrder extends Page
             if ($m[3] !== 'kind' && $this->itemKind($item) !== Uom::MEASUREMENT) {
                 // an Item / Chartered Lorry row: another sub-category, the product is picked again
                 if ($m[3] === 'sub_category') {
-                    $item = array_merge($item, ['catalog_key' => '', 'item_name' => '', 'uom' => '', 'manual_price' => '', 'price_edited' => false, 'unit_price' => null, 'tier' => null]);
+                    $item = array_merge($item, ['catalog_key' => '', 'item_name' => '', 'uom' => '', 'base_item' => '', 'manual_price' => '', 'price_edited' => false, 'unit_price' => null, 'tier' => null, 'no_band' => false]);
+                    $item['manual_price'] = '';
+                }
+
+                // an Item row (user, 2 Nov 2026): the base item, then the sizes its bands use, find the band
+                if ($this->itemKind($item) === Uom::ITEM && in_array($m[3], ['base_item', 'length', 'width', 'height', 'weight'], true)) {
+                    if ($m[3] === 'base_item') {
+                        $item = array_merge($item, ['length' => '', 'width' => '', 'height' => '', 'weight' => '']);
+                    }
+
+                    $product = $this->itemProduct($item);
+                    $catalogKey = $product ? 'uom:'.$product->id : '';
+
+                    if ($catalogKey !== (string) ($item['catalog_key'] ?? '')) {
+                        $item['price_edited'] = false;
+                        $item['manual_price'] = '';
+                    }
+
+                    $base = trim((string) ($item['base_item'] ?? ''));
+                    $limits = $base !== '' ? $this->itemLimits((string) $item['sub_category'], $base) : [];
+                    $complete = $limits !== [] && array_filter($limits, fn (string $d) => ! is_numeric($item[$d] ?? null)) === [];
+                    $item['no_band'] = ! $product && $complete;
+                    $item['catalog_key'] = $catalogKey;
+                    $item['item_name'] = $product?->name ?? $base;
+                    $item['uom'] = $product?->code ?? '';
+                    $item['line_type'] = 'uom';
+                    $this->refreshItemPrice($index, $itemIndex);
                 }
 
                 return;
@@ -1550,7 +1712,7 @@ class CreateOrder extends Page
             if ($m[3] === 'kind') {
                 // another type: the row starts again
                 $item = array_merge($item, [
-                    'line_type' => 'uom', 'catalog_key' => '', 'item_name' => '', 'uom' => '', 'sub_category' => '',
+                    'line_type' => 'uom', 'catalog_key' => '', 'item_name' => '', 'uom' => '', 'sub_category' => '', 'base_item' => '',
                     'length' => '', 'length_max' => '', 'width' => '', 'width_max' => '', 'height' => '', 'height_max' => '', 'weight' => '', 'manual_price' => '', 'price_edited' => false,
                     'no_band' => false,
                 ]);
@@ -1663,12 +1825,18 @@ class CreateOrder extends Page
         }
 
         $lookup = app(QuotationPricingLookup::class);
-        $resolved = $lookup->lookupForCustomer($this->pricingCustomerId(), $item['item_name'], $locationName, $quantity, $dropOffType);
+        // the piece's weight in kg: a product priced per kg ("Weight * 0.14") is priced from it
+        $weight = is_numeric($item['weight'] ?? null) ? (float) $item['weight'] : null;
+        $resolved = $lookup->lookupForCustomer($this->pricingCustomerId(), $item['item_name'], $locationName, $quantity, $dropOffType, $weight);
         $tier = ($item['line_type'] ?? 'uom') === 'uom' ? $lookup->matchedUomTier($item['item_name'], $locationName, $quantity, $this->pricingCustomerId(), $dropOffType) : null;
 
         $item['unit_price'] = $resolved['price'] !== null ? (float) $resolved['price'] : null;
         $item['source'] = $resolved['source'];
-        $item['tier'] = $tier ? 'Qty '.$tier->rangeLabel() : null;
+        $item['tier'] = match (true) {
+            ! $tier => null,
+            $tier->pricedPerKg() => $weight > 0 ? number_format($weight, 0).' kg × RM '.number_format((float) $tier->price, 2).'/kg' : 'Priced per kg · enter the weight',
+            default => 'Qty '.$tier->rangeLabel(),
+        };
         $this->fillPriceBox($item);
     }
 
@@ -1684,6 +1852,15 @@ class CreateOrder extends Page
         if (! ($item['price_edited'] ?? false)) {
             $item['manual_price'] = ($item['unit_price'] ?? null) !== null ? $this->priceText((float) $item['unit_price']) : '';
         }
+
+        $this->fillLineTotal($item);
+    }
+
+    /** The line total box follows the unit price × quantity (blank without a price). */
+    protected function fillLineTotal(array &$item): void
+    {
+        $price = $this->effectivePrice($item);
+        $item['line_total'] = $price !== null ? $this->priceText(round($price * max(1, (int) round((float) ($item['quantity'] ?: 1))), 2)) : '';
     }
 
     protected function priceText(float $price): string
@@ -2361,6 +2538,7 @@ class CreateOrder extends Page
             'pairs.*.items.*.quantity' => 'required|integer|min:1',
             // price keyed in for a product without a rate
             'pairs.*.items.*.manual_price' => 'nullable|numeric|min:0|max:9999999',
+            'pairs.*.items.*.line_total' => 'nullable|numeric|min:0|max:99999999',
             // photos of each product row (same file rule as before: images or PDF, 8 MB)
             'pairs.*.items.*.photos' => 'nullable|array',
             'pairs.*.items.*.photos.*' => self::PHOTO_RULE,
@@ -2428,6 +2606,8 @@ class CreateOrder extends Page
                 'item_name' => (string) ($item['item_name'] ?? ''),
                 'uom' => ($item['uom'] ?? null) ?: null,
                 'quantity' => $item['quantity'] ?? 1,
+                // the piece's weight in kg (a product priced per kg is priced from it)
+                'weight' => is_numeric($item['weight'] ?? null) ? (float) $item['weight'] : null,
                 // the unit price box: the special / default price, or the price changed / keyed in by hand
                 'unit_price' => $this->showPrices() ? $this->effectivePrice($item) : null,
             ], $pair['items'] ?? []),
@@ -2544,7 +2724,12 @@ class CreateOrder extends Page
             ->persistent()
             ->send();
 
-        $this->redirect(count($created) === 1 ? OrderDetail::urlFor('order', $first->id).'?tab=pricing' : Orders::getUrl(), navigate: false);
+        // "Confirm, pay & print": the order page opens the Cash Bill and CSN to print
+        $this->redirect(match (true) {
+            count($created) === 1 && $this->printAfterSave => OrderDetail::urlFor('order', $first->id).'?tab=documents&print=1',
+            count($created) === 1 => OrderDetail::urlFor('order', $first->id).'?tab=pricing',
+            default => Orders::getUrl(),
+        }, navigate: false);
     }
 
     /**
