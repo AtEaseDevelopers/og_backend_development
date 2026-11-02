@@ -12,6 +12,8 @@
     $companyOf = fn ($group) => $group->first()->lorry?->defaultDriver ?? $group->pluck('driver')->filter(fn ($d) => filled($d?->lorry_company) || filled($d?->lorry_group))->first();
     $groups = $byLorry->map(fn ($g) => $companyOf($g)?->lorry_group)->filter()->unique()->sort()->values();
     $companies = $byLorry->map(fn ($g) => $companyOf($g)?->lorry_company)->filter()->unique()->sort()->values();
+    // a Lorry filter too (user, 3 Nov 2026)
+    $lorryNumbers = $byLorry->map(fn ($g) => $g->first()->lorry?->registration_no)->filter()->unique()->sort()->values();
 @endphp
 <style>
     .cbl-wrap { border: 1px solid rgb(229 231 235); border-radius: .75rem; overflow: hidden; overflow-x: auto; }
@@ -34,8 +36,14 @@
     <p class="text-sm text-gray-500 dark:text-gray-400">No commission line yet: the returned CSNs' deliveries have no driver, or no CSN was returned before the cutoff.</p>
 @else
     <div class="cbl-panel">
-        @if ($groups->isNotEmpty() || $companies->isNotEmpty())
+        @if ($groups->isNotEmpty() || $companies->isNotEmpty() || $lorryNumbers->isNotEmpty())
             <div class="cbl-filters">
+                <label>Lorry
+                    <select class="cbl-select" data-cbl-filter="lorry" aria-label="Filter by lorry">
+                        <option value="">All</option>
+                        @foreach ($lorryNumbers as $n)<option value="{{ $n }}">{{ $n }}</option>@endforeach
+                    </select>
+                </label>
                 <label>Lorry group
                     <select class="cbl-select" data-cbl-filter="group" aria-label="Filter by lorry group">
                         <option value="">All</option>
@@ -81,7 +89,7 @@
                             $totals['sales'] += $sales;
                             $totals['commission'] += $commission;
                         @endphp
-                        <tr data-group="{{ $company?->lorry_group }}" data-company="{{ $company?->lorry_company }}" @if ($url) onclick="window.location='{{ $url }}'" title="Open lorry {{ $lorry?->registration_no }}" @endif>
+                        <tr data-lorry="{{ $lorry?->registration_no }}" data-group="{{ $company?->lorry_group }}" data-company="{{ $company?->lorry_company }}" @if ($url) onclick="window.location='{{ $url }}'" title="Open lorry {{ $lorry?->registration_no }}" @endif>
                             <td><strong>{{ $lorry?->registration_no ?? 'No lorry' }}</strong></td>
                             <td>
                                 {{ $company?->lorry_company ?: '—' }}

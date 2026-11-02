@@ -98,6 +98,13 @@ class ConsignmentNoteResource extends Resource
                     ->tooltip(fn (ConsignmentNote $record) => $record->movedNote())
                     ->placeholder('—')
                     ->toggleable(),
+                Tables\Columns\TextColumn::make('period_month')
+                    ->label('Counted in')
+                    ->badge()
+                    ->color('warning')
+                    ->placeholder('—')
+                    ->tooltip('The month this CSN counts in for commission and term billing (moved)')
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('issued_at')
                     ->label('CSN date')
                     ->date('d M Y')
@@ -263,6 +270,21 @@ class ConsignmentNoteResource extends Resource
                     ->modalSubmitActionLabel('Assign')
                     ->form(fn ($livewire) => static::assignLorryFormSchema($livewire->selectedSubsheetRecords()))
                     ->action(fn (Collection $records, array $data, $livewire) => static::assignSelection($records, $livewire->selectedSubsheetRecords(), $data, $livewire))
+                    ->deselectRecordsAfterCompletion(),
+                // the CSNs count in another month for commission and term billing (user, 3 Nov 2026)
+                Tables\Actions\BulkAction::make('bulkMoveMonth')
+                    ->label('Move to month')
+                    ->icon('heroicon-o-calendar-days')
+                    ->color('gray')
+                    ->modalHeading('Move the selected CSNs to a month')
+                    ->modalDescription('They are counted in that month\'s commission batch and term billing instead of their own dates. Blank the month to put them back.')
+                    ->modalSubmitActionLabel('Move')
+                    ->form(static::moveMonthForm())
+                    ->action(function (Collection $records, array $data): void {
+                        $month = static::monthValue($data['period_month'] ?? null);
+                        $records->each(fn (ConsignmentNote $record) => $record->update(['period_month' => $month]));
+                        Notification::make()->title($records->count().' CSN(s) '.($month ? 'moved to '.$month : 'back to their own month'))->success()->send();
+                    })
                     ->deselectRecordsAfterCompletion(),
                 Tables\Actions\BulkAction::make('bulkMoveCompany')
                     ->label('Internal transfer')
@@ -471,6 +493,20 @@ class ConsignmentNoteResource extends Resource
                             Notification::make()->title($e->getMessage())->danger()->send();
                         }
                     }),
+                Tables\Actions\Action::make('moveMonth')
+                    ->label(fn (ConsignmentNote $record) => $record->period_month ? 'Month: '.$record->period_month : 'Move to month')
+                    ->icon('heroicon-o-calendar-days')
+                    ->color('gray')
+                    ->modalHeading(fn (ConsignmentNote $record) => 'Move '.$record->number.' to a month')
+                    ->modalDescription('Counted in that month\'s commission batch and term billing instead of its own dates. Blank the month to put it back.')
+                    ->modalSubmitActionLabel('Move')
+                    ->fillForm(fn (ConsignmentNote $record) => ['period_month' => $record->period_month ?: now()->addMonth()->format('Y-m')])
+                    ->form(static::moveMonthForm())
+                    ->action(function (ConsignmentNote $record, array $data): void {
+                        $month = static::monthValue($data['period_month'] ?? null);
+                        $record->update(['period_month' => $month]);
+                        Notification::make()->title($record->number.($month ? ' moved to '.$month : ' back to its own month'))->success()->send();
+                    }),
                 // a CSN moved to another company (user, 28 Oct 2026): that company picks it and assigns it to its lorry
                 Tables\Actions\Action::make('moveCompany')
                     ->label('Internal transfer')
@@ -493,6 +529,26 @@ class ConsignmentNoteResource extends Resource
                     ->modalSubmitActionLabel('Take back')
                     ->action(fn (ConsignmentNote $record) => static::takeBack(collect([$record]))),
             ]);
+    }
+
+    /** The month a CSN is moved to (user, 3 Nov 2026): next month by default. @return array<int, Forms\Components\Component> */
+    public static function moveMonthForm(): array
+    {
+        return [
+            Forms\Components\TextInput::make('period_month')
+                ->label('Month (YYYY-MM)')
+                ->default(fn () => now()->addMonth()->format('Y-m'))
+                ->placeholder('Blank = the CSN\'s own month')
+                ->regex('/^\d{4}-(0[1-9]|1[0-2])$/')
+                ->maxLength(7),
+        ];
+    }
+
+    public static function monthValue(mixed $value): ?string
+    {
+        $value = trim((string) $value);
+
+        return preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $value) ? $value : null;
     }
 
     /** The other companies a CSN can be moved to. @return array<int, Forms\Components\Component> */

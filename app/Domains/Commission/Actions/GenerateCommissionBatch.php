@@ -76,6 +76,8 @@ class GenerateCommissionBatch
             // the branch's CSNs returned on or before the cutoff and not in another batch
             $csns = ConsignmentNote::query()
                 ->where('source_branch_id', $branch->id)
+                // a CSN moved to a later month (user, 3 Nov 2026) waits for that month's batch
+                ->where(fn ($q) => $q->whereNull('period_month')->orWhere('period_month', '<=', $month))
                 ->whereHas('returnedCsn', fn ($q) => $q->where('returned_at', '<=', $cutoff->copy()->endOfDay()))
                 ->whereNotIn('id', CommissionBatchCsn::query()->select('consignment_note_id'))
                 ->with('returnedCsn')

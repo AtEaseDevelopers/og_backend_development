@@ -45,9 +45,12 @@ class ConsolidateTermInvoices
             ->where('billing_type', CsnBillingType::Term)
             ->where('status', CsnStatus::Delivered)
             ->when($invoicedCsnIds !== [], fn ($q) => $q->whereNotIn('id', $invoicedCsnIds))
-            ->whereHas('deliveryOrder', function ($q) use ($year, $month) {
-                $q->whereYear('delivered_at', $year)->whereMonth('delivered_at', $month);
-            });
+            // the month delivered, unless the CSN was moved to a month (user, 3 Nov 2026): then that month
+            ->where(fn ($q) => $q
+                ->where(fn ($own) => $own->whereNull('period_month')->whereHas('deliveryOrder', function ($d) use ($year, $month) {
+                    $d->whereYear('delivered_at', $year)->whereMonth('delivered_at', $month);
+                }))
+                ->orWhere('period_month', $billingMonth));
 
         if ($branchId) {
             $query->where('source_branch_id', $branchId);

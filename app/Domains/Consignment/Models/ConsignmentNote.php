@@ -39,7 +39,7 @@ class ConsignmentNote extends Model
 
     protected $fillable = [
         'number', 'company_id', 'source_branch_id', 'quotation_id', 'quotation_destination_id',
-        'customer_id', 'billing_type', 'issued_at', 'status', 'return_status', 'payment_status',
+        'customer_id', 'billing_type', 'period_month', 'issued_at', 'status', 'return_status', 'payment_status',
         'customer_name', 'customer_brn', 'customer_tin', 'customer_phone', 'customer_reference',
         'do_number', 'job_no', 'job_date', 'from_location_id', 'to_location_id',
         'consignor_address', 'consignor_name', 'consignor_phone',

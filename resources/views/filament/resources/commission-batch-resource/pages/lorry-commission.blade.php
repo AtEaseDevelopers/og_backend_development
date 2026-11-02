@@ -25,7 +25,6 @@
         $lorry = $this->lorry();
         $lines = $this->lines();
         $editable = $this->editable();
-        $bySheet = $lines->groupBy(fn ($line) => (int) ($line->deliveryOrder?->job_sheet_id ?? 0));
         $drivers = $lines->groupBy(fn ($line) => $line->driver?->name ?? 'Driver removed')->map(fn ($l) => $l->sum(fn ($line) => $this->enteredAmount($line)));
     @endphp
     <div class="cml-summary">
@@ -35,21 +34,41 @@
         <span>Drivers: @foreach ($drivers as $name => $amount)<strong>{{ $name }}</strong> RM {{ number_format($amount, 2) }}@if (! $loop->last) · @endif @endforeach</span>
     </div>
 
-    @forelse ($bySheet as $sheetId => $sheetLines)
-        @php $sheet = $sheetLines->first()->deliveryOrder?->jobSheet; @endphp
-        <div class="cml-card">
-            <div class="cml-head">
+    {{-- date first, then the job sheets of the day (expandable), then the CSNs of a job sheet (user, 3 Nov 2026) --}}
+    @php
+        $byDate = $lines->groupBy(fn ($line) => $line->deliveryOrder?->jobSheet?->operating_date?->format('Y-m-d') ?? '')->sortKeysDesc();
+    @endphp
+    @forelse ($byDate as $date => $dateLines)
+        @php $daySheets = $dateLines->groupBy(fn ($line) => (int) ($line->deliveryOrder?->job_sheet_id ?? 0)); @endphp
+        <div class="cml-card" x-data="{ open: false }">
+            <div class="cml-head" style="cursor:pointer" x-on:click="open = ! open" title="Show the job sheets of this day">
                 <span>
-                    @if ($sheetId)
-                        <a href="{{ \App\Filament\Resources\CommissionBatchResource::getUrl('job-sheet', ['record' => $this->getRecord(), 'jobSheet' => $sheetId]) }}">Job sheet {{ $sheet?->number }}</a>
-                    @else
-                        <strong>No job sheet</strong>
-                    @endif
-                    <span class="cml-sub"> · {{ $sheet?->operating_date?->format('d/m/Y') }} · {{ $sheetLines->pluck('driver.name')->filter()->unique()->implode(', ') ?: 'Driver removed' }}</span>
+                    <strong>{{ $date !== '' ? \Illuminate\Support\Carbon::parse($date)->format('d/m/Y') : 'No date' }}</strong>
+                    <span class="cml-sub"> · {{ $daySheets->count() }} job sheet(s) · {{ $dateLines->pluck('consignment_note_id')->unique()->count() }} CSN(s)</span>
                 </span>
-                <span class="cml-sub">RM {{ number_format($sheetLines->sum(fn ($line) => $this->enteredAmount($line)), 2) }}</span>
+                <span><strong>RM {{ number_format($dateLines->sum(fn ($line) => $this->enteredAmount($line)), 2) }}</strong> <span class="cml-sub" x-text="open ? '▲' : '▼'"></span></span>
             </div>
-            @include('filament.resources.commission-batch-resource.partials.commission-lines', ['lines' => $sheetLines, 'editable' => $editable])
+            <div x-show="open" x-cloak>
+                @foreach ($daySheets as $sheetId => $sheetLines)
+                    @php $sheet = $sheetLines->first()->deliveryOrder?->jobSheet; @endphp
+                    <div class="cml-card" x-data="{ openSheet: false }" style="margin-top:.6rem">
+                        <div class="cml-head" style="cursor:pointer;margin-bottom:0" x-on:click="openSheet = ! openSheet" title="Show the CSNs of this job sheet">
+                            <span>
+                                @if ($sheetId)
+                                    <a href="{{ \App\Filament\Resources\CommissionBatchResource::getUrl('job-sheet', ['record' => $this->getRecord(), 'jobSheet' => $sheetId]) }}" x-on:click.stop>Job sheet {{ $sheet?->number }}</a>
+                                @else
+                                    <strong>No job sheet</strong>
+                                @endif
+                                <span class="cml-sub"> · {{ $sheetLines->pluck('driver.name')->filter()->unique()->implode(', ') ?: 'Driver removed' }} · {{ $sheetLines->pluck('consignment_note_id')->unique()->count() }} CSN(s)</span>
+                            </span>
+                            <span><strong>RM {{ number_format($sheetLines->sum(fn ($line) => $this->enteredAmount($line)), 2) }}</strong> <span class="cml-sub" x-text="openSheet ? '▲' : '▼'"></span></span>
+                        </div>
+                        <div x-show="openSheet" x-cloak style="margin-top:.75rem">
+                            @include('filament.resources.commission-batch-resource.partials.commission-lines', ['lines' => $sheetLines, 'editable' => $editable])
+                        </div>
+                    </div>
+                @endforeach
+            </div>
         </div>
     @empty
         <p class="text-sm text-gray-500 dark:text-gray-400">No commission line for this lorry in the batch.</p>
