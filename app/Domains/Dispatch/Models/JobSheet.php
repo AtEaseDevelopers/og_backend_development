@@ -21,7 +21,7 @@ class JobSheet extends Model
     use LogsActivity;
 
     protected $fillable = [
-        'number', 'company_id', 'operating_branch_id', 'lorry_id', 'driver_id',
+        'number', 'kind', 'parent_job_sheet_id', 'transfer_code', 'company_id', 'operating_branch_id', 'lorry_id', 'driver_id',
         'operating_date', 'status', 'is_shared_dispatch', 'checked_in_at',
         'trip_no', 'checked_in_lorry_id', 'planned_departure_at', 'departed_at', 'arrived_at', 'completed_at',
     ];
@@ -99,5 +99,29 @@ class JobSheet extends Model
     public function subsheets(): HasMany
     {
         return $this->hasMany(Subsheet::class);
+    }
+
+    /** A transfer job sheet (lorry A's code-J legs), as opposed to a lorry's own trip (client's BA, 3 Nov 2026). */
+    public function isTransfer(): bool
+    {
+        return $this->kind === 'transfer';
+    }
+
+    /** A transfer job sheet nobody has picked up yet. */
+    public function isUnassigned(): bool
+    {
+        return $this->isTransfer() && $this->lorry_id === null;
+    }
+
+    /** The main job sheet a transfer job sheet was opened from (lorry A's trip). */
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'parent_job_sheet_id');
+    }
+
+    /** The transfer job sheets opened from this trip, one per code. */
+    public function transferJobSheets(): HasMany
+    {
+        return $this->hasMany(self::class, 'parent_job_sheet_id')->orderBy('transfer_code');
     }
 }

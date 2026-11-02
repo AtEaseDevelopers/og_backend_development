@@ -35,6 +35,9 @@ class JobSheetViewData
             'subsheets.deliveryOrder.lorry',
             'subsheets.deliveryOrder.driver',
             'subsheets.deliveryOrder.subsheet',
+            'parent.lorry',
+            'transferJobSheets.lorry',
+            'transferJobSheets.driver',
         ]);
 
         $summary = $this->summaryCounts($jobSheet);
@@ -66,6 +69,26 @@ class JobSheetViewData
                 'editable' => $status === JobSheetStatus::Draft,
             ],
             'summary' => $summary,
+            // transfer job sheets (client's BA, 3 Nov 2026): where this sheet came from, or the ones opened from it
+            'transfer' => [
+                'is_transfer' => $jobSheet->isTransfer(),
+                'unassigned' => $jobSheet->isUnassigned(),
+                'code' => $jobSheet->transfer_code,
+                'origin' => $jobSheet->parent ? [
+                    'number' => $jobSheet->parent->number,
+                    'lorry' => $jobSheet->parent->lorry?->registration_no,
+                    'url' => JobSheetResource::getUrl('view', ['record' => $jobSheet->parent]),
+                ] : null,
+                'sheets' => $jobSheet->transferJobSheets->map(fn (JobSheet $sheet) => [
+                    'number' => $sheet->number,
+                    'code' => $sheet->transfer_code,
+                    'legs' => $sheet->subsheets()->count(),
+                    'lorry' => $sheet->lorry?->registration_no,
+                    'driver' => $sheet->driver?->name,
+                    'status' => $sheet->isUnassigned() ? 'Unassigned' : ($sheet->status?->getLabel() ?? ''),
+                    'url' => JobSheetResource::getUrl('view', ['record' => $sheet]),
+                ])->values()->all(),
+            ],
             'grouped_tasks' => $this->groupedTasks($jobSheet),
             'driver_options' => $this->driverOptions($jobSheet),
             'lorry_options' => $this->lorryOptions($jobSheet),
@@ -146,7 +169,7 @@ class JobSheetViewData
     {
         // a trip can carry subsheet legs (one group each) and its own CSN deliveries (grouped by route)
         $subsheetGroups = $jobSheet->subsheets
-            ->map(fn (Subsheet $subsheet): array => $this->subsheetGroup($subsheet))
+            ->map(fn (Subsheet $subsheet): array => $subsheet->delivery_order_id ? $this->subsheetGroup($subsheet) : $this->waitingSubsheetGroup($subsheet))
             ->values()
             ->all();
         $subsheetDoIds = $jobSheet->subsheets->pluck('delivery_order_id')->filter()->map(fn ($id) => (int) $id)->all();
@@ -225,6 +248,31 @@ class JobSheetViewData
             $consignmentNote?->delivery_postcode,
             $subsheet->segment_route ?: $subsheet->transfer_code,
         );
+    }
+
+    /** A leg on a transfer job sheet nobody has picked up yet: no delivery order, the CSN and its code only. */
+    private function waitingSubsheetGroup(Subsheet $subsheet): array
+    {
+        $csn = $subsheet->consignmentNote;
+
+        return [
+            'code' => $subsheet->number,
+            'type' => strtoupper($subsheet->typeLabel()),
+            'state' => strtoupper((string) ($csn?->delivery_state ?: '—')),
+            'postcode' => $csn?->delivery_postcode ?? '—',
+            'csn_count' => $csn ? 1 : 0,
+            'do_count' => 0,
+            'rows' => [[
+                'csn_number' => $csn?->number,
+                'do_number' => 'Waiting · no lorry yet',
+                'task_type' => ['key' => (string) $subsheet->task_type, 'label' => $subsheet->typeLabel()],
+                'customer' => $csn?->customer_name,
+                'destination' => $csn?->delivery_city ?: $csn?->delivery_state,
+                'transfer_allocation' => $subsheet->transfer_code,
+                'driver_lorry' => null,
+                'do_url' => null,
+            ]],
+        ];
     }
 
     /**

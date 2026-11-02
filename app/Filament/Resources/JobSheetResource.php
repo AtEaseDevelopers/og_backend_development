@@ -86,10 +86,18 @@ class JobSheetResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('number')
                     ->label('Job Sheet Number')
+                    // a transfer job sheet (client's BA, 3 Nov 2026): its code and the trip it was opened from
+                    ->description(fn (JobSheet $record) => $record->isTransfer() ? 'Transfer '.$record->transfer_code.' · from '.($record->parent?->number ?? '—') : null)
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('kind')
+                    ->label('Type')
+                    ->badge()
+                    ->formatStateUsing(fn ($state) => $state === 'transfer' ? 'Transfer' : 'Main')
+                    ->color(fn ($state) => $state === 'transfer' ? 'info' : 'gray')
                     ->sortable(),
                 Tables\Columns\TextColumn::make('trip_no')
                     ->label('Trip')
-                    ->formatStateUsing(fn ($state) => 'Trip '.($state ?: 1))
+                    ->formatStateUsing(fn ($state, JobSheet $record) => $record->isUnassigned() ? '—' : 'Trip '.($state ?: 1))
                     ->badge()
                     ->color('gray')
                     ->sortable(),
@@ -103,6 +111,7 @@ class JobSheetResource extends Resource
                     ->sortable(),
                 Tables\Columns\TextColumn::make('lorry.registration_no')
                     ->label('Lorry')
+                    ->placeholder('Unassigned')
                     ->sortable(),
                 Tables\Columns\TextColumn::make('driver.name')
                     ->label('Driver')
@@ -115,6 +124,8 @@ class JobSheetResource extends Resource
                 Tables\Columns\TextColumn::make('status')
                     ->label('Status')
                     ->badge()
+                    ->formatStateUsing(fn ($state, JobSheet $record) => $record->isUnassigned() ? 'Unassigned' : ($state instanceof JobSheetStatus ? $state->getLabel() : $state))
+                    ->color(fn ($state, JobSheet $record) => $record->isUnassigned() ? 'warning' : ($state instanceof JobSheetStatus ? $state->getColor() : 'gray'))
                     ->sortable(),
             ])
             ->actions([

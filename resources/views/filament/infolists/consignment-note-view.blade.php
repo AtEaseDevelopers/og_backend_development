@@ -142,6 +142,7 @@
                             @endif
                         </div>
                         <div class="csn-sub-meta">
+                            @if ($subsheet['job_sheet'] ?? null)<span>Job sheet: {{ $subsheet['job_sheet'] }}{{ ($subsheet['job_sheet_unassigned'] ?? false) ? ' · unassigned' : '' }}</span>@endif
                             <span>Lorry: {{ $display($subsheet['sub_lorry'] ?? null) }}</span>
                             <span>Driver: {{ $display($subsheet['sub_driver'] ?? null) }}</span>
                             <span>DO: {{ $display($subsheet['do_number'] ?? null) }}@if ($subsheet['do_status'] ?? null) · {{ $subsheet['do_status'] }}@endif</span>

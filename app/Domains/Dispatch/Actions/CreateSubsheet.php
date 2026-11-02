@@ -4,6 +4,7 @@ namespace App\Domains\Dispatch\Actions;
 
 use App\Domains\Consignment\Models\ConsignmentNote;
 use App\Domains\Dispatch\Models\DeliveryOrder;
+use App\Domains\Dispatch\Models\JobSheet;
 use App\Domains\Dispatch\Models\JobSheetTask;
 use App\Domains\Dispatch\Models\ProfitSharingTransaction;
 use App\Domains\Dispatch\Models\Subsheet;
@@ -81,7 +82,7 @@ class CreateSubsheet
         $main = $csn->deliveryOrder;
         $transferCode = filled($data['transfer_code'] ?? null) ? (string) $data['transfer_code'] : null;
 
-        return Subsheet::query()->create([
+        $subsheet = Subsheet::query()->create([
             'number' => $this->subsheetNumber($csn, $transferCode),
             'consignment_note_id' => $csn->id,
             'transfer_code' => $transferCode,
@@ -95,6 +96,11 @@ class CreateSubsheet
             'psi_amount' => (float) ($data['psi_amount'] ?? 0),
             'pso_amount' => (float) ($data['pso_amount'] ?? ($data['psi_amount'] ?? 0)),
         ]);
+
+        // a transfer code: the leg goes on the main lorry's transfer job sheet for that code (client's BA, 3 Nov 2026)
+        app(TransferJobSheets::class)->place($subsheet);
+
+        return $subsheet->fresh();
     }
 
     /**
@@ -103,10 +109,17 @@ class CreateSubsheet
      * task, and the profit sharing of the leg. A subsheet already on a lorry moves to this one (reassign) unless
      * its leg is delivered or cancelled. $data may change the type / transfer code on the way.
      */
-    public function assignToLorry(Subsheet $subsheet, Lorry $lorry, array $data = []): Subsheet
+    public function assignToLorry(Subsheet $subsheet, Lorry $lorry, array $data = [], ?JobSheet $target = null): Subsheet
     {
         if ($subsheet->delivery_order_id) {
             return $this->moveToLorry($subsheet, $lorry, $data);
+        }
+
+        // a leg waiting on a transfer job sheet: picking it up picks the whole sheet up (client's BA, 3 Nov 2026)
+        if ($target === null && $subsheet->job_sheet_id && ($sheet = JobSheet::query()->find($subsheet->job_sheet_id)) && $sheet->isUnassigned()) {
+            app(TransferJobSheets::class)->assign($sheet, $lorry, filled($data['sub_driver_id'] ?? null) ? (int) $data['sub_driver_id'] : null);
+
+            return $subsheet->fresh();
         }
 
         if (! $lorry->is_active) {
@@ -125,7 +138,7 @@ class CreateSubsheet
             throw new InvalidArgumentException('Lorry '.$lorry->registration_no.' already carries CSN '.$csn->number.' (main lorry).');
         }
 
-        return DB::transaction(function () use ($subsheet, $lorry, $data, $csn, $main) {
+        return DB::transaction(function () use ($subsheet, $lorry, $data, $csn, $main, $target) {
             $lorry->loadMissing(['branch', 'defaultDriver']);
             $date = filled($data['operating_date'] ?? null)
                 ? (string) $data['operating_date']
@@ -143,7 +156,8 @@ class CreateSubsheet
                 $subsheet->psi_amount = round((float) $data['psi_amount'], 2);
             }
 
-            $jobSheet = $this->resolveJobSheet->forLorry($lorry, $date, $driverId, $lorry->company_id ?? $csn->company_id, $isShared);
+            // on the transfer job sheet being picked up, else the lorry's own trip of the day
+            $jobSheet = $target ?? $this->resolveJobSheet->forLorry($lorry, $date, $driverId, $lorry->company_id ?? $csn->company_id, $isShared);
 
             $subDo = DeliveryOrder::query()->create([
                 'number' => $this->numbering->next($csn->sourceBranch, DocumentType::Do),

@@ -52,6 +52,20 @@ class ViewJobSheet extends ViewRecord
             return;
         }
 
+        // a transfer job sheet picked up here: the whole sheet goes to the lorry (client's BA, 3 Nov 2026)
+        if ($record->isUnassigned() && $this->lorryId) {
+            try {
+                $legs = app(\App\Domains\Dispatch\Actions\TransferJobSheets::class)->assign($record, \App\Domains\MasterData\Models\Lorry::query()->findOrFail($this->lorryId), $this->driverId);
+                Notification::make()->title($record->number.' assigned · '.$legs.' leg(s) on the lorry')->success()->send();
+            } catch (\Throwable $e) {
+                Notification::make()->title($e->getMessage())->danger()->send();
+            }
+
+            $this->refreshRecord();
+
+            return;
+        }
+
         $record->update([
             'driver_id' => $this->driverId,
             'lorry_id' => $this->lorryId,
@@ -85,9 +99,31 @@ class ViewJobSheet extends ViewRecord
                 ->label('Audit Log')
                 ->color('gray')
                 ->url(fn (): string => JobSheetResource::getUrl('audit-log', ['record' => $record])),
+            // a transfer job sheet waiting to be picked up (client's BA, 3 Nov 2026)
+            Actions\Action::make('assignJobSheet')
+                ->label('Assign job sheet')
+                ->icon('heroicon-o-truck')
+                ->color('primary')
+                ->visible(fn (): bool => $record->isUnassigned())
+                ->modalHeading(fn () => 'Assign '.$record->number.' to a lorry')
+                ->modalDescription('Every leg on this transfer job sheet goes to the lorry and its driver.')
+                ->form([
+                    \Filament\Forms\Components\Select::make('lorry_id')->label('Lorry')->options(fn () => \App\Filament\Resources\ConsignmentNoteResource::lorryOptions())->required()->searchable(),
+                    \Filament\Forms\Components\Select::make('driver_id')->label('Driver')->options(fn () => \App\Domains\MasterData\Models\Driver::query()->where('is_active', true)->orderBy('name')->pluck('name', 'id'))->searchable()->helperText('Blank: the lorry\'s default driver.'),
+                ])
+                ->action(function (array $data) use ($record): void {
+                    try {
+                        $legs = app(\App\Domains\Dispatch\Actions\TransferJobSheets::class)->assign($record, \App\Domains\MasterData\Models\Lorry::query()->findOrFail($data['lorry_id']), filled($data['driver_id'] ?? null) ? (int) $data['driver_id'] : null);
+                        Notification::make()->title($record->number.' assigned · '.$legs.' leg(s) on the lorry')->success()->send();
+                    } catch (\Throwable $e) {
+                        Notification::make()->title($e->getMessage())->danger()->send();
+                    }
+
+                    $this->refreshRecord();
+                }),
             Actions\Action::make('saveDraft')
                 ->label('Save Draft')
-                ->visible(fn (): bool => $record->status === JobSheetStatus::Draft)
+                ->visible(fn (): bool => $record->status === JobSheetStatus::Draft && ! $record->isUnassigned())
                 ->action(fn () => $this->saveDraft()),
         ];
     }

@@ -122,6 +122,9 @@ class AssignCsnToLorry
                 ->update(['parent_do_id' => $do->id]);
             $csn->subsheets()->whereNull('main_lorry_id')->update(['main_lorry_id' => $lorry->id, 'main_driver_id' => $do->driver_id]);
 
+            // subsheets with a transfer code created before the CSN was on a lorry: now on this lorry's transfer job sheets
+            app(TransferJobSheets::class)->placePending($csn->fresh());
+
             $this->notifyDriver($do->load(['consignmentNote', 'jobSheet', 'lorry', 'driver']));
 
             return $do;

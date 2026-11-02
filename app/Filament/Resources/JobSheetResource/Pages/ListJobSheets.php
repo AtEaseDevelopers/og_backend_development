@@ -42,6 +42,9 @@ class ListJobSheets extends ListRecords
 
     public ?string $filterStatus = null;
 
+    /** '' any, 'main' = lorries' own trips, 'transfer' = transfer job sheets, 'unassigned' = transfer sheets nobody picked up */
+    public ?string $filterKind = null;
+
     public function mount(): void
     {
         parent::mount();
@@ -74,6 +77,7 @@ class ListJobSheets extends ListRecords
         $this->filterDriverId = null;
         $this->filterTaskCount = null;
         $this->filterStatus = null;
+        $this->filterKind = null;
         $this->resetTable();
     }
 
@@ -91,7 +95,10 @@ class ListJobSheets extends ListRecords
 
         // The Task Count column adds the delivery order count to the table query itself, so no withCount here
         return $query
-            ->with(['operatingBranch', 'lorry', 'driver'])
+            ->with(['operatingBranch', 'lorry', 'driver', 'parent'])
+            ->when($this->filterKind === 'main', fn (Builder $builder) => $builder->where('kind', 'main'))
+            ->when($this->filterKind === 'transfer', fn (Builder $builder) => $builder->where('kind', 'transfer'))
+            ->when($this->filterKind === 'unassigned', fn (Builder $builder) => $builder->where('kind', 'transfer')->whereNull('lorry_id'))
             ->when(filled($this->filterNumber), fn (Builder $builder) => $builder->where(
                 'number',
                 'like',

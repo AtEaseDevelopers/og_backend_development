@@ -160,6 +160,9 @@ class CsnViewData
                     : null,
                 'sub_lorry' => $subsheet->subLorry?->registration_no,
                 'sub_driver' => $subsheet->subDriver?->name,
+                // the transfer job sheet the leg sits on (client's BA, 3 Nov 2026), waiting until picked up
+                'job_sheet' => $subsheet->jobSheet?->number,
+                'job_sheet_unassigned' => (bool) $subsheet->jobSheet?->isUnassigned(),
                 'segment_route' => $subsheet->segment_route,
                 'handover_status' => $subsheet->handover_status,
                 'psi_amount' => (float) $subsheet->psi_amount,

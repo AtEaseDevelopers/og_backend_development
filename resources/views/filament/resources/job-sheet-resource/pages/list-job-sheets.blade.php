@@ -73,6 +73,15 @@
                 </select>
             </div>
             <div class="js-filter-field">
+                <label class="js-filter-label" for="filterKind">Type</label>
+                <select id="filterKind" wire:model.defer="filterKind" class="js-filter-input">
+                    <option value="">All</option>
+                    <option value="main">Main (lorry's own trip)</option>
+                    <option value="transfer">Transfer job sheets</option>
+                    <option value="unassigned">Transfer · unassigned</option>
+                </select>
+            </div>
+            <div class="js-filter-field">
                 <label class="js-filter-label" for="filterTaskCount">Task Count</label>
                 <select id="filterTaskCount" wire:model.defer="filterTaskCount" class="js-filter-input">
                     <option value="">Any</option>

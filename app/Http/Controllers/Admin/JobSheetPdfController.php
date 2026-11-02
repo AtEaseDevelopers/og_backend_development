@@ -30,6 +30,14 @@ class JobSheetPdfController
 
         $dos = $sheet->deliveryOrders->sortBy('id')->values();
         $subsheets = Subsheet::query()->whereIn('id', $dos->pluck('subsheet_id')->filter()->all())->get()->keyBy('id');
+
+        // a transfer job sheet not picked up yet (client's BA, 3 Nov 2026) has its legs but no delivery orders: print them
+        if ($sheet->isTransfer() && $dos->isEmpty()) {
+            $waiting = $sheet->subsheets()->get();
+            $subsheets = $waiting->keyBy('id');
+            $dos = $waiting->map(fn (Subsheet $subsheet) => (object) ['id' => $subsheet->id, 'number' => $subsheet->number, 'subsheet_id' => $subsheet->id, 'consignment_note_id' => $subsheet->consignment_note_id])->values();
+        }
+
         $csns = ConsignmentNote::query()
             ->with(['fromLocation:id,name', 'toLocation:id,name', 'lines'])
             ->whereIn('id', $dos->pluck('consignment_note_id')->filter()->all())

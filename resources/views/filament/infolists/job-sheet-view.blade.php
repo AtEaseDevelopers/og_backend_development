@@ -9,6 +9,7 @@
     $driverOptions = $driver_options ?? [];
     $lorryOptions = $lorry_options ?? [];
     $listUrl = $list_url ?? '#';
+    $transfer = $transfer ?? [];
 
     $display = fn ($value): string => filled($value) ? (string) $value : '—';
 @endphp
@@ -24,6 +25,43 @@
         'lorry_options' => $lorryOptions,
         'read_only' => false,
     ])
+
+    {{-- transfer job sheets (client's BA, 3 Nov 2026): a transfer sheet shows its origin; a main sheet the sheets opened from it --}}
+    @if ($transfer['is_transfer'] ?? false)
+        <div class="jsv-card">
+            <div class="jsv-card-title">Transfer job sheet · code {{ $transfer['code'] ?? '—' }}</div>
+            <div style="font-size:.85rem">
+                @if ($transfer['origin'] ?? null)
+                    Opened from <a href="{{ $transfer['origin']['url'] }}" wire:navigate class="jsv-action-link">{{ $transfer['origin']['number'] }}</a>
+                    (main lorry {{ $display($transfer['origin']['lorry'] ?? null) }}).
+                @endif
+                @if ($transfer['unassigned'] ?? false)
+                    <strong>Unassigned</strong> · use <em>Assign job sheet</em> to give every leg on it to a lorry and driver.
+                @endif
+            </div>
+        </div>
+    @elseif (($transfer['sheets'] ?? []) !== [])
+        <div class="jsv-card">
+            <div class="jsv-card-title">Transfer job sheets opened from this trip</div>
+            <div class="jsv-table-wrap">
+                <table class="jsv-table">
+                    <thead><tr><th>Job sheet</th><th>Code</th><th>Legs</th><th>Lorry</th><th>Driver</th><th>Status</th></tr></thead>
+                    <tbody>
+                        @foreach ($transfer['sheets'] as $sheet)
+                            <tr>
+                                <td><a href="{{ $sheet['url'] }}" wire:navigate class="jsv-action-link">{{ $sheet['number'] }}</a></td>
+                                <td>{{ $sheet['code'] }}</td>
+                                <td>{{ $sheet['legs'] }}</td>
+                                <td>{{ $display($sheet['lorry']) }}</td>
+                                <td>{{ $display($sheet['driver']) }}</td>
+                                <td>{{ $sheet['status'] }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    @endif
 
     {{-- Grouped tasks --}}
     <div class="jsv-card">

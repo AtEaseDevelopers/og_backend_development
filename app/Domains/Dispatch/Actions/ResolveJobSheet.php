@@ -31,6 +31,8 @@ class ResolveJobSheet
         $resolvedDriverId = $driverId ?: $lorry->default_driver_id;
 
         $base = JobSheet::query()
+            // a lorry's own trips; its transfer job sheets (picked up) are separate sheets
+            ->where('kind', 'main')
             ->where('lorry_id', $lorry->id)
             ->whereDate('operating_date', $date);
 
