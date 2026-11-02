@@ -8,6 +8,8 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditLorryCompany extends EditRecord
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     protected static string $resource = LorryCompanyResource::class;
 
     protected function getHeaderActions(): array

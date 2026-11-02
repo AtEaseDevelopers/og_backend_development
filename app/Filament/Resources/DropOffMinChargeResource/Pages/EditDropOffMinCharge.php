@@ -7,5 +7,7 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditDropOffMinCharge extends EditRecord
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     protected static string $resource = DropOffMinChargeResource::class;
 }

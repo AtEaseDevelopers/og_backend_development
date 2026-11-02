@@ -55,14 +55,24 @@ class DriverResource extends Resource
                             ->when(\App\Support\CurrentCompany::id(), fn ($q, $id) => $q->where('company_id', $id))
                             ->orderBy('name')->get()->mapWithKeys(fn ($c) => [$c->id => $c->label()]))
                         ->searchable()
+                        ->live()
+                        // the company's group fills in (user, 3 Nov 2026); it can still be changed or cleared
+                        ->afterStateUpdated(function ($state, Forms\Set $set): void {
+                            $group = $state ? \App\Domains\MasterData\Models\LorryCompany::query()->whereKey($state)->value('lorry_group_id') : null;
+
+                            if ($group) {
+                                $set('lorry_group_id', $group);
+                            }
+                        })
                         ->helperText('Add one in Master Data → Lorry Companies.'),
                     Forms\Components\Select::make('lorry_group_id')
                         ->label('Lorry Group')
                         ->options(fn () => \App\Domains\MasterData\Models\LorryGroup::query()->where('is_active', true)
                             ->when(\App\Support\CurrentCompany::id(), fn ($q, $id) => $q->where('company_id', $id))
-                            ->orderBy('name')->get()->mapWithKeys(fn ($g) => [$g->id => $g->label()]))
+                            ->orderBy('name')->pluck('name', 'id'))
                         ->searchable()
-                        ->helperText('Add one in Master Data → Lorry Groups.'),
+                        ->nullable()
+                        ->helperText('Optional · filled from the lorry company\'s group. Add one in Master Data → Lorry Groups.'),
                     Forms\Components\TextInput::make('lorry_number')->label('Lorry Number')->maxLength(30)->placeholder('e.g. JCM 6456'),
                     Forms\Components\TextInput::make('lorry_type')->label('Lorry Type')->maxLength(50)->placeholder('e.g. 24FT'),
                     Forms\Components\TextInput::make('tonnage')->label('Tonne')->numeric()->minValue(0),
@@ -124,7 +134,7 @@ class DriverResource extends Resource
             Tables\Columns\TextColumn::make('ic_number')->label('IC')->toggleable(isToggledHiddenByDefault: true),
             Tables\Columns\TextColumn::make('lorry_number')->label('Lorry')->description(fn ($record) => collect([$record->lorry_type, $record->tonnage !== null ? rtrim(rtrim(number_format((float) $record->tonnage, 2), '0'), '.').' t' : null])->filter()->implode(' · ') ?: null)->placeholder('—')->searchable(),
             Tables\Columns\TextColumn::make('lorry_company')->label('Lorry company')->description(fn ($record) => $record->lorry_company_code)->placeholder('—')->toggleable(),
-            Tables\Columns\TextColumn::make('lorry_group')->label('Lorry group')->description(fn ($record) => $record->lorry_group_code)->placeholder('—')->toggleable(),
+            Tables\Columns\TextColumn::make('lorry_group')->label('Lorry group')->placeholder('—')->toggleable(),
             Tables\Columns\TextColumn::make('attendant_name')->label('Attendant')->placeholder('—')->toggleable(),
             Tables\Columns\TextColumn::make('type')->badge(),
             Tables\Columns\IconColumn::make('is_active')->boolean(),

@@ -8,6 +8,8 @@ use Filament\Resources\Pages\ViewRecord;
 
 class ViewBranch extends ViewRecord
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     protected static string $resource = BranchResource::class;
 
     protected function getHeaderActions(): array

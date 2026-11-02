@@ -9,6 +9,8 @@ use App\Filament\Concerns\HasExcelColumnFilters;
 
 class ListSaLocations extends ListRecords
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     use HasExcelColumnFilters;
 
     protected static string $resource = SaLocationResource::class;

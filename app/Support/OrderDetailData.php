@@ -606,6 +606,8 @@ class OrderDetailData
                 'badge' => $badge[0],
                 'badge_color' => $badge[1],
                 'rows' => $rows,
+                'sst' => (float) $order->tax_amount > 0 ? 'RM '.number_format((float) $order->tax_amount, 2) : null,
+                'sst_rate' => rtrim(rtrim(number_format(\App\Support\QuotationMatrix::sstRate(), 2, '.', ''), '0'), '.'),
                 'total' => 'RM '.number_format((float) $order->total_amount, 2),
                 'basis' => $basis,
             ],

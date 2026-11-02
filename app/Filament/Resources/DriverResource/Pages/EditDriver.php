@@ -8,6 +8,8 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditDriver extends EditRecord
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     protected static string $resource = DriverResource::class;
 
     protected function afterSave(): void

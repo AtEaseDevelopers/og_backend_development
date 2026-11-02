@@ -10,6 +10,8 @@ use Filament\Resources\Pages\ListRecords;
 
 class ListUoms extends ListRecords
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     use HasExcelColumnFilters;
 
     protected static string $resource = UomResource::class;

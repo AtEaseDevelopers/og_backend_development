@@ -255,6 +255,12 @@ class CustomerForm
                     ->label('Tax code')
                     ->placeholder('SV-6')
                     ->maxLength(50),
+                // the customer's orders carry SST (user, 3 Nov 2026): Order Quotation, Proforma, Cash Bill / Invoice
+                Forms\Components\Toggle::make('charges_sst')
+                    ->label('Charge SST')
+                    ->helperText(fn () => 'SST at '.rtrim(rtrim(number_format((float) config('og.sst_rate', 6), 2, '.', ''), '0'), '.').'% on this customer\'s orders.')
+                    ->default(false)
+                    ->inline(false),
                 Forms\Components\TextInput::make('tin')
                     ->label('TIN no.')
                     ->maxLength(50)

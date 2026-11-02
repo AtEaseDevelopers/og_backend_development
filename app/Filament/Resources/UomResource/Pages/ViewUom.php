@@ -14,6 +14,8 @@ use Filament\Resources\Pages\ViewRecord;
 
 class ViewUom extends ViewRecord
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     protected static string $resource = UomResource::class;
 
     protected function getHeaderActions(): array

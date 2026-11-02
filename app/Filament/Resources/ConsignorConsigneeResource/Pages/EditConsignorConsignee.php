@@ -8,6 +8,8 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditConsignorConsignee extends EditRecord
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     protected static string $resource = ConsignorConsigneeResource::class;
 
     protected function getHeaderActions(): array

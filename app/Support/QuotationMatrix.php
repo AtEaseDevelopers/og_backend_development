@@ -236,10 +236,25 @@ class QuotationMatrix
             }
         }
 
+        // SST for a customer ticked "Charge SST" (user, 3 Nov 2026), at the system rate on everything above
+        $tax = static::sstFor($quotation->customer, (float) $subtotal);
+
         $quotation->update([
             'subtotal' => $subtotal,
-            'total_amount' => $subtotal + (float) $quotation->tax_amount,
+            'tax_amount' => $tax,
+            'total_amount' => round($subtotal + $tax, 2),
         ]);
+    }
+
+    /** The SST on an amount for a customer: the system rate when the customer is ticked "Charge SST", else 0. */
+    public static function sstFor(?\App\Domains\MasterData\Models\Customer $customer, float $amount): float
+    {
+        return $customer?->charges_sst ? round($amount * static::sstRate() / 100, 2) : 0.0;
+    }
+
+    public static function sstRate(): float
+    {
+        return (float) config('og.sst_rate', 6);
     }
 
     /**

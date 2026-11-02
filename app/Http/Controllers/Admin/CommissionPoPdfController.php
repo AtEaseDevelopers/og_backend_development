@@ -57,7 +57,7 @@ class CommissionPoPdfController
             'po' => [
                 'number' => $record->purchaseOrder?->po_number ?? $record->number,
                 'date' => ($record->batch?->cutoff_date ?? $record->created_at)?->format('d/m/Y'),
-                'lorry_group' => (string) ($driver?->lorry_group_code ?: $driver?->lorry_group ?: ''),
+                'lorry_group' => (string) ($driver?->lorry_group ?: ''),
                 'supplier_code' => $supplierCode,
                 'supplier_name' => strtoupper((string) ($driver?->lorry_company ?: $driver?->name ?: '')),
                 'gst' => '',

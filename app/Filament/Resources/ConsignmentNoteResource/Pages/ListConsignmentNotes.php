@@ -705,18 +705,18 @@ class ListConsignmentNotes extends ListRecords
         $in = fn () => $this->withMoved($base(), 'in');
 
         $toggles = [
-            ['value' => '', 'label' => 'All', 'title' => 'Moved or not', 'count' => $base()->count()],
-            ['value' => 'out', 'label' => 'Moved out', 'title' => 'This company\'s CSNs moved to another company', 'count' => $out()->count()],
-            ['value' => 'in', 'label' => 'Moved in', 'title' => 'CSNs another company moved here', 'count' => $in()->count()],
+            ['value' => '', 'label' => 'All', 'title' => 'Transferred or not', 'count' => $base()->count()],
+            ['value' => 'out', 'label' => 'Transferred out', 'title' => 'This company\'s CSNs transferred to another company', 'count' => $out()->count()],
+            ['value' => 'in', 'label' => 'Transferred in', 'title' => 'CSNs another company transferred here', 'count' => $in()->count()],
         ];
 
         foreach (Company::query()->whereKeyNot($me)->orderBy('code')->get() as $company) {
             if ($count = $this->withMoved($base(), 'to:'.$company->id)->count()) {
-                $toggles[] = ['value' => 'to:'.$company->id, 'label' => '→ '.$company->code, 'title' => 'Moved to '.$company->name, 'count' => $count];
+                $toggles[] = ['value' => 'to:'.$company->id, 'label' => '→ '.$company->code, 'title' => 'Transferred to '.$company->name, 'count' => $count];
             }
 
             if ($count = $this->withMoved($base(), 'from:'.$company->id)->count()) {
-                $toggles[] = ['value' => 'from:'.$company->id, 'label' => '← '.$company->code, 'title' => 'Moved here from '.$company->name, 'count' => $count];
+                $toggles[] = ['value' => 'from:'.$company->id, 'label' => '← '.$company->code, 'title' => 'Transferred here from '.$company->name, 'count' => $count];
             }
         }
 
@@ -738,21 +738,6 @@ class ListConsignmentNotes extends ListRecords
         };
     }
 
-    public function transferToggles(): array
-    {
-        $codes = TransferCode::query()->where('is_active', true)->orderBy('code')->get();
-
-        return collect([['value' => '', 'label' => 'All', 'title' => 'Any transfer code', 'count' => $this->filteredWithout('transferCode')->count()]])
-            ->concat($codes->map(fn (TransferCode $code): array => [
-                'value' => (string) $code->id,
-                'label' => $code->code,
-                'title' => filled($code->name) ? $code->code.' — '.$code->name : $code->code,
-                'count' => $this->withTransferCode($this->filteredWithout('transferCode'), (string) $code->id)->count(),
-            ]))
-            ->values()
-            ->all();
-    }
-
     /** The CSN list with every filter except one (its own toggle shows the counts of its choices). */
     protected function filteredWithout(string $property): Builder
     {
@@ -766,9 +751,13 @@ class ListConsignmentNotes extends ListRecords
         }
     }
 
-    /** CSNs of a transfer code: set on the CSN, or on one of its subsheets. */
+    /** CSNs of a transfer code: set on the CSN, or on one of its subsheets; "none" = neither. */
     protected function withTransferCode(Builder $query, string $id): Builder
     {
+        if ($id === 'none') {
+            return $query->whereNull('transfer_code_id')->whereDoesntHave('subsheets', fn (Builder $s) => $s->whereNotNull('transfer_code')->where('transfer_code', '!=', ''));
+        }
+
         $code = TransferCode::query()->whereKey($id)->value('code');
 
         return $query->where(fn (Builder $q) => $q->where('transfer_code_id', $id)
@@ -1057,9 +1046,14 @@ class ListConsignmentNotes extends ListRecords
     /** @return array<int|string, string> */
     public function transferCodeOptions(): array
     {
-        return ['' => 'All'] + TransferCode::query()->orderBy('code')->get()
-            ->mapWithKeys(fn (TransferCode $t) => [$t->id => filled($t->name) ? $t->code.' — '.$t->name : $t->code])
-            ->all();
+        // the code and how many CSNs carry it (user, 3 Nov 2026), no description; "No transfer code" = none on the
+        // CSN nor on a subsheet
+        $base = fn () => $this->filteredWithout('transferCode');
+
+        return ['' => 'All ('.$base()->count().')', 'none' => 'No transfer code ('.$this->withTransferCode($base(), 'none')->count().')']
+            + TransferCode::query()->where('is_active', true)->orderBy('code')->get()
+                ->mapWithKeys(fn (TransferCode $t) => [$t->id => $t->code.' ('.$this->withTransferCode($base(), (string) $t->id)->count().')'])
+                ->all();
     }
 
     /** Salespeople, plus anyone already set as salesperson on a CSN of this company. @return array<int|string, string> */

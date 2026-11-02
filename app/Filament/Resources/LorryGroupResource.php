@@ -46,11 +46,8 @@ class LorryGroupResource extends Resource
         return $form->schema([
             Forms\Components\Section::make()->schema([
                 Forms\Components\Hidden::make('company_id')->default(fn () => CurrentCompany::id()),
-                Forms\Components\TextInput::make('code')->label('Code')->maxLength(50)->placeholder('e.g. CS'),
+                // a group is a name only (user, 3 Nov 2026): lorry companies and drivers are assigned under it
                 Forms\Components\TextInput::make('name')->label('Name')->required()->maxLength(150),
-                Forms\Components\TextInput::make('contact')->label('Contact')->tel()->maxLength(50),
-                Forms\Components\TextInput::make('email')->label('Email')->email()->maxLength(255),
-                Forms\Components\Textarea::make('address')->label('Address')->rows(2)->columnSpanFull(),
                 Forms\Components\Toggle::make('is_active')->label('Active')->default(true),
             ])->columns(2),
         ]);
@@ -60,11 +57,8 @@ class LorryGroupResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('code')->label('Code')->searchable()->sortable()->placeholder('—'),
                 Tables\Columns\TextColumn::make('name')->label('Name')->searchable()->sortable()->weight('semibold'),
-                Tables\Columns\TextColumn::make('contact')->label('Contact')->placeholder('—'),
-                Tables\Columns\TextColumn::make('email')->label('Email')->placeholder('—')->toggleable(),
-                Tables\Columns\TextColumn::make('address')->label('Address')->limit(50)->placeholder('—')->toggleable(),
+                Tables\Columns\TextColumn::make('lorry_companies_count')->counts('lorryCompanies')->label('Lorry companies'),
                 Tables\Columns\TextColumn::make('drivers_count')->counts('drivers')->label('Drivers'),
                 Tables\Columns\IconColumn::make('is_active')->label('Active')->boolean(),
             ])

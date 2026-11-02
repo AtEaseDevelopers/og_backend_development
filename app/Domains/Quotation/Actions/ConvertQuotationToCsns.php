@@ -120,7 +120,12 @@ class ConvertQuotationToCsns
                     'from_location_id' => $quotation->from_location_id,
                     'to_location_id' => $single ? $quotation->to_location_id : null,
                     'subtotal' => $subtotal,
-                    'total_amount' => $subtotal,
+                    // SST for a customer ticked "Charge SST" (user, 3 Nov 2026), at the system rate
+                    'is_taxable' => (bool) $quotation->customer?->charges_sst,
+                    'tax_code' => $quotation->customer?->charges_sst ? ($quotation->customer->tax_type ?: 'SST') : null,
+                    'tax_rate' => \App\Support\QuotationMatrix::sstRate(),
+                    'tax_amount' => \App\Support\QuotationMatrix::sstFor($quotation->customer, (float) $subtotal),
+                    'total_amount' => round($subtotal + \App\Support\QuotationMatrix::sstFor($quotation->customer, (float) $subtotal), 2),
                     // the CSN date is the day the CSN is created (the expected delivery date is a free-text remark)
                     'issued_at' => now()->toDateString(),
                     'qr_token' => (string) Str::uuid(),

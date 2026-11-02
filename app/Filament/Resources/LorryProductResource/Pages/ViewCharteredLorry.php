@@ -7,5 +7,7 @@ use App\Filament\Resources\UomResource\Pages\ViewUom;
 
 class ViewCharteredLorry extends ViewUom
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     protected static string $resource = LorryProductResource::class;
 }

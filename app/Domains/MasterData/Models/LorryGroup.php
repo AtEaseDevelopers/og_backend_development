@@ -23,8 +23,14 @@ class LorryGroup extends Model
         return $this->hasMany(Driver::class, 'lorry_group_id');
     }
 
+    public function lorryCompanies(): HasMany
+    {
+        return $this->hasMany(LorryCompany::class, 'lorry_group_id');
+    }
+
+    /** The name (user, 3 Nov 2026: a group is a name only). */
     public function label(): string
     {
-        return trim(($this->code ? $this->code.' — ' : '').$this->name);
+        return (string) $this->name;
     }
 }

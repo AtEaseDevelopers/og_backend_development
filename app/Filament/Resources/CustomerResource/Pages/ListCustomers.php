@@ -9,6 +9,8 @@ use App\Filament\Concerns\HasExcelColumnFilters;
 
 class ListCustomers extends ListRecords
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     use HasExcelColumnFilters;
 
     protected static string $resource = CustomerResource::class;

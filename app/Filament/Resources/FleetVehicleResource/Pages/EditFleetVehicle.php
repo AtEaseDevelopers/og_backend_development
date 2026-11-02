@@ -8,6 +8,8 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditFleetVehicle extends EditRecord
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     protected static string $resource = FleetVehicleResource::class;
 
     protected function getHeaderActions(): array

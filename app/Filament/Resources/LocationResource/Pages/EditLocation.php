@@ -7,6 +7,8 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditLocation extends EditRecord
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     protected static string $resource = LocationResource::class;
 
     protected function getRedirectUrl(): string

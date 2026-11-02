@@ -100,6 +100,7 @@ class CustomerResource extends Resource
                         Infolists\Components\TextEntry::make('gst_no')->label('GST no.')->placeholder('—'),
                         Infolists\Components\TextEntry::make('sst_registration_no')->label('SST no.')->placeholder('—'),
                         Infolists\Components\TextEntry::make('tax_type')->label('Tax code')->placeholder('—'),
+                        Infolists\Components\IconEntry::make('charges_sst')->label('Charge SST')->boolean(),
                         Infolists\Components\TextEntry::make('tin')->label('TIN no.')->placeholder('—'),
                         Infolists\Components\TextEntry::make('msic_code')->label('MSIC 1')->placeholder('—'),
                         Infolists\Components\TextEntry::make('msic_code_2')->label('MSIC 2')->placeholder('—'),

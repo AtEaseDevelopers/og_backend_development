@@ -89,9 +89,9 @@
         $consigneeStore = $quotation->consigneeStore;
         $consignorMode = $isStore ? 'Customer Drop Off' : 'Pick Up';
         $consigneeMode = $consigneeStore ? 'Self Collection' : 'Deliver';
-        $consignorAddress = $isStore
-            ? trim((method_exists($store, 'label') ? $store?->label() : ($store?->name ?? 'Store')).($store?->address ? "\n".$store->address : ''))
-            : ($quotation->pickup_location ?: ($quotation->customer_address ?: $customer?->address));
+        // a Customer Drop Off keeps the consignor's own address (user, 3 Nov 2026); the store is named on its own line
+        $consignorAddress = $quotation->pickup_location ?: ($quotation->customer_address ?: $customer?->address);
+        $dropOffStore = $isStore ? trim((string) (method_exists($store, 'label') ? $store?->label() : ($store?->name ?? ''))) : '';
         $consigneeAddress = $consigneeStore
             ? trim($consigneeStore->label().($consigneeStore->address ? "\n".$consigneeStore->address : ''))
             : ($quotation->drop_off_location ?: ($quotation->consignee_address ?: $quotation->destinations->sortBy('sequence')->first()?->address));
@@ -128,7 +128,9 @@
         };
         $minimumTopUp = (float) $quotation->destinations->sum('minimum_charge_applied');
         $subtotal = (float) ($quotation->subtotal ?: $lines->sum('line_total'));
-        $total = (float) ($quotation->total_amount ?: $subtotal + $minimumTopUp);
+        $sst = (float) $quotation->tax_amount;
+        $sstRate = rtrim(rtrim(number_format(\App\Support\QuotationMatrix::sstRate(), 2, '.', ''), '0'), '.');
+        $total = (float) ($quotation->total_amount ?: $subtotal + $minimumTopUp + $sst);
     @endphp
 
     {{-- letterhead, repeated on every page (the quotation's) --}}
@@ -193,8 +195,9 @@
                         <tr><td class="k">Pick-up {{ $loop->iteration }}</td><td class="v">{!! nl2br(e($stop['location'] ?: '—')) !!}@if ($stop['do_number'])<br><span class="muted">DO {{ $stop['do_number'] }}</span>@endif</td></tr>
                     @endforeach
                 @else
-                <tr><td class="k">{{ $isStore ? 'Store' : 'Address' }}</td><td class="v">{!! nl2br(e($consignorAddress ?: '—')) !!}</td></tr>
+                <tr><td class="k">Address</td><td class="v">{!! nl2br(e($consignorAddress ?: '—')) !!}</td></tr>
                 @endif
+                @if ($dropOffStore !== '')<tr><td class="k">Drop off at</td><td class="v">{{ $dropOffStore }}</td></tr>@endif
                 @if ($quotation->fromLocation?->name)<tr><td class="k">Area</td><td class="v">{{ $quotation->fromLocation->name }}</td></tr>@endif
             </table>
         </td>
@@ -250,9 +253,11 @@
             @empty
                 <tr><td colspan="{{ $showAmounts ? 6 : 4 }}" class="c muted">No items</td></tr>
             @endforelse
-            @if ($showAmounts && $minimumTopUp > 0)
+            @if ($showAmounts && ($minimumTopUp > 0 || $sst > 0))
                 <tr><td colspan="3" class="blank"></td><td colspan="2" class="num">Subtotal</td><td class="num">{{ number_format($subtotal, 2) }}</td></tr>
-                <tr><td colspan="3" class="blank"></td><td colspan="2" class="num">Minimum charge top-up</td><td class="num">{{ number_format($minimumTopUp, 2) }}</td></tr>
+                @if ($minimumTopUp > 0)<tr><td colspan="3" class="blank"></td><td colspan="2" class="num">Minimum charge top-up</td><td class="num">{{ number_format($minimumTopUp, 2) }}</td></tr>@endif
+                {{-- SST for a customer ticked "Charge SST" (user, 3 Nov 2026) --}}
+                @if ($sst > 0)<tr><td colspan="3" class="blank"></td><td colspan="2" class="num">SST {{ $sstRate }}%</td><td class="num">{{ number_format($sst, 2) }}</td></tr>@endif
             @endif
             @if ($showAmounts)
                 <tr class="total"><td colspan="3" class="blank"></td><td colspan="2" class="num">TOTAL</td><td class="num">{{ $rm($total) }}</td></tr>

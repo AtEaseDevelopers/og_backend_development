@@ -35,7 +35,7 @@
         .ow-lorry-plate { display: inline-flex; align-items: center; gap: .2rem; font-weight: 600; white-space: nowrap; }
         .ow-lorry-icon { width: .95rem; height: .95rem; flex: none; }
 
-        /* Status / Service / Transfer code toggles in one wrapping row, each with its caption above it */
+        /* Status / Service / Moved toggles in one wrapping row, each with its caption above it */
         .csn-toggles { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-end; gap: .75rem 1rem; }
         .csn-toggle-field { display: flex; flex-direction: column; gap: .3rem; min-width: 0; max-width: 100%; }
         .csn-toggle-field nav { margin-left: 0; margin-right: 0; }
@@ -75,7 +75,7 @@
     </style>
 
     <div class="flex flex-col gap-y-6">
-        {{-- Status toggle, then the Service and Transfer code toggles beside it; each named by a caption above it --}}
+        {{-- Status toggle, then the Service and Moved toggles beside it; each named by a caption above it --}}
         <div class="csn-toggles">
             <div class="csn-toggle-field">
                 <span class="csn-toggle-caption">Status</span>
@@ -113,38 +113,9 @@
                 </x-filament::tabs>
             </div>
 
-            <div class="csn-toggle-field">
-                <span class="csn-toggle-caption">Transfer code</span>
-                <x-filament::tabs label="Transfer code">
-                    @foreach ($this->transferToggles() as $toggle)
-                        <x-filament::tabs.item
-                            :active="(string) $transferCode === $toggle['value']"
-                            :badge="$toggle['count']"
-                            wire:click="$set('transferCode', '{{ $toggle['value'] }}')"
-                            :title="$toggle['title']"
-                        >
-                            {{ $toggle['label'] }}
-                        </x-filament::tabs.item>
-                    @endforeach
-                </x-filament::tabs>
-            </div>
+            {{-- the Transfer code toggle moved under "Filters +" (user, 3 Nov 2026) --}}
 
-            {{-- CSNs moved to / from another company (user, 28 Oct 2026) --}}
-            <div class="csn-toggle-field">
-                <span class="csn-toggle-caption">Moved</span>
-                <x-filament::tabs label="Moved">
-                    @foreach ($this->movedToggles() as $toggle)
-                        <x-filament::tabs.item
-                            :active="(string) $moved === $toggle['value']"
-                            :badge="$toggle['count']"
-                            wire:click="$set('moved', '{{ $toggle['value'] }}')"
-                            :title="$toggle['title']"
-                        >
-                            {{ $toggle['label'] }}
-                        </x-filament::tabs.item>
-                    @endforeach
-                </x-filament::tabs>
-            </div>
+            {{-- the Moved toggle is a select in the filter card, beside Search (user, 3 Nov 2026) --}}
         </div>
 
         <div class="ow-page csn-list">
@@ -161,6 +132,16 @@
                                    placeholder="Search CSN, customer, DO, order or invoice no.…">
                         </div>
                         {{-- the top row: search and CSN date (everything else behind "Filters +") --}}
+                        {{-- CSNs moved to / from another company (user, 28 Oct 2026), as a select beside Search (user, 3 Nov 2026) --}}
+                        <div class="ow-field">
+                            {{-- "Internal transfer" (user, 3 Nov 2026): a CSN handed to another company to assign a lorry; each choice keeps its count --}}
+                            <label>Internal transfer</label>
+                            <select wire:model.live="moved" class="ow-select">
+                                @foreach ($this->movedToggles() as $toggle)
+                                    <option value="{{ $toggle['value'] }}" title="{{ $toggle['title'] }}">{{ $toggle['label'] }} ({{ $toggle['count'] }})</option>
+                                @endforeach
+                            </select>
+                        </div>
                         <div class="ow-field">
                             <label>CSN date</label>
                             <x-og.date-range from="csnFrom" to="csnTo" :from-value="$csnFrom" :to-value="$csnTo" label="CSN date" />
@@ -175,7 +156,15 @@
 
                     @if ($filtersOpen)
                         <div class="ow-fgrid">
-                            {{-- customer, order type and payment status: under "Filters +" (user, 27 Oct 2026); the top row keeps Search and CSN date --}}
+                            {{-- the transfer code first (user, 3 Nov 2026), then customer, order type and payment status: under "Filters +" --}}
+                            <div class="ow-field">
+                                <label>Transfer code</label>
+                                <select wire:model.live="transferCode" class="ow-select">
+                                    @foreach ($this->transferCodeOptions() as $value => $label)
+                                        <option value="{{ $value }}">{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
                             <div class="ow-field">
                             <label>Customer</label>
                             <select wire:model.live="customer" class="ow-select">

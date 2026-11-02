@@ -9,6 +9,8 @@ use App\Filament\Concerns\HasExcelColumnFilters;
 
 class ListDropOffMinCharges extends ListRecords
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     use HasExcelColumnFilters;
 
     protected static string $resource = DropOffMinChargeResource::class;

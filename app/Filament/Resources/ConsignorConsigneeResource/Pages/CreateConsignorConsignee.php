@@ -8,6 +8,8 @@ use Filament\Resources\Pages\CreateRecord;
 
 class CreateConsignorConsignee extends CreateRecord
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     protected static string $resource = ConsignorConsigneeResource::class;
 
     protected function mutateFormDataBeforeCreate(array $data): array

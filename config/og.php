@@ -51,6 +51,9 @@ return [
         ])),
     ],
 
+    // SST on the orders of customers ticked "Charge SST" (user, 3 Nov 2026): one rate for the system
+    'sst_rate' => (float) env('OG_SST_RATE', 6),
+
     // the quotation's standard minimum charges (client, 30 Oct 2026), printed when the quoted rows carry none
     'quotation' => [
         'pickup_min_charge' => 250,

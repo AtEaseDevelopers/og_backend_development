@@ -9,6 +9,8 @@ use App\Filament\Concerns\HasExcelColumnFilters;
 
 class ManageTransferCodes extends ManageRecords
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     use HasExcelColumnFilters;
 
     protected static string $resource = TransferCodeResource::class;

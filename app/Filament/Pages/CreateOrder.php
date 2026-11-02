@@ -756,7 +756,7 @@ class CreateOrder extends Page
 
         foreach ($this->pairs as $i => $pair) {
             if (($pair['order_type'] ?? '') === OrderType::Cash->value) {
-                $cash += array_sum($totals['lines'][$i] ?? []) + (float) ($totals['minimums'][$i]['top_up'] ?? 0);
+                $cash += array_sum($totals['lines'][$i] ?? []) + (float) ($totals['minimums'][$i]['top_up'] ?? 0) + (float) ($totals['taxes'][$i] ?? 0);
             }
         }
 
@@ -765,6 +765,7 @@ class CreateOrder extends Page
             'records' => count($this->pairs),
             'items' => $totals['items'],
             'minimum' => $totals['minimum'],
+            'sst' => $totals['sst'],
             'total' => $totals['total'],
             'cash_total' => round($cash, 2),
             'cash_records' => $this->cashRecordCount(),
@@ -1381,7 +1382,14 @@ class CreateOrder extends Page
             $side = $m[2];
             $pair = &$this->pairs[$index];
 
-            // ticked: the side's first extra address starts with the DO number of the record (which moves up here)
+            // one side at a time (user, 3 Nov 2026): several pick-up addresses or several consignees, not both
+            if (! empty($pair['multi_'.$side])) {
+                $other = $side === 'pickup' ? 'dropoff' : 'pickup';
+                $pair['multi_'.$other] = false;
+                $pair[$other.'_stops'] = [];
+            }
+
+            // ticked: the side's first extra address starts with this record's address and DO number
             if (! empty($pair['multi_'.$side]) && empty($pair[$side.'_stops'])) {
                 // a pick-up address carries no party of its own: there is one consignor (user, 30 Oct 2026); a drop-off is a consignee
                 $pair[$side.'_stops'] = [array_merge(\App\Support\OrderStops::blank($side === 'pickup' ? \App\Support\OrderStops::PICKUP : \App\Support\OrderStops::DROPOFF), $side === 'pickup' ? [] : [
@@ -1496,21 +1504,10 @@ class CreateOrder extends Page
                 }
             }
 
-            // the store's address is the pickup location; its From, PIC and contact number fill the consignor fields
+            // a Customer Drop Off has no store fields (user, 3 Nov 2026): the consignor's own address, From, PIC and
+            // contact are used; the store (the branch's, picked above) is only kept on the record
             if ($store) {
                 $pair['legacy_store_branch_id'] = '';
-                $pair['pickup_preset'] = OrderFormOptions::NEW_ADDRESS;
-                $pair['pickup_location'] = $store['pickup_location'];
-
-                if ($store['from_location_id'] !== '') {
-                    $pair['from_location_id'] = $store['from_location_id'];
-                }
-
-                foreach (['consignor_pic_name', 'consignor_pic_phone'] as $field) {
-                    if ($store[$field] !== '') {
-                        $pair[$field] = $store[$field];
-                    }
-                }
             }
 
             return;
@@ -1539,16 +1536,15 @@ class CreateOrder extends Page
                 $pair['consignor_pic_name'] = (string) ($party->pic_name ?? $pair['consignor_pic_name'] ?? '');
                 $pair['consignor_pic_phone'] = (string) ($party->phone ?? $pair['consignor_pic_phone'] ?? '');
 
-                // the address and area only on a Pickup (a Customer Drop Off keeps the store's, user 28 Oct 2026)
-                if (($pair['service_type'] ?? '') !== ServiceType::Store->value) {
-                    if (filled($party->address)) {
-                        $pair['pickup_preset'] = OrderFormOptions::NEW_ADDRESS;
-                        $pair['pickup_location'] = (string) $party->address;
-                    }
+                // the consignor's address on a Pickup and on a Customer Drop Off alike (user, 3 Nov 2026); the area
+                // only on a Pickup (a Customer Drop Off keeps the store's From)
+                if (filled($party->address)) {
+                    $pair['pickup_preset'] = OrderFormOptions::NEW_ADDRESS;
+                    $pair['pickup_location'] = (string) $party->address;
+                }
 
-                    if ($party->location_id) {
-                        $pair['from_location_id'] = (string) $party->location_id;
-                    }
+                if (($pair['service_type'] ?? '') !== ServiceType::Store->value && $party->location_id) {
+                    $pair['from_location_id'] = (string) $party->location_id;
                 }
 
                 return;
@@ -2458,7 +2454,17 @@ class CreateOrder extends Page
             $topUps += (float) ($minimums[$i]['top_up'] ?? 0);
         }
 
-        return ['items' => round($total, 2), 'minimum' => round($topUps, 2), 'total' => round($total + $topUps, 2), 'lines' => $lines, 'minimums' => $minimums];
+        // SST (user, 3 Nov 2026): on each record's products and top-up, for a customer ticked "Charge SST"
+        $customer = filled($this->form['customer_id'] ?? null) ? \App\Domains\MasterData\Models\Customer::query()->find($this->form['customer_id']) : null;
+        $taxes = [];
+        $tax = 0.0;
+
+        foreach ($this->pairs as $i => $pair) {
+            $taxes[$i] = \App\Support\QuotationMatrix::sstFor($customer, array_sum($lines[$i] ?? []) + (float) ($minimums[$i]['top_up'] ?? 0));
+            $tax += $taxes[$i];
+        }
+
+        return ['items' => round($total, 2), 'minimum' => round($topUps, 2), 'sst' => round($tax, 2), 'total' => round($total + $topUps + $tax, 2), 'lines' => $lines, 'minimums' => $minimums, 'taxes' => $taxes];
     }
 
     /** A row's unit price: its rate, else the price keyed in for a product without one. */
@@ -2500,7 +2506,7 @@ class CreateOrder extends Page
             'pairs.*.consignor_name' => 'nullable|string|max:255',
             'pairs.*.consignee_name' => 'nullable|string|max:255',
             'pairs.*.service_type' => 'required|in:'.implode(',', array_keys($this->serviceTypeOptions())),
-            'pairs.*.store_id' => 'nullable|required_if:pairs.*.service_type,'.ServiceType::Store->value.'|exists:stores,id',
+            'pairs.*.store_id' => 'nullable|exists:stores,id',
             'pairs.*.consignee_store_id' => 'nullable|required_if:pairs.*.consignee_mode,store|exists:stores,id',
             'pairs.*.consignor_pic_name' => 'nullable|string|max:255',
             'pairs.*.consignor_pic_phone' => 'nullable|string|max:50',
@@ -2516,7 +2522,8 @@ class CreateOrder extends Page
                 $index = (int) explode('.', $attribute)[1];
                 $pair = $this->pairs[$index] ?? [];
 
-                if (blank($value) && empty($pair['multi_pickup']) && empty($pair['multi_dropoff'])) {
+                // required on every record (user, 3 Nov 2026: it stays with several addresses too)
+                if (blank($value)) {
                     $fail('The DO number is required.');
                 }
             }],
@@ -2574,7 +2581,7 @@ class CreateOrder extends Page
         $store = ($pair['service_type'] ?? '') === ServiceType::Store->value;
         $storeRow = $store && filled($pair['store_id'] ?? null) ? Store::query()->find($pair['store_id']) : null;
         $toLocationId = filled($pair['to_location_id'] ?? null) ? (int) $pair['to_location_id'] : null;
-        $pickup = $text($pair['pickup_location'] ?? null) ?? ($store ? $text(OrderFormOptions::storeAddress($storeRow)) : null);
+        $pickup = $text($pair['pickup_location'] ?? null);
 
         return [
             'consignor_name' => $text($pair['consignor_name'] ?? null),

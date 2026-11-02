@@ -8,6 +8,8 @@ use Filament\Resources\Pages\ListRecords;
 
 class ListLocations extends ListRecords
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     protected static string $resource = LocationResource::class;
 
     protected function getHeaderActions(): array

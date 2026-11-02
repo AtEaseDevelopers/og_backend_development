@@ -362,40 +362,7 @@
                         </div>
                         @include('filament.pages.partials.saved-party-select', ['role' => 'consignor', 'parties' => $savedConsignors, 'model' => "orders.{$oi}.pairs.{$i}.consignor_party_id", 'oi' => $oi, 'pi' => $i, 'current' => $pair['consignor_name'] ?? '', 'partyId' => $pair['consignor_party_id'] ?? ''])
                         @error($ep.'pairs.'.$i.'.consignor_name')<div class="ow-field-error">{{ $message }}</div>@enderror
-                        @if ($isStore)
-                            @php $storeInfo = $this->storeInfo($pair['store_id'] ?? null); @endphp
-                            <div class="ow-field" wire:key="ow-o{{ $oi }}-pair-{{ $i }}-store">
-                                <div class="ow-label-row">
-                                    <label for="{{ $fieldId }}-store">(Pick Up) Store <span class="ow-req">*</span></label>
-                                </div>
-                                <select id="{{ $fieldId }}-store" wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.store_id" class="ow-select" @disabled($locked)>
-                                    <option value="">— Select store —</option>
-                                    @foreach ($stores as $id => $store)
-                                        <option value="{{ $id }}" @if ($store['sub'] !== '') data-og-sub="{{ $store['sub'] }}" @endif>{{ $store['label'] }}</option>
-                                    @endforeach
-                                </select>
-                                @error($ep.'pairs.'.$i.'.store_id')<div class="ow-field-error">{{ $message }}</div>@enderror
-                                @if ($storeInfo)
-                                    <div class="ow-store-card">
-                                        @if ($storeInfo['address'] !== '')
-                                            <div class="ow-store-address">{{ $storeInfo['address'] }}</div>
-                                            @if ($storeInfo['address_from_branch'] ?? false)
-                                                <div class="ow-note">No address saved for {{ $storeInfo['name'] }} yet · its branch's address is used as the pickup location.</div>
-                                            @endif
-                                        @else
-                                            <div class="ow-note">No address saved for {{ $storeInfo['name'] }} yet · the store name is used as the pickup location.</div>
-                                        @endif
-                                        @if ($storeInfo['branch'] !== '' || $storeInfo['pic'] !== '' || $storeInfo['phone'] !== '')
-                                            <div class="ow-note">{{ collect([$storeInfo['branch'] !== '' ? 'Branch '.$storeInfo['branch'] : null, $storeInfo['pic'] !== '' ? 'PIC '.$storeInfo['pic'] : null, $storeInfo['phone'] !== '' ? 'Tel '.$storeInfo['phone'] : null])->filter()->implode(' · ') }}</div>
-                                        @endif
-                                    </div>
-                                @elseif (filled($pair['legacy_store_branch_id'] ?? null))
-                                    <div class="ow-note" style="margin-top:.25rem">This record was saved with the company {{ \App\Domains\MasterData\Models\Branch::query()->whereKey($pair['legacy_store_branch_id'])->value('name') ?? '' }} as its store. Pick a store to replace it.</div>
-                                @elseif ($stores === [])
-                                    <div class="ow-note" style="margin-top:.25rem">No store yet · add one in Master Data → Stores.</div>
-                                @endif
-                            </div>
-                        @endif
+                        {{-- Customer Drop Off (user, 3 Nov 2026): no store fields — the consignor's own address, From, PIC and contact are used --}}
                         <div class="ow-field">
                             <label for="{{ $fieldId }}-from">From (price list location)</label>
                             <select id="{{ $fieldId }}-from" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.from_location_id" class="ow-select">
@@ -417,24 +384,17 @@
                                 @error($ep.'pairs.'.$i.'.consignor_pic_phone')<div class="ow-field-error">{{ $message }}</div>@enderror
                             </div>
                         </div>
-                        @if ($isStore)
-                            <div class="ow-field" wire:key="ow-o{{ $oi }}-pair-{{ $i }}-pickup-store">
-                                <label for="{{ $fieldId }}-pickup-store">Consignor Address</label>
-                                <textarea id="{{ $fieldId }}-pickup-store" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.pickup_location" rows="2" class="ow-textarea" style="resize:vertical" placeholder="The store's address"></textarea>
-                                <div class="ow-note" style="margin-top:.2rem">From the store · edit it for this record.</div>
-                                @error($ep.'pairs.'.$i.'.pickup_location')<div class="ow-field-error">{{ $message }}</div>@enderror
-                            </div>
-                        @else
+                        {{-- the consignor's own address on a Pickup and a Customer Drop Off alike, with Multiple address (user, 3 Nov 2026) --}}
                             <div class="ow-field" wire:key="ow-o{{ $oi }}-pair-{{ $i }}-pickup">
                             <div class="ow-label-row">
                                 <label for="{{ $fieldId }}-pickup">Consignor Address</label>
                                 @unless ($isQuote || $locked)
                                     {{-- several addresses on this side, each with its own DO number (user, 28 Oct 2026) --}}
-                                    <label class="ow-check" style="display:inline-flex;align-items:center;gap:.3rem;font-weight:400"><input type="checkbox" wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.multi_pickup"> <span>Multiple address</span></label>
+                                    <label class="ow-check" style="display:inline-flex;align-items:center;gap:.3rem;font-weight:400"><input type="checkbox" wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.multi_pickup" @disabled(! empty($pair['multi_dropoff']))> <span>Multiple address</span></label>
                                 @endunless
                             </div>
                                 {{-- a text box (user, 26 Oct 2026): filled from the consignor's address, still editable --}}
-                                <textarea id="{{ $fieldId }}-pickup" wire:model.blur="orders.{{ $oi }}.pairs.{{ $i }}.pickup_location" rows="2" class="ow-textarea" style="resize:vertical" placeholder="Filled from the consignor · or type the address" @disabled($locked)></textarea>
+                                <textarea id="{{ $fieldId }}-pickup" wire:model.blur="orders.{{ $oi }}.pairs.{{ $i }}.pickup_location" rows="4" class="ow-textarea" style="resize:vertical" placeholder="Filled from the consignor · or type the address" @disabled($locked)></textarea>
                                 @error($ep.'pairs.'.$i.'.pickup_location')<div class="ow-field-error">{{ $message }}</div>@enderror
                             @if (! empty($pair['multi_pickup']))
                                 {{-- the other addresses of this side, each with its own DO number (user, 28 Oct 2026) --}}
@@ -459,7 +419,6 @@
                                 @unless ($locked)<button type="button" wire:click="inOrder({{ $oi }}, 'addStop', {{ $i }}, 'pickup')" class="ow-btn-link" style="margin-top:.3rem">+ Add address</button>@endunless
                             @endif
                             </div>
-                        @endif
                     </div>
 
                     <div class="ow-party">
@@ -491,6 +450,23 @@
                                 @error($ep.'pairs.'.$i.'.consignee_store_id')<div class="ow-field-error">{{ $message }}</div>@enderror
                                 <div class="ow-note" style="margin-top:.3rem">The customer collects the goods at this store. A subsheet with transfer code <strong>O</strong> (own collection) is created with the CSN.</div>
                             </div>
+                            {{-- Self Collection (user, 3 Nov 2026): the store's address is the consignee address, shown under the store --}}
+                            @php $collectInfo = $collectInfo ?? $this->storeInfo($pair['consignee_store_id'] ?? null); @endphp
+                            <div class="ow-field" wire:key="ow-o{{ $oi }}-pair-{{ $i }}-collect-address">
+                                <label>Store Address</label>
+                                <div class="ow-store-card">
+                                    @if ($collectInfo && $collectInfo['address'] !== '')
+                                        <div class="ow-store-address">{{ $collectInfo['address'] }}</div>
+                                        @if ($collectInfo['pic'] !== '' || $collectInfo['phone'] !== '')
+                                            <div class="ow-note">{{ collect([$collectInfo['pic'] !== '' ? 'PIC '.$collectInfo['pic'] : null, $collectInfo['phone'] !== '' ? 'Tel '.$collectInfo['phone'] : null])->filter()->implode(' · ') }}</div>
+                                        @endif
+                                    @elseif ($collectInfo)
+                                        <div class="ow-note">No address saved for {{ $collectInfo['name'] }} yet · add it in Master Data → Stores.</div>
+                                    @else
+                                        <div class="ow-note">Select the store above.</div>
+                                    @endif
+                                </div>
+                            </div>
                         @endif
                         <div class="ow-field">
                             <label for="{{ $fieldId }}-to">To (price list location)</label>
@@ -513,12 +489,13 @@
                                 @error($ep.'pairs.'.$i.'.consignee_pic_phone')<div class="ow-field-error">{{ $message }}</div>@enderror
                             </div>
                         </div>
+                        @if (! $consigneeStore)
                         <div class="ow-field" wire:key="ow-o{{ $oi }}-pair-{{ $i }}-dropoff">
                             <div class="ow-label-row">
                                 <label for="{{ $fieldId }}-dropoff">Consignee Address</label>
                                 @unless ($isQuote || $locked)
                                     {{-- several addresses on this side, each with its own DO number (user, 28 Oct 2026) --}}
-                                    <label class="ow-check" style="display:inline-flex;align-items:center;gap:.3rem;font-weight:400"><input type="checkbox" wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.multi_dropoff"> <span>Multiple consignees</span></label>
+                                    <label class="ow-check" style="display:inline-flex;align-items:center;gap:.3rem;font-weight:400"><input type="checkbox" wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.multi_dropoff" @disabled(! empty($pair['multi_pickup']))> <span>Multiple consignees</span></label>
                                 @endunless
                             </div>
                             {{-- a text box (user, 26 Oct 2026): filled from the consignee's address, still editable --}}
@@ -550,6 +527,7 @@
                                 @unless ($locked)<button type="button" wire:click="inOrder({{ $oi }}, 'addStop', {{ $i }}, 'dropoff')" class="ow-btn-link" style="margin-top:.3rem">+ Add address</button>@endunless
                             @endif
                         </div>
+                        @endif
                         <div class="ow-field">
                             <label for="{{ $fieldId }}-dropoff-type">Drop-off type</label>
                             <select id="{{ $fieldId }}-dropoff-type" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.drop_off_type" class="ow-select">
@@ -561,15 +539,13 @@
                     </div>
                 </div>
 
-                @php $multiStops = ! empty($pair['multi_pickup']) || ! empty($pair['multi_dropoff']); @endphp
+                {{-- the DO number stays with several addresses too (user, 3 Nov 2026); each extra address carries its own as well --}}
                 <div class="ow-fgrid ow-fgrid-do">
-                    @unless ($multiStops)
                     <div class="ow-field">
                         <label for="{{ $fieldId }}-do">DO number @unless ($isQuote)<span class="ow-req">*</span>@endunless</label>
                         <input id="{{ $fieldId }}-do" type="text" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.customer_do_number" class="ow-input" placeholder="Customer's DO number">
                         @error($ep.'pairs.'.$i.'.customer_do_number')<div class="ow-field-error">{{ $message }}</div>@enderror
                     </div>
-                    @endunless
                     <div class="ow-field">
                         <label for="{{ $fieldId }}-delivery">Expected delivery date</label>
                         <input id="{{ $fieldId }}-delivery" type="text" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.expected_delivery_date" class="ow-input" maxlength="255" autocomplete="off" placeholder="Optional · e.g. 13/10 before noon">
@@ -905,6 +881,7 @@
                                 <th>Payment term</th>
                                 <th class="ow-num">Products</th>
                                 <th class="ow-num">Minimum charge</th>
+                                <th class="ow-num">SST</th>
                                 <th class="ow-num">Total</th>
                                 @unless ($isQuote)<th>Payment</th>@endunless
                             </tr>
@@ -925,9 +902,10 @@
                                     @if ($s['priced'] ?? false)
                                         <td class="ow-num">RM {{ number_format((float) $s['items'], 2) }}</td>
                                         <td class="ow-num">{{ (float) $s['minimum'] > 0 ? 'RM '.number_format((float) $s['minimum'], 2) : '—' }}</td>
+                                        <td class="ow-num">{{ (float) ($s['sst'] ?? 0) > 0 ? 'RM '.number_format((float) $s['sst'], 2) : '—' }}</td>
                                         <td class="ow-num"><strong>RM {{ number_format((float) $s['total'], 2) }}</strong></td>
                                     @else
-                                        <td class="ow-num" colspan="3"><span class="ow-note">Not priced · assign a salesperson</span></td>
+                                        <td class="ow-num" colspan="4"><span class="ow-note">Not priced · assign a salesperson</span></td>
                                     @endif
                                     @unless ($isQuote)<td>{{ ($s['pay_now'] ?? false) ? 'Pay now · '.(($s['priced'] ?? false) ? 'RM '.number_format((float) ($s['cash_total'] ?? 0), 2) : 'not priced') : '—' }}</td>@endunless
                                 </tr>

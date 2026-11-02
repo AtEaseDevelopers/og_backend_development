@@ -188,8 +188,11 @@
                 </div>
             @endif
 
+            @if (($totals['sst'] ?? 0) > 0)
+                <div class="ow-total-row" style="font-weight:400"><span>SST {{ rtrim(rtrim(number_format(\App\Support\QuotationMatrix::sstRate(), 2, '.', ''), '0'), '.') }}%</span><span>RM {{ number_format($totals['sst'], 2) }}</span></div>
+            @endif
             <div class="ow-total-row"><span>Quotation total</span><span>RM {{ number_format($totals['total'], 2) }}</span></div>
-            <div class="ow-note" style="margin-top:.35rem">Quantity × unit rate + pickup + drop-off + other charges.</div>
+            <div class="ow-note" style="margin-top:.35rem">Quantity × unit rate + pickup + drop-off + other charges{{ ($totals['sst'] ?? 0) > 0 ? ' + SST' : '' }}.</div>
 
             <div class="ow-actions-split" style="margin-top:.9rem">
                 <button type="button" wire:click="savePricing(false)" wire:loading.attr="disabled" class="ow-btn">Save pricing draft</button>
@@ -224,6 +227,7 @@
                 </tbody>
             </table>
         </div>
+        @if ($t['sst'] ?? null)<div class="ow-total-row" style="font-weight:400"><span>SST {{ $t['sst_rate'] }}%</span><span>{{ $t['sst'] }}</span></div>@endif
         <div class="ow-total-row"><span>Total</span><span>{{ $t['total'] }}</span></div>
         <details style="margin-top:.75rem">
             <summary class="ow-link" style="cursor:pointer">Pricing basis &amp; reference</summary>

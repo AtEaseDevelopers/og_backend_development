@@ -8,6 +8,8 @@ use Filament\Resources\Pages\ListRecords;
 
 class ListLorryGroups extends ListRecords
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     protected static string $resource = LorryGroupResource::class;
 
     protected function getHeaderActions(): array

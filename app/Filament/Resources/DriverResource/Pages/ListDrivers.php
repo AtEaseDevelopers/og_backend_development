@@ -15,6 +15,8 @@ use Throwable;
 
 class ListDrivers extends ListRecords
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     use HasExcelColumnFilters;
 
     protected static string $resource = DriverResource::class;

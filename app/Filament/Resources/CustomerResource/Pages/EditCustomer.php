@@ -9,6 +9,8 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditCustomer extends EditRecord
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     use SyncsCustomerFormData;
 
     protected static string $resource = CustomerResource::class;

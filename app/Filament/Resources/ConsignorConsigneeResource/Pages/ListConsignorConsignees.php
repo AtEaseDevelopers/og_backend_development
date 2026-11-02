@@ -8,6 +8,8 @@ use Filament\Resources\Pages\ListRecords;
 
 class ListConsignorConsignees extends ListRecords
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     protected static string $resource = ConsignorConsigneeResource::class;
 
     protected function getHeaderActions(): array

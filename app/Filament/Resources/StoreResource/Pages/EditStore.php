@@ -8,6 +8,8 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditStore extends EditRecord
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     protected static string $resource = StoreResource::class;
 
     protected function getHeaderActions(): array

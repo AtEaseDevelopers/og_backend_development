@@ -8,6 +8,8 @@ use Filament\Resources\Pages\CreateRecord;
 
 class CreateLead extends CreateRecord
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     protected static string $resource = LeadResource::class;
 
     protected function mutateFormDataBeforeCreate(array $data): array

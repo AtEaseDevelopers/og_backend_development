@@ -142,7 +142,7 @@ class ConsignmentNote extends Model
         $when = $this->moved_at?->format('d/m/Y H:i');
         $by = $this->movedBy?->name;
 
-        return ($this->isMovedIn() ? 'Moved here from '.($this->company?->name ?? '?') : 'Moved to '.($this->movedToCompany?->name ?? '?'))
+        return ($this->isMovedIn() ? 'Transferred here from '.($this->company?->name ?? '?') : 'Transferred to '.($this->movedToCompany?->name ?? '?'))
             .($by ? ' by '.$by : '').($when ? ' on '.$when : '').($this->isMovedIn() ? ' · here it can only be assigned to a lorry' : '');
     }
 

@@ -8,6 +8,8 @@ use Filament\Resources\Pages\CreateRecord;
 
 class CreateStore extends CreateRecord
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     protected static string $resource = StoreResource::class;
 
     protected function mutateFormDataBeforeCreate(array $data): array

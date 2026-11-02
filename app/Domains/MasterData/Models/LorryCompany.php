@@ -11,7 +11,7 @@ class LorryCompany extends Model
 {
     use BelongsToCompany;
 
-    protected $fillable = ['company_id', 'code', 'name', 'contact', 'email', 'address', 'is_active'];
+    protected $fillable = ['company_id', 'lorry_group_id', 'code', 'name', 'contact', 'email', 'address', 'is_active'];
 
     protected function casts(): array
     {
@@ -21,6 +21,12 @@ class LorryCompany extends Model
     public function drivers(): HasMany
     {
         return $this->hasMany(Driver::class, 'lorry_company_id');
+    }
+
+    /** The lorry group the company is assigned under (optional; user, 3 Nov 2026). */
+    public function lorryGroup(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(LorryGroup::class);
     }
 
     public function label(): string

@@ -704,8 +704,10 @@ class OrderDetail extends Page
         }
 
         $charges = (float) ($this->pricing['pickup_charge'] ?: 0) + (float) ($this->pricing['drop_off_charge'] ?: 0) + (float) ($this->pricing['other_charges'] ?: 0);
+        // SST for a customer ticked "Charge SST" (user, 3 Nov 2026)
+        $sst = \App\Support\QuotationMatrix::sstFor($this->order()?->customer, $items + $charges);
 
-        return ['rows' => $rows, 'items' => round($items, 2), 'charges' => round($charges, 2), 'total' => round($items + $charges, 2)];
+        return ['rows' => $rows, 'items' => round($items, 2), 'charges' => round($charges, 2), 'sst' => $sst, 'total' => round($items + $charges + $sst, 2)];
     }
 
     public function savePricing(bool $preview = false): void

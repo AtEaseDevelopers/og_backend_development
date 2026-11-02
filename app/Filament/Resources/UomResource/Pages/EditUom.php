@@ -9,6 +9,8 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditUom extends EditRecord
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     protected static string $resource = UomResource::class;
 
     /** The default price rows from the form, saved after the product. */

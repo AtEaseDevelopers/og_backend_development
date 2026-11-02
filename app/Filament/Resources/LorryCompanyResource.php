@@ -48,6 +48,15 @@ class LorryCompanyResource extends Resource
                 Forms\Components\Hidden::make('company_id')->default(fn () => CurrentCompany::id()),
                 Forms\Components\TextInput::make('code')->label('Code')->maxLength(50)->placeholder('e.g. 4000-A001'),
                 Forms\Components\TextInput::make('name')->label('Name')->required()->maxLength(150),
+                // optional (user, 3 Nov 2026): a driver picked under this company takes the group
+                Forms\Components\Select::make('lorry_group_id')
+                    ->label('Lorry Group')
+                    ->options(fn () => \App\Domains\MasterData\Models\LorryGroup::query()->where('is_active', true)
+                        ->when(CurrentCompany::id(), fn ($q, $id) => $q->where('company_id', $id))
+                        ->orderBy('name')->pluck('name', 'id'))
+                    ->searchable()
+                    ->nullable()
+                    ->helperText('Optional. Add one in Master Data → Lorry Groups.'),
                 Forms\Components\TextInput::make('contact')->label('Contact')->tel()->maxLength(50),
                 Forms\Components\TextInput::make('email')->label('Email')->email()->maxLength(255),
                 Forms\Components\Textarea::make('address')->label('Address')->rows(2)->columnSpanFull(),
@@ -62,6 +71,7 @@ class LorryCompanyResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('code')->label('Code')->searchable()->sortable()->placeholder('—'),
                 Tables\Columns\TextColumn::make('name')->label('Name')->searchable()->sortable()->weight('semibold'),
+                Tables\Columns\TextColumn::make('lorryGroup.name')->label('Lorry group')->placeholder('—')->sortable()->toggleable(),
                 Tables\Columns\TextColumn::make('contact')->label('Contact')->placeholder('—'),
                 Tables\Columns\TextColumn::make('email')->label('Email')->placeholder('—')->toggleable(),
                 Tables\Columns\TextColumn::make('address')->label('Address')->limit(50)->placeholder('—')->toggleable(),

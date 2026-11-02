@@ -108,7 +108,13 @@
     </table>
 
     {{-- the amount payable (user, 30 Oct 2026); Paid and Balance due only once a payment was recorded --}}
+    @php $sst = (float) ($proforma->quotation?->tax_amount ?? 0); $sstRate = rtrim(rtrim(number_format(\App\Support\QuotationMatrix::sstRate(), 2, '.', ''), '0'), '.'); @endphp
     <table class="totals">
+        {{-- SST for a customer ticked "Charge SST" (user, 3 Nov 2026): the subtotal and the SST above the total --}}
+        @if ($sst > 0)
+            <tr><td>Subtotal</td><td class="num">RM {{ number_format((float) $proforma->total_amount - $sst, 2) }}</td></tr>
+            <tr><td>SST {{ $sstRate }}%</td><td class="num">RM {{ number_format($sst, 2) }}</td></tr>
+        @endif
         @if ((float) $proforma->paid_amount > 0)
             <tr><td>Total</td><td class="num">RM {{ number_format((float) $proforma->total_amount, 2) }}</td></tr>
             <tr><td>Paid</td><td class="num">RM {{ number_format((float) $proforma->paid_amount, 2) }}</td></tr>

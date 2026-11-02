@@ -8,6 +8,8 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditSaLocation extends EditRecord
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     protected static string $resource = SaLocationResource::class;
 
     protected function getHeaderActions(): array

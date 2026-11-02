@@ -7,5 +7,7 @@ use App\Filament\Resources\UomResource\Pages\CreateUom;
 
 class CreateItem extends CreateUom
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     protected static string $resource = ItemProductResource::class;
 }

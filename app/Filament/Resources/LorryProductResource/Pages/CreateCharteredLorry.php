@@ -7,5 +7,7 @@ use App\Filament\Resources\UomResource\Pages\CreateUom;
 
 class CreateCharteredLorry extends CreateUom
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     protected static string $resource = LorryProductResource::class;
 }

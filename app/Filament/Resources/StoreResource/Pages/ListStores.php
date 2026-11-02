@@ -9,6 +9,8 @@ use Filament\Resources\Pages\ListRecords;
 
 class ListStores extends ListRecords
 {
+    use \App\Filament\Concerns\MasterDataBreadcrumbs;
+
     use HasExcelColumnFilters;
 
     protected static string $resource = StoreResource::class;
