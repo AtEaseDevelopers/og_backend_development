@@ -86,7 +86,7 @@ class SendQuotation
                 $quotation->number,
                 $quotation->version,
                 number_format((float) $quotation->total_amount, 2),
-                route('portal.quotations.show', $quotation),
+                \Illuminate\Support\Facades\Route::has('portal.quotations.show') ? route('portal.quotations.show', $quotation) : url('/portal'),
                 $quotation->valid_until?->format('d/m/Y') ?? '—',
             ),
             related: $quotation,

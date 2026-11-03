@@ -94,7 +94,7 @@ class CreateQuotation extends CreateOrder
 
         return [
             'back_url' => QuoteResource::getUrl('index'),
-            'back_label' => '← Back to quotations',
+            'back_label' => '', // the path above leads to Quotations (user, 4 Nov 2026)
             'crumb' => 'Operations / Quotation',
             'title' => $number ? 'Edit quotation '.$number : 'Create quotation',
             'sub' => 'Quote a customer or a lead. When the customer agrees, use Accept by customer on the quotation list.',

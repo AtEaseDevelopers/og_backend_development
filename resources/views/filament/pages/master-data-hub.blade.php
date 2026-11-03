@@ -4,7 +4,12 @@
         /* groups stacked, each a full-width grid of compact cards (user, 3 Nov 2026: the column layout left too much
            white space); the cards are small enough for every group to show without scrolling on a laptop */
         /* one wrapper for every group (the page spaces its children out; inside, the groups sit .5rem apart) */
-        .mdh-stack { display: grid; gap: .5rem; }
+        /* the card side follows the screen height (user, 4 Nov 2026: a 27" screen fits every group, a laptop had to
+           scroll): the height left under the topbar, title and group headings, shared by the groups shown — capped at
+           7.4rem on big screens and never under 5rem; the icon and label scale with it */
+        /* no room kept for the floating Top button here (the page is sized to fit without scrolling) */
+        .fi-main .fi-page:has(.mdh-stack) { padding-bottom: 0; }
+        .mdh-stack { display: grid; gap: .5rem; --mdh-card: clamp(5rem, calc((100vh - 12.5rem) / var(--mdh-groups, 4) - 3.3rem), 7.4rem); }
         .mdh-group { border: 1px solid rgb(229 231 235); border-radius: .75rem; background: #fff; padding: .55rem .7rem .7rem; }
         .mdh-group-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin: 0 0 .4rem .15rem; }
         .mdh-group-title { font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: rgb(100 116 139); }
@@ -14,13 +19,13 @@
         .mdh-none { font-size: .8rem; color: rgb(148 163 184); padding: .4rem .2rem; }
         .dark .mdh-hidden { background: rgb(55 65 81 / .6); color: rgb(203 213 225); border-color: rgb(75 85 99); }
         /* square cards (user, 3 Nov 2026): the icon above the name, about 7.5rem a side */
-        .mdh-list { display: grid; gap: .5rem; grid-template-columns: repeat(auto-fill, minmax(7.4rem, 1fr)); }
+        .mdh-list { display: grid; gap: .5rem; grid-template-columns: repeat(auto-fill, minmax(var(--mdh-card), 1fr)); }
         .mdh-card { display: flex; flex-direction: column; gap: .45rem; align-items: center; justify-content: center; text-align: center; aspect-ratio: 1 / 1; min-width: 0; padding: .5rem .45rem; border: 1px solid rgb(229 231 235); border-radius: .7rem; background: #fff; text-decoration: none; color: inherit; transition: border-color .15s, box-shadow .15s, transform .15s; }
         .mdh-card:hover, .mdh-card:focus-visible { border-color: rgb(var(--primary-500)); box-shadow: 0 6px 18px -10px rgb(15 23 42 / .35); transform: translateY(-1px); outline: none; }
-        .mdh-icon { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 2.4rem; height: 2.4rem; border-radius: .6rem; background: rgb(var(--primary-50)); color: rgb(var(--primary-600)); }
-        .mdh-icon svg { width: 1.3rem; height: 1.3rem; }
+        .mdh-icon { flex: none; display: inline-flex; align-items: center; justify-content: center; width: calc(var(--mdh-card) * .32); height: calc(var(--mdh-card) * .32); border-radius: .6rem; background: rgb(var(--primary-50)); color: rgb(var(--primary-600)); }
+        .mdh-icon svg { width: 55%; height: 55%; }
         .mdh-text { min-width: 0; }
-        .mdh-title { display: block; font-weight: 600; font-size: .84rem; color: rgb(15 23 42); line-height: 1.2; }
+        .mdh-title { display: block; font-weight: 600; font-size: clamp(.7rem, calc(var(--mdh-card) * .113), .84rem); color: rgb(15 23 42); line-height: 1.2; }
         .mdh-desc { display: none; }
         .mdh-empty { padding: 2.5rem 1rem; text-align: center; color: rgb(100 116 139); border: 1px dashed rgb(203 213 225); border-radius: .9rem; }
         .dark .mdh-group { background: rgb(17 24 39); border-color: rgb(55 65 81); }
@@ -37,7 +42,7 @@
     @if ($hiddenByGroup === [])
         <div class="mdh-empty">No master data pages are open to your account.</div>
     @else
-        <div class="mdh-stack">
+        <div class="mdh-stack" style="--mdh-groups: {{ max(1, count($hiddenByGroup)) }}">
             @foreach ($hiddenByGroup as $group => $hidden)
                 <section class="mdh-group">
                     <div class="mdh-group-head">

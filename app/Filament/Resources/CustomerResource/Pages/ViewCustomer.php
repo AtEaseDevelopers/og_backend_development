@@ -38,10 +38,19 @@ class ViewCustomer extends ViewRecord
         ];
     }
 
-    // no page header (breadcrumbs + "View …" title) on the customer page (user, 28 Oct 2026): the cards start at the top
+    // no "View …" title on the customer page (user, 28 Oct 2026), but the breadcrumbs stay (user, 4 Nov 2026):
+    // Master Data › Customers › the company name
     public function getBreadcrumbs(): array
     {
-        return [];
+        try {
+            return [
+                \App\Filament\Pages\MasterDataHub::getUrl() => 'Master Data',
+                CustomerResource::getUrl('index') => 'Customers',
+                '#' => (string) ($this->record->company_name ?: $this->record->code),
+            ];
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     public function getHeading(): string

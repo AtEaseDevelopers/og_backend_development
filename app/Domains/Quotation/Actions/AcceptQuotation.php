@@ -174,7 +174,7 @@ class AcceptQuotation
                 number_format((float) $quotation->total_amount, 2),
                 $proforma?->number ?? '—',
                 $proforma?->payment_instructions ?? '',
-                route('portal.quotations.show', $quotation),
+                \Illuminate\Support\Facades\Route::has('portal.quotations.show') ? route('portal.quotations.show', $quotation) : url('/portal'),
             ),
             related: $quotation,
         );

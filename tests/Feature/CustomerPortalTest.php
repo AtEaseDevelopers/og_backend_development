@@ -96,14 +96,14 @@ class CustomerPortalTest extends TestCase
             $this->get($url)->assertNotFound();
         }
         $this->get('/portal/enquiry/create')->assertOk()
-            ->assertSee('+ Add another item', false)
+            ->assertSee('+ Add another order', false)
             ->assertSee('id="order-template"', false)
             ->assertSee('function addOrder', false)
             ->assertSee('+ Add item', false)
-            ->assertSee('1. Customer &amp; ownership', false)
-            ->assertSee('Billing address', false)
-            ->assertSee('PIC name', false)
-            ->assertSee('Contact number', false)
+            ->assertDontSee('Customer &amp; ownership', false)
+            ->assertDontSee('Billing address', false)
+            ->assertDontSee('PIC name', false)
+            ->assertSee('1. Goods', false)
             ->assertDontSee('Received through', false)
             ->assertDontSee('Your DO number', false)
             ->assertDontSee('Payment method', false)
@@ -141,10 +141,6 @@ class CustomerPortalTest extends TestCase
             'order_type' => 'cash',
             'service_type' => 'pickup',
             'payment_method' => 'bank_transfer',
-            'customer_name' => 'Edited Portal Co',
-            'customer_address' => '99 Billing Road',
-            'customer_pic_name' => 'Siti',
-            'customer_pic_phone' => '012999',
             'pickup_address' => 'No. 1, Jalan Test',
             'destinations' => [['address' => 'No. 8, Jalan Contoh', 'drop_off_type' => 'other']],
             'items' => [['kind' => 'measurement', 'sub_category' => 'Carton', 'item_name' => 'Carton', 'quantity' => 2]],
@@ -154,10 +150,9 @@ class CustomerPortalTest extends TestCase
         $enquiry = \App\Domains\Quotation\Models\PortalEnquiry::query()->latest('id')->firstOrFail();
         \Illuminate\Support\Facades\Event::assertDispatched(\App\Events\PortalOrderSubmitted::class, fn ($e) => $e->enquiry->is($enquiry));
         $this->assertSame($customer->id, $enquiry->customer_id);
-        $this->assertSame('Edited Portal Co', $enquiry->payload['customer_name']);
-        $this->assertSame('99 Billing Road', $enquiry->payload['customer_address']);
-        $this->assertSame('Siti', $enquiry->payload['customer_pic_name']);
-        $this->assertSame('012999', $enquiry->payload['customer_pic_phone']);
+        // no customer fields on the form (4 Nov 2026): the logged-in customer's details are filled by the server
+        $this->assertSame($customer->company_name, $enquiry->payload['customer_name']);
+        $this->assertSame($customer->address, $enquiry->payload['customer_address']);
         $this->assertNull($enquiry->customer_do_number);
         $this->assertSame('Ali', $enquiry->payload['contacts'][0]['name']);
         $this->get('/portal')->assertOk()

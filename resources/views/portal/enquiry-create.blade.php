@@ -39,8 +39,8 @@
     <div id="orders"></div>
 
     <div style="display:flex;justify-content:space-between;align-items:center;gap:.75rem;margin:0 0 1rem;flex-wrap:wrap">
-        <p class="muted" style="margin:0">Each extra item is a new order (Order 1, Order 2, …), same as Admin.</p>
-        <button type="button" class="btn secondary" onclick="addOrder()" title="Another order on this page; each keeps its own colour and is submitted together">+ Add another item</button>
+        <p class="muted" style="margin:0">Each order keeps its own colour and all are submitted together, same as Admin.</p>
+        <button type="button" class="btn secondary" onclick="addOrder()" title="Another order on this page; each keeps its own colour and is submitted together">+ Add another order</button>
     </div>
 
     <div style="display:flex;justify-content:flex-end;gap:.75rem;margin-bottom:2rem">
@@ -53,29 +53,19 @@
     <div class="og-order">
         <div class="og-order-head">
             <strong><span class="og-order-dot"></span> Order <span class="og-order-no">1</span> of <span class="og-order-count">1</span></strong>
-            <button type="button" class="btn danger small og-remove-order" onclick="removeOrder(this)">Remove order</button>
+            {{-- no browser popup (user, 4 Nov 2026: it is swallowed in some browsers): the button asks inline --}}
+            <span class="og-remove-wrap">
+                <button type="button" class="btn danger small og-remove-order" onclick="askRemoveOrder(this)">Remove order</button>
+                <span class="og-remove-ask" style="display:none;align-items:center;gap:.4rem">
+                    <span>Remove this order?</span>
+                    <button type="button" class="btn danger small" onclick="removeOrder(this)">Yes</button>
+                    <button type="button" class="btn secondary small" onclick="cancelRemoveOrder(this)">No</button>
+                </span>
+            </span>
         </div>
 
-        <div class="card">
-            <h3 style="margin-top:0">1. Customer &amp; ownership</h3>
-            <div class="og-cust-grid">
-                <div>
-                    <label>Customer *</label>
-                    <input data-order="customer_name" required value="{{ $customerDefaults['name'] }}" placeholder="Company name">
-                </div>
-                <div class="og-field-billing">
-                    <label>Billing address</label>
-                    <textarea data-order="customer_address" rows="2" placeholder="Your billing address">{{ $customerDefaults['address'] }}</textarea>
-                </div>
-                <div>
-                    <label>PIC name</label>
-                    <input data-order="customer_pic_name" value="{{ $customerDefaults['pic_name'] }}" placeholder="Person in charge" autocomplete="name">
-                </div>
-                <div>
-                    <label>Contact number</label>
-                    <input type="tel" inputmode="tel" data-order="customer_pic_phone" value="{{ $customerDefaults['pic_phone'] }}" placeholder="Contact number" autocomplete="tel">
-                </div>
-            </div>
+        {{-- no customer details on the form (user, 4 Nov 2026): the server fills the logged-in customer's name, address and PIC --}}
+        <div class="card" style="display:none">
             <input type="hidden" data-order="branch_id" value="{{ $selectedBranch?->id ?? $customer?->branch_id }}">
             <input type="hidden" data-order="order_type" value="{{ $defaultOrderType }}">
             <input type="hidden" data-order="service_type" value="pickup">
@@ -83,7 +73,7 @@
         </div>
 
         <div class="card">
-            <h3 style="margin-top:0">2. Goods</h3>
+            <h3 style="margin-top:0">1. Goods</h3>
             <p class="muted" style="margin-top:-.5rem">Choose the type first, the same as Admin: Measurement, Item, or Chartered Lorry. Item can have several lines on this order.</p>
             <div class="og-items"></div>
             <button type="button" class="btn secondary og-add-item" style="display:none" onclick="addItem(this.closest('.og-order'), { kind: 'item' })">+ Add item</button>
@@ -91,7 +81,7 @@
         </div>
 
         <div class="card">
-            <h3 style="margin-top:0">3. Pickup</h3>
+            <h3 style="margin-top:0">2. Pickup</h3>
             @if ($pickupAddresses->isNotEmpty())
                 <label>Saved pickup location</label>
                 <select class="pickup-saved" onchange="pickSavedPickup(this)">
@@ -127,13 +117,13 @@
         </div>
 
         <div class="card">
-            <h3 style="margin-top:0" class="og-dropoff-heading">4. Drop-off destination</h3>
+            <h3 style="margin-top:0" class="og-dropoff-heading">3. Drop-off destination</h3>
             <div class="og-destinations"></div>
             <button type="button" class="btn secondary og-add-dest" style="display:none" onclick="addDestination(this.closest('.og-order'))">Add New Destination</button>
         </div>
 
         <div class="card">
-            <h3 style="margin-top:0">5. Photos &amp; supporting documents</h3>
+            <h3 style="margin-top:0">4. Photos &amp; supporting documents</h3>
             <label>Photos, DO, packing list or other documents (up to 10 files: JPG / PNG / PDF / Word / Excel, 10 MB each)</label>
             <input type="file" class="og-photos" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv">
         </div>
@@ -349,7 +339,7 @@
         const destAdd = order.querySelector('.og-add-dest');
         if (pickupAdd) pickupAdd.style.display = lorry && dests <= 1 ? '' : 'none';
         if (destAdd) destAdd.style.display = lorry && extraPickups === 0 ? '' : 'none';
-        order.querySelector('.og-dropoff-heading').textContent = dests > 1 ? '4. Drop-off destinations' : '4. Drop-off destination';
+        order.querySelector('.og-dropoff-heading').textContent = dests > 1 ? '3. Drop-off destinations' : '3. Drop-off destination';
         order.querySelectorAll('.remove-dest').forEach(btn => {
             btn.style.display = dests > 1 ? '' : 'none';
         });
@@ -521,9 +511,21 @@
         }
     }
 
+    function askRemoveOrder(btn) {
+        if (orderList().length <= 1) return;
+        const wrap = btn.closest('.og-remove-wrap');
+        btn.style.display = 'none';
+        wrap.querySelector('.og-remove-ask').style.display = 'inline-flex';
+    }
+
+    function cancelRemoveOrder(btn) {
+        const wrap = btn.closest('.og-remove-wrap');
+        wrap.querySelector('.og-remove-ask').style.display = 'none';
+        wrap.querySelector('.og-remove-order').style.display = '';
+    }
+
     function removeOrder(btn) {
         if (orderList().length <= 1) return;
-        if (!confirm('Remove this order from the form?')) return;
         btn.closest('.og-order').remove();
         bindAll();
     }

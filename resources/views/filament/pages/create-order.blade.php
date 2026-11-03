@@ -106,7 +106,10 @@
         @endif
     @endif
 
-    <a href="{{ $copy['back_url'] }}" class="ow-back">{{ $copy['back_label'] }}</a>
+    {{-- no "Back to quotations / orders" link where the path above already leads there (user, 4 Nov 2026) --}}
+    @if (filled($copy['back_label'] ?? null))
+        <a href="{{ $copy['back_url'] }}" class="ow-back">{{ $copy['back_label'] }}</a>
+    @endif
     <div class="ow-head">
         <div>
             {{-- the main label only (user, 28 Oct 2026): no crumb line or description --}}
@@ -397,6 +400,12 @@
                                 <textarea id="{{ $fieldId }}-pickup" wire:model.blur="orders.{{ $oi }}.pairs.{{ $i }}.pickup_location" rows="4" class="ow-textarea" style="resize:vertical" placeholder="Filled from the consignor · or type the address" @disabled($locked)></textarea>
                                 @error($ep.'pairs.'.$i.'.pickup_location')<div class="ow-field-error">{{ $message }}</div>@enderror
                             @if (! empty($pair['multi_pickup']))
+                                {{-- with several pick-up addresses the record's DO number sits here, under the consignor address (user, 3 Nov 2026) --}}
+                                <div class="ow-field" style="margin-top:.5rem">
+                                    <label for="{{ $fieldId }}-do-top">DO number @unless ($isQuote)<span class="ow-req">*</span>@endunless</label>
+                                    <input id="{{ $fieldId }}-do-top" type="text" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.customer_do_number" class="ow-input" placeholder="Customer's DO number">
+                                    @error($ep.'pairs.'.$i.'.customer_do_number')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                </div>
                                 {{-- the other addresses of this side, each with its own DO number (user, 28 Oct 2026) --}}
                                 <div class="ow-table-scroll" style="margin-top:.4rem">
                                     <table class="ow-price-table ow-stops">
@@ -539,13 +548,15 @@
                     </div>
                 </div>
 
-                {{-- the DO number stays with several addresses too (user, 3 Nov 2026); each extra address carries its own as well --}}
+                {{-- the DO number stays with several consignees too (user, 3 Nov 2026); with several pick-up addresses it sits under the consignor address instead --}}
                 <div class="ow-fgrid ow-fgrid-do">
+                    @if (empty($pair['multi_pickup']))
                     <div class="ow-field">
                         <label for="{{ $fieldId }}-do">DO number @unless ($isQuote)<span class="ow-req">*</span>@endunless</label>
                         <input id="{{ $fieldId }}-do" type="text" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.customer_do_number" class="ow-input" placeholder="Customer's DO number">
                         @error($ep.'pairs.'.$i.'.customer_do_number')<div class="ow-field-error">{{ $message }}</div>@enderror
                     </div>
+                    @endif
                     <div class="ow-field">
                         <label for="{{ $fieldId }}-delivery">Expected delivery date</label>
                         <input id="{{ $fieldId }}-delivery" type="text" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.expected_delivery_date" class="ow-input" maxlength="255" autocomplete="off" placeholder="Optional · e.g. 13/10 before noon">

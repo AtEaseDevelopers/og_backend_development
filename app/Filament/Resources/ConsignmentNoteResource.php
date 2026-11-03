@@ -91,7 +91,7 @@ class ConsignmentNoteResource extends Resource
                 // the CSN's branch code as a coloured tag (user, 27 Oct 2026): the same colour for the same branch
                 // moved to / from another company (user, 28 Oct 2026)
                 Tables\Columns\TextColumn::make('moved_to_company_id')
-                    ->label('Internal transfer')
+                    ->label('Company transfer')
                     ->badge()
                     ->state(fn (ConsignmentNote $record) => $record->movedLabel())
                     ->color(fn (ConsignmentNote $record) => $record->isMovedIn() ? 'info' : 'warning')
@@ -287,10 +287,10 @@ class ConsignmentNoteResource extends Resource
                     })
                     ->deselectRecordsAfterCompletion(),
                 Tables\Actions\BulkAction::make('bulkMoveCompany')
-                    ->label('Internal transfer')
+                    ->label('Company transfer')
                     ->icon('heroicon-o-arrow-right-circle')
                     ->color('gray')
-                    ->modalHeading('Internal transfer of the selected CSNs to another company')
+                    ->modalHeading('Company transfer of the selected CSNs to another company')
                     ->modalDescription('That company sees them in its list and can assign them to its lorries, nothing else. They stay in this list, marked with the company they were transferred to. Cancelled CSNs, CSNs already transferred and CSNs transferred here are skipped.')
                     ->modalSubmitActionLabel('Transfer')
                     ->form(static::moveCompanyForm())
@@ -509,11 +509,11 @@ class ConsignmentNoteResource extends Resource
                     }),
                 // a CSN moved to another company (user, 28 Oct 2026): that company picks it and assigns it to its lorry
                 Tables\Actions\Action::make('moveCompany')
-                    ->label('Internal transfer')
+                    ->label('Company transfer')
                     ->icon('heroicon-o-arrow-right-circle')
                     ->color('gray')
                     ->visible(fn (ConsignmentNote $record) => $record->moved_to_company_id === null && $record->status !== CsnStatus::Cancelled)
-                    ->modalHeading(fn (ConsignmentNote $record) => 'Internal transfer of '.$record->number.' to another company')
+                    ->modalHeading(fn (ConsignmentNote $record) => 'Company transfer of '.$record->number.' to another company')
                     ->modalDescription('That company sees the CSN in its list and can assign it to its lorry, nothing else. It stays in this list, marked with the company it was transferred to, and can be taken back.')
                     ->modalSubmitActionLabel('Transfer')
                     ->form(static::moveCompanyForm())

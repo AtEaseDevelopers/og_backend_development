@@ -203,7 +203,7 @@ class ReviewPaymentSubmission
                     $submission->reference ?: '—',
                     $quotation->number,
                     $submission->rejection_reason,
-                    route('portal.quotations.show', $quotation),
+                    \Illuminate\Support\Facades\Route::has('portal.quotations.show') ? route('portal.quotations.show', $quotation) : url('/portal'),
                 ),
             related: $quotation,
         );

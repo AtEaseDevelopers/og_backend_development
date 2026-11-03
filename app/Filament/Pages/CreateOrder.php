@@ -891,7 +891,7 @@ class CreateOrder extends Page
     {
         return [
             'back_url' => Orders::getUrl(),
-            'back_label' => '← Back to orders',
+            'back_label' => '', // the path above leads to Orders (user, 4 Nov 2026)
             'crumb' => 'Orders / Admin assisted entry',
             'title' => 'Create order for customer',
             'sub' => 'Record the customer\'s instructions and prepare a quotation in the same record.',

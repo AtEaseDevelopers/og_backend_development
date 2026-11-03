@@ -220,6 +220,9 @@ class ListConsignmentNotes extends ListRecords
             ->whereHas('deliveryOrders', fn (Builder $do): Builder => $do->whereNull('parent_do_id')->whereNull('subsheet_id')->where('status', 'failed')
                 ->whereRaw('delivery_orders.id = (select max(d2.id) from delivery_orders d2 where d2.consignment_note_id = delivery_orders.consignment_note_id and d2.parent_do_id is null and d2.subsheet_id is null)'));
 
+        $withCode = fn (Builder $query): Builder => $query->where(fn (Builder $q) => $q->whereNotNull('transfer_code_id')
+            ->orWhereHas('subsheets', fn (Builder $s) => $s->whereNotNull('transfer_code')->where('transfer_code', '!=', '')));
+
         return [
             'all' => Tab::make('All')
                 ->badge(fn (): int => $filtered()->count()),
@@ -246,6 +249,10 @@ class ListConsignmentNotes extends ListRecords
                 ->modifyQueryUsing($delivered),
             'cancelled' => Tab::make('Cancelled')
                 ->modifyQueryUsing($status(CsnStatus::Cancelled)),
+            // CSNs that carry a transfer code, on the CSN or on a subsheet (user, 4 Nov 2026)
+            'transfer_code' => Tab::make('Transfer code')
+                ->badge(fn (): int => $withCode($filtered())->count())
+                ->modifyQueryUsing($withCode),
         ];
     }
 
@@ -704,8 +711,9 @@ class ListConsignmentNotes extends ListRecords
         $out = fn () => $this->withMoved($base(), 'out');
         $in = fn () => $this->withMoved($base(), 'in');
 
+        // "All" counts the transferred CSNs only, out plus in (user, 4 Nov 2026), though choosing it lifts the filter
         $toggles = [
-            ['value' => '', 'label' => 'All', 'title' => 'Transferred or not', 'count' => $base()->count()],
+            ['value' => '', 'label' => 'All', 'title' => 'Transferred out or in', 'count' => $out()->count() + $in()->count()],
             ['value' => 'out', 'label' => 'Transferred out', 'title' => 'This company\'s CSNs transferred to another company', 'count' => $out()->count()],
             ['value' => 'in', 'label' => 'Transferred in', 'title' => 'CSNs another company transferred here', 'count' => $in()->count()],
         ];

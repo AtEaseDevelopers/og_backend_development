@@ -36,7 +36,7 @@
         .ow-lorry-icon { width: .95rem; height: .95rem; flex: none; }
 
         /* Status / Service / Moved toggles in one wrapping row, each with its caption above it */
-        .csn-toggles { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-end; gap: .75rem 1rem; }
+        .csn-toggles { display: flex; flex-wrap: wrap; justify-content: flex-start; align-items: flex-end; gap: .75rem 1rem; } /* left-aligned (user, 4 Nov 2026) */
         .csn-toggle-field { display: flex; flex-direction: column; gap: .3rem; min-width: 0; max-width: 100%; }
         .csn-toggle-field nav { margin-left: 0; margin-right: 0; }
         .csn-toggle-caption { padding-left: .35rem; font-size: .75rem; font-weight: 500; color: rgb(100 116 139); }
@@ -134,8 +134,8 @@
                         {{-- the top row: search and CSN date (everything else behind "Filters +") --}}
                         {{-- CSNs moved to / from another company (user, 28 Oct 2026), as a select beside Search (user, 3 Nov 2026) --}}
                         <div class="ow-field">
-                            {{-- "Internal transfer" (user, 3 Nov 2026): a CSN handed to another company to assign a lorry; each choice keeps its count --}}
-                            <label>Internal transfer</label>
+                            {{-- "Company transfer" (user, 3 and 4 Nov 2026): a CSN handed to another company to assign a lorry; each choice keeps its count --}}
+                            <label>Company transfer</label>
                             <select wire:model.live="moved" class="ow-select">
                                 @foreach ($this->movedToggles() as $toggle)
                                     <option value="{{ $toggle['value'] }}" title="{{ $toggle['title'] }}">{{ $toggle['label'] }} ({{ $toggle['count'] }})</option>

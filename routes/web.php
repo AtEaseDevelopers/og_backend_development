@@ -6,6 +6,8 @@ use App\Http\Controllers\Portal\AuthController;
 use App\Http\Controllers\Portal\DashboardController;
 use App\Http\Controllers\Portal\EnquiryController;
 use App\Http\Controllers\Portal\PasswordResetController;
+use App\Http\Controllers\Portal\PaymentSubmissionController;
+use App\Http\Controllers\Portal\QuotationController;
 use App\Http\Controllers\Portal\SalespersonLinkController;
 use App\Http\Controllers\Portal\TrackingController;
 use Illuminate\Support\Facades\Route;
@@ -49,6 +51,13 @@ Route::prefix('portal')->name('portal.')->group(function () {
             Route::get('enquiry/create', [EnquiryController::class, 'create'])->name('enquiry.create');
             Route::post('enquiry', [EnquiryController::class, 'store'])->name('enquiry.store');
             Route::get('enquiry/{enquiry}/pdf', [EnquiryController::class, 'pdf'])->name('enquiry.pdf');
+            // the customer's quotation page (view, confirm, reject, ask for an amendment, submit payment evidence):
+            // the admin's Send / Accept quotation emails and the payment review link to it (restored 4 Nov 2026)
+            Route::get('quotations/{quotation}', [QuotationController::class, 'show'])->name('quotations.show');
+            Route::post('quotations/{quotation}/confirm', [QuotationController::class, 'confirm'])->name('quotations.confirm');
+            Route::post('quotations/{quotation}/reject', [QuotationController::class, 'reject'])->name('quotations.reject');
+            Route::post('quotations/{quotation}/amend', [QuotationController::class, 'requestAmendment'])->name('quotations.amend');
+            Route::post('quotations/{quotation}/payments', [PaymentSubmissionController::class, 'store'])->name('quotations.payments.store');
         });
     });
 });

@@ -19,6 +19,14 @@ class ListCustomers extends ListRecords
     // with CustomerInformationImporter instead
     protected function getHeaderActions(): array
     {
-        return [Actions\CreateAction::make()];
+        return [
+            // the customers' Special Price workbook (user, 4 Nov 2026): checked on upload, then replace or add
+            \App\Filament\Actions\ImportPriceListAction::make('importSpecialPrice')
+                ->label('Import special price')
+                ->modalHeading('Import special price')
+                ->modalDescription('Upload the O&G Customer Pricing Setup — Special Price workbook (one sheet per customer, named by its debtor code). The file is checked first; then choose whether it replaces the current special prices of the customers in the file or only adds to them. A price agreed in an accepted quotation always stays.')
+                ->visible(fn () => \App\Filament\Resources\UomResource::canCreate()),
+            Actions\CreateAction::make(),
+        ];
     }
 }

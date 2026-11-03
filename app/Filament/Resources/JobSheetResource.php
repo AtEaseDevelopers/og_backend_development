@@ -117,8 +117,11 @@ class JobSheetResource extends Resource
                     ->label('Driver')
                     ->sortable(),
                 // Named after Laravel's withCount alias (delivery_orders_count), or the cell stays empty and the sort has no column
+                // a transfer job sheet waiting for a lorry has no delivery orders yet: its legs count as its tasks
+                // until it is picked up (user, 4 Nov 2026)
                 Tables\Columns\TextColumn::make('delivery_orders_count')
-                    ->counts('deliveryOrders')
+                    ->counts(['deliveryOrders', 'subsheets as waiting_legs_count' => fn ($query) => $query->whereNull('delivery_order_id')])
+                    ->state(fn (JobSheet $record): int => (int) $record->delivery_orders_count + (int) $record->waiting_legs_count)
                     ->label('Task Count')
                     ->sortable(),
                 Tables\Columns\TextColumn::make('status')

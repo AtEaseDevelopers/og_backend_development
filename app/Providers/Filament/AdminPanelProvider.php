@@ -44,6 +44,7 @@ class AdminPanelProvider extends PanelProvider
             ->favicon(asset('images/logo-og-circle.png'))
             ->tenant(Company::class, slugAttribute: 'code')
             ->tenantMenu(false)
+            ->breadcrumbs(false)
             ->homeUrl(fn (): string => \App\Support\DefaultBranch::homeUrl())
             ->colors([
                 'primary' => Color::hex('#0f172a'),
@@ -106,6 +107,12 @@ class AdminPanelProvider extends PanelProvider
             ->renderHook(
                 PanelsRenderHook::TOPBAR_START,
                 fn (): View => view('filament.hooks.branch-switcher'),
+            )
+            // the path on every page (user, 4 Nov 2026), drawn here so pages without a heading have it too; the
+            // header's own breadcrumbs are off (->breadcrumbs(false)) so it is not shown twice
+            ->renderHook(
+                PanelsRenderHook::PAGE_START,
+                fn (): View => view('filament.hooks.page-breadcrumbs'),
             )
             ->renderHook(
                 PanelsRenderHook::HEAD_END,
