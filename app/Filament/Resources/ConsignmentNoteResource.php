@@ -342,6 +342,12 @@ class ConsignmentNoteResource extends Resource
                     ->icon('heroicon-o-document-arrow-down')
                     ->url(fn (ConsignmentNote $record): string => static::pdfUrl($record))
                     ->openUrlInNewTab(),
+                // the second layout (client, 6 Nov 2026): the consignee beside the consignor, tall enough to chop and sign
+                Tables\Actions\Action::make('previewPdfSide')
+                    ->label('PDF (consignee beside)')
+                    ->icon('heroicon-o-document-arrow-down')
+                    ->url(fn (ConsignmentNote $record): string => static::pdfUrl($record).'?layout=side')
+                    ->openUrlInNewTab(),
                 Tables\Actions\Action::make('claim')
                     ->label('Claim')
                     ->icon('heroicon-o-qr-code')

@@ -9,9 +9,10 @@
         }
     @endif
 
+    /* one font on every document, the order form's (client, 5 Nov 2026); larger type */
     .csn-document {
-        font-family: Arial, Helvetica, DejaVu Sans, sans-serif;
-        font-size: 10px;
+        font-family: DejaVu Sans, sans-serif;
+        font-size: 10.5px;
         color: #000;
         line-height: 1.4;
     }
@@ -20,6 +21,32 @@
         width: 100%;
         border-collapse: collapse;
     }
+
+    /* the letterhead as the order form's (client, 6 Nov 2026) */
+    .csn-document .lh-name { font-size: 17px; font-weight: bold; }
+    .csn-document .lh-small { font-size: 10px; line-height: 1.35; }
+    .csn-document .lh-rule { border-top: 4px solid #000; margin: 5px 0 6px; }
+    .csn-document .lh-meta { width: 100%; border-collapse: collapse; }
+    .csn-document .lh-meta td { padding: 0; vertical-align: bottom; }
+    .csn-document .lh-title { font-size: 19px; font-weight: bold; text-align: right; }
+    .csn-document .lh-qr { width: 190px; text-align: right; vertical-align: top; padding-top: 4px; }
+    .csn-document .lh-qr img { width: 180px; height: 40px; }
+    .csn-document .lh-qr-text { font-size: 14px; font-weight: bold; letter-spacing: .8px; margin-top: 2px; }
+    .csn-doc-parties { margin-top: 8px; }
+
+    /* easier to read when printed (client, 6 Nov 2026): the items, the route and the consignee larger */
+    .csn-doc-items td { font-size: 11.5px; }
+    .csn-doc-consignee-name { font-size: 13px; font-weight: bold; }
+    .csn-doc-consignee-box .csn-doc-party-address { font-size: 11.5px; }
+
+    /* the chop & sign fields: Name, IC No. and Date on their own lines with room to write */
+    .csn-doc-sign-field { text-align: left; font-size: 10.5px; margin-top: 9px; padding-left: 10px; }
+    .csn-doc-sign-blank { display: inline-block; width: 62%; border-bottom: 1px solid #000; height: 11px; vertical-align: bottom; }
+
+    /* the "side" layout: the consignor at the left, the consignee beside in a tall box */
+    .csn-doc-side .csn-doc-side-left { width: 44%; }
+    .csn-doc-side .csn-doc-side-right { width: 56%; min-height: 210px; height: 210px; }
+    .csn-doc-side-party + .csn-doc-side-party { margin-top: 10px; padding-top: 8px; border-top: 1px dotted #999; }
 
     .csn-doc-header td {
         vertical-align: top;
@@ -75,9 +102,10 @@
     }
 
     .csn-doc-qr-text {
-        font-size: 8px;
-        letter-spacing: .3px;
-        margin-top: 1px;
+        font-size: 14px;
+        font-weight: bold;
+        letter-spacing: .8px;
+        margin-top: 2px;
     }
 
     .csn-doc-title {
@@ -89,7 +117,7 @@
     .csn-doc-meta-table {
         width: auto;
         margin-left: auto;
-        font-size: 10px;
+        font-size: 10.5px;
     }
 
     .csn-doc-meta-table td {
@@ -97,10 +125,14 @@
         vertical-align: top;
     }
 
+    /* labels bold, values in normal text (user, 6 Nov 2026) */
     .csn-doc-meta-label {
         font-weight: bold;
         padding-right: 8px;
         white-space: nowrap;
+    }
+    .csn-doc-meta-table td + td {
+        font-weight: normal;
     }
 
     .csn-doc-label {
@@ -123,8 +155,8 @@
     /* the route in large type (client, 30 Oct 2026: "From KL to Johor" was hard to see) */
     .csn-doc-route {
         margin: 8px 0;
-        padding: 5px 8px;
-        font-size: 13px;
+        padding: 6px 8px;
+        font-size: 15px;
         font-weight: bold;
         border-top: 2px solid #000;
         border-bottom: 2px solid #000;
@@ -142,12 +174,17 @@
 
     .csn-doc-items th {
         font-weight: bold;
-        text-align: center;
-        font-size: 9px;
+        text-align: left;
+        font-size: 10px;
+        text-transform: uppercase;
+        background: #f0f0f0;
     }
+    .csn-doc-no { width: 5%; text-align: center; }
+    .csn-doc-uom { width: 12%; text-align: center; }
 
     .csn-doc-qty {
-        width: 12%;
+        width: 9%;
+        text-align: right;
     }
 
     .csn-doc-desc {
@@ -230,12 +267,12 @@
     }
 
     .csn-doc-sign-note {
-        font-size: 9px;
+        font-size: 10px;
         margin-top: 8px;
     }
 
     .csn-doc-sign-date {
-        font-size: 9px;
+        font-size: 10px;
         margin-top: 10px;
         text-align: left;
         padding-left: 12px;
@@ -245,11 +282,11 @@
        the numbers beside them; a chop & sign box per consignee at the bottom */
     .csn-doc-company-cell-left {
         text-align: left;
-        font-size: 9.5px;
+        font-size: 10.5px;
         width: 58%;
     }
     .csn-doc-company-cell-left .csn-doc-company-name {
-        font-size: 13px;
+        font-size: 15px;
     }
     .csn-doc-title-cell {
         text-align: right;
@@ -265,8 +302,9 @@
         display: inline-block;
     }
     .csn-doc-qr-text {
-        font-size: 8px;
-        letter-spacing: .4px;
+        font-size: 14px;
+        font-weight: bold;
+        letter-spacing: .8px;
     }
     .csn-doc-parties .csn-doc-party-col {
         width: 58%;

@@ -4,23 +4,26 @@
     <meta charset="utf-8">
     <title>{{ $sheet['number'] }}</title>
     {{-- the client's Job Sheet layout (user, 27 Oct 2026): one document (page) per job sheet code --}}
+    @include('pdf.partials.common')
     <style>
-        @page { margin: 34px 36px 40px 36px; }
-        body { font-family: DejaVu Sans, sans-serif; font-size: 9px; color: #000; line-height: 1.3; }
+        @page { margin: 30px 30px 40px 30px; }
+        body { font-size: 10px; line-height: 1.3; }
         .doc { page-break-after: always; }
         .doc:last-child { page-break-after: auto; }
         .top { width: 100%; border-collapse: collapse; }
         .top td { padding: 0; vertical-align: top; }
-        .company { font-size: 11px; font-weight: bold; }
+        .company { font-size: 12px; font-weight: bold; }
         .printed { text-align: right; font-weight: bold; }
-        .title { margin: 8px 0 6px; font-size: 11px; font-weight: bold; text-decoration: underline; }
+        .title { margin: 8px 0 6px; font-size: 12px; font-weight: bold; text-decoration: underline; }
         .meta { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
-        .meta td { padding: 1px 0; vertical-align: top; white-space: nowrap; }
+        /* labels bold, values in normal text (user, 6 Nov 2026) */
+        .meta td { padding: 1px 0; vertical-align: top; white-space: nowrap; font-weight: normal; }
         .meta .k { font-weight: bold; padding-right: 3px; }
+        /* the rows in the order form's grid (client, 5 Nov 2026) */
         table.rows { width: 100%; border-collapse: collapse; margin-top: 4px; }
-        table.rows th { font-weight: bold; text-decoration: underline; text-align: left; padding: 2px 4px 4px 0; vertical-align: bottom; }
-        table.rows td { padding: 4px 4px 4px 0; vertical-align: top; }
-        table.rows .num { text-align: right; padding-right: 0; white-space: nowrap; }
+        table.rows th { font-weight: bold; text-align: left; padding: 4px 5px; vertical-align: bottom; border: 1px solid #000; background: #f0f0f0; text-transform: uppercase; }
+        table.rows td { padding: 4px 5px; vertical-align: top; border: 1px solid #000; }
+        table.rows .num { text-align: right; white-space: nowrap; }
         table.rows .consignor { font-weight: bold; }
         table.rows .consignee { font-weight: bold; font-style: italic; }
         .totals td { padding-top: 6px; font-weight: bold; }
@@ -35,7 +38,7 @@
             <table class="top">
                 <tr>
                     <td class="company">{{ $companyName }}</td>
-                    <td class="printed">Date: {{ $printedAt }} Page: {{ $loop->iteration }}</td>
+                    <td class="printed">Date: {{ $printedAt }}</td>
                 </tr>
             </table>
             <div class="title">JOB SHEET</div>
@@ -61,7 +64,7 @@
             <table class="rows">
                 <thead>
                     <tr>
-                        <th style="width:5%" class="num"></th>
+                        <th style="width:5%" class="num">No.</th>
                         <th style="width:15%">CSN No.</th>
                         <th style="width:14%">Bill No.</th>
                         <th style="width:9%">From</th>
@@ -75,14 +78,15 @@
                 <tbody>
                     @forelse ($group['rows'] as $i => $row)
                         <tr>
-                            <td class="num" style="padding-right:6px">{{ $i + 1 }}</td>
+                            <td class="num">{{ $i + 1 }}</td>
                             <td>{{ $row['csn'] }}</td>
                             <td>{{ $row['bill'] }}</td>
                             <td>{{ $row['from'] }}</td>
                             <td>{{ $row['to'] }}</td>
                             <td class="consignor">{{ \Illuminate\Support\Str::limit(strtoupper($row['consignor']), 18, '') }}</td>
                             <td class="consignee">{{ \Illuminate\Support\Str::limit(strtoupper($row['consignee']), 18, '') }}</td>
-                            <td>{{ number_format($row['qty'], 2) }} {{ \Illuminate\Support\Str::limit($row['uom'], 8, '') }}</td>
+                            {{-- the unit, never a product code (client, 5 Nov 2026) --}}
+                            <td>{{ number_format($row['qty'], 2) }} {{ \App\Support\QuantityLabel::unit($row['uom']) ?? 'Unit' }}</td>
                             <td class="num">{{ $row['advance'] !== null ? number_format($row['advance'], 2) : '' }}</td>
                         </tr>
                     @empty

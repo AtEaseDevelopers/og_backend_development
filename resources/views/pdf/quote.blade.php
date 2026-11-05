@@ -5,46 +5,43 @@
     <title>{{ $quote->number }}</title>
     {{-- the client's quotation format (user, 26 Oct 2026: as their "Quotation of Transportation Charges"):
          letterhead + Ref No. / Page No. / QUOTATION on every page, the rates in a typewriter style --}}
+    @include('pdf.partials.common')
     <style>
-        @page { margin: 168px 36px 46px 36px; }
-        body { font-family: DejaVu Sans, sans-serif; font-size: 10px; color: #000; line-height: 1.3; }
-        header { position: fixed; top: -150px; left: 0; right: 0; }
+        @page { margin: 172px 30px 40px 30px; }
+        body { font-size: 10.5px; line-height: 1.3; }
+        header { position: fixed; top: -156px; left: 0; right: 0; }
         .lh-name { font-size: 17px; font-weight: bold; }
-        .lh-small { font-size: 9px; line-height: 1.35; }
+        .lh-small { font-size: 10px; line-height: 1.35; }
         .lh-rule { border-top: 4px solid #000; margin: 5px 0 6px; }
         .lh-meta { width: 100%; border-collapse: collapse; }
         .lh-meta td { padding: 0; vertical-align: bottom; }
         .lh-meta .k { font-weight: bold; font-size: 10px; }
         .lh-title { font-size: 19px; font-weight: bold; text-align: right; }
-        /* a QR of the document number (user, 30 Oct 2026): scanned into the system's search fields */
-        /* a Code 128 barcode of the document number (user, 30 Oct 2026, in place of the QR) */
-        .lh-qr { width: 190px; text-align: right; vertical-align: top; padding-top: 4px; }
-        .lh-qr img { width: 180px; height: 40px; }
-        .lh-qr-text { font-size: 8px; letter-spacing: .4px; margin-top: 1px; }
-        .pagenum:before { content: counter(page); }
+        /* the barcode of the document number (user, 30 Oct 2026) is styled in pdf.partials.common */
 
         .party { width: 100%; border-collapse: collapse; margin-top: 2px; table-layout: fixed; }
         .party td.who { word-wrap: break-word; }
-        .party td { vertical-align: top; padding: 0; font-weight: bold; font-size: 10px; }
+        .party td { vertical-align: top; padding: 0; font-weight: normal; font-size: 10.5px; }
         .party .gap { height: 10px; }
         .re { margin: 10px 0 12px; font-size: 12px; font-weight: bold; text-decoration: underline; }
 
         /* the rates: bold Courier, as the original (text kept to Courier's characters: < instead of ≤) */
-        .tw, .tw td { font-family: Courier, monospace; font-weight: bold; font-size: 9.5px; }
-        .tw-line { font-family: Courier, monospace; font-weight: bold; font-size: 9.5px; margin: 0 0 10px; white-space: pre-wrap; }
+        .tw, .tw td { font-family: Courier, monospace; font-weight: bold; font-size: 10.5px; }
+        .tw-line { font-family: Courier, monospace; font-weight: bold; font-size: 10.5px; margin: 0 0 10px; white-space: pre-wrap; }
         table.tw { width: 100%; border-collapse: collapse; margin: 0 0 14px; page-break-inside: avoid; table-layout: fixed; }
         /* a bordered grid (user, 29 Oct 2026: easier to read); the typewriter underlines are hidden */
         table.tw td { border: 1px solid #000; padding: 3px 5px; vertical-align: top; white-space: nowrap; overflow: hidden; }
         table.tw td.label { white-space: normal; }
-        table.tw tr.head td { background: #f0f0f0; }
+        /* a darker header bar (client, 6 Nov 2026), the product rows a step lighter */
+        table.tw tr.head td { background: #c9c9c9; }
         table.tw .under { display: none; }
         table.tw td.num { text-align: right; }
         table.tw.items tr.first td { padding-top: 7px; }
         table.tw.items td { padding-top: 1px; padding-bottom: 1px; }
-        table.tw tr.group td { background: #f7f7f7; }
+        table.tw tr.group td { background: #e6e6e6; }
         table.tw td.qty { padding-left: 14px; }
         table.tw tr.minimum td { font-style: italic; font-weight: normal; }
-        .notes { font-family: Courier, monospace; font-weight: bold; font-size: 9.5px; margin-top: 8px; }
+        .notes { font-family: Courier, monospace; font-weight: bold; font-size: 10.5px; margin-top: 8px; }
         .keep { page-break-inside: avoid; }
         .notes div { margin-bottom: 2px; }
     </style>
@@ -57,14 +54,18 @@
         $address = strtoupper($company?->address ?? $branch?->address ?? '');
         $phone = $company?->phone ?? $branch?->phone ?? '';
         $email = $company?->email ?? $branch?->email ?? '';
-        $fax = $branch?->fax ?? '';
         $sstNo = ($company?->tin ?: $branch?->sst_no) ?? '';
-        $issuedBy = $salesperson?->name ?? $quote->creator?->name ?? '';
+        // the contact person at the foot (client, 6 Nov 2026): the chosen staff, their phone from Master Data
+        $contact = $contact ?? $quote->creator;
+        $issuedBy = $contact?->name ?? '';
+        $contactPhone = $contact?->phone;
+        // the prices as numbers, RM in the column heading (client, 6 Nov 2026)
+        $cell = fn ($value) => preg_replace('/\bRM\s*/', '', (string) $value);
         $date = $quote->quote_date;
         // the client's two types (user, 29 Oct 2026): the price list carries the effective date and the SST line; the customer
         // quotation opens with "Please find…" and closes with the terms and contact person
         $priceList = $quote->isPriceList();
-        $effective = $priceList && $date ? $date->format('jS F Y') : null;
+        $effective = $priceList && $date ? $date->format('d/m/Y') : null; // dd/mm/yyyy everywhere (client, 5 Nov 2026)
         $dash = fn (string $text, string $char) => str_repeat($char, max(4, min(48, mb_strlen($text))));
     @endphp
 
@@ -75,7 +76,7 @@
         <div class="lh-small">
             @if ($regNo)(REG NO. : {{ $regNo }} )<br>@endif
             @if ($address){{ $address }}<br>@endif
-            @if ($phone || $fax)@if ($phone)Tel : {{ $phone }}@endif @if ($fax)&nbsp; Fax : {{ $fax }}@endif<br>@endif
+            @if ($phone)Tel : {{ $phone }}<br>@endif
             <table class="lh-meta"><tr>
                 <td class="lh-small">@if ($email)Email : {{ $email }}@endif</td>
                 <td class="lh-small">@if ($sstNo)SST No. : {{ $sstNo }}@endif</td>
@@ -83,9 +84,8 @@
         </div>
         </td><td class="lh-qr"><img src="{{ \App\Support\BarcodeImage::code128DataUri($quote->number) }}" alt="Barcode {{ $quote->number }}"><div class="lh-qr-text">{{ $quote->number }}</div></td></tr></table>
         <div class="lh-rule"></div>
+        {{-- the number is under the barcode only; the page number is stamped bottom right (client, 5 Nov 2026) --}}
         <table class="lh-meta"><tr>
-            <td class="k" style="width:28%">Ref No. : {{ $quote->number }}</td>
-            <td class="k" style="width:32%">Page No. : <span class="pagenum"></span></td>
             <td class="lh-title">QUOTATION</td>
         </tr></table>
     </header>
@@ -94,24 +94,16 @@
     <table class="party">
         <tr>
             <td style="width:62%" class="who">
-                {{ strtoupper($party['name']) }}
-                {{-- a long one-line address is split at a comma near the middle (user, 30 Oct 2026: it ran into the date) --}}
-                @if ($party['address'])<br>{!! nl2br(e(strtoupper(\App\Support\AddressLines::wrap($party['address'])))) !!}@endif
+                {{-- the billing block as on every document (user, 6 Nov 2026): labels normal, values bold --}}
+                @include('pdf.partials.bill-to', ['label' => 'To', 'code' => $party['code'] ?? null, 'name' => strtoupper($party['name']), 'reg_no' => $party['reg_no'] ?? null, 'address' => $party['address'] ? strtoupper(\App\Support\AddressLines::wrap($party['address'])) : null, 'pic' => strtoupper((string) $party['attention']) ?: null, 'phone' => $party['phone'], 'email' => $party['email']])
             </td>
             <td>
                 <table style="border-collapse:collapse">
-                    <tr><td style="width:5.5rem">Date</td><td>: {{ $date?->format('d/m/Y') }}</td></tr>
-                    <tr><td colspan="2" class="gap"></td></tr>
-                    <tr><td>Issued by:</td><td>{{ $issuedBy }}</td></tr>
+                    {{-- "Issued by" replaced by who created it and the contact person (client, 6 Nov 2026) --}}
+                    <tr><td style="width:6.5rem;font-weight:bold">Date</td><td>{{ $date?->format('d/m/Y') }}</td></tr>
+                    <tr><td style="font-weight:bold">Created by</td><td>{{ $quote->creator?->name ?? '—' }}</td></tr>
+                    <tr><td style="font-weight:bold">Contact person</td><td>{{ $issuedBy ?: '—' }}@if ($contactPhone) ( {{ $contactPhone }} )@endif</td></tr>
                 </table>
-            </td>
-        </tr>
-        <tr><td colspan="2" class="gap"></td></tr>
-        <tr>
-            <td colspan="2">
-                Email : {{ $party['email'] }}<br>
-                Tel : {{ $party['phone'] }}&nbsp;&nbsp;Fax : {{ $party['fax'] }}<br>
-                Attn : {{ strtoupper((string) $party['attention']) }}
             </td>
         </tr>
     </table>
@@ -123,13 +115,15 @@
     {{-- the client's quotations (user, 29 Oct 2026): ITEM and a column per destination (4 per table), each product a
          heading underlined with = and a line per quantity range; a product with one price a single line --}}
     @if ($tables['groups'] !== [])
+    {{-- 4 locations per table (client, 6 Nov 2026): the 5th starts a table on the next page; the columns narrower,
+         RM in the heading --}}
     @foreach (array_chunk($tables['columns'], 4) ?: [[]] as $chunk)
-        @php $colWidth = count($chunk) ? round(58 / count($chunk), 2) : 58; @endphp
-            <table class="tw rates">
+        @php $colWidth = count($chunk) ? round(48 / count($chunk), 2) : 48; @endphp
+            <table class="tw rates" @unless ($loop->first) style="page-break-before: always" @endunless>
                 <tr class="head">
-                    <td class="label" style="width:42%">ITEM<span class="under">----</span></td>
+                    <td class="label" style="width:52%">ITEM<span class="under">----</span></td>
                     @foreach ($chunk as $c)
-                        <td class="num" style="width:{{ $colWidth }}%">{{ $c }}<span class="under">{{ $dash($c, '-') }}</span></td>
+                        <td class="num" style="width:{{ $colWidth }}%">{{ $c }} (RM)<span class="under">{{ $dash($c, '-') }}</span></td>
                     @endforeach
                 </tr>
                 @foreach ($tables['groups'] as $group)
@@ -138,7 +132,7 @@
                         <td class="label" colspan="{{ $singleLine ? 1 : count($chunk) + 1 }}">{{ $group['name'] }}@unless ($singleLine)<span class="under">{{ $dash($group['name'], '=') }}</span>@endunless</td>
                         @if ($singleLine)
                             @foreach ($chunk as $c)
-                                <td class="num">{!! nl2br(e($group['rows'][0]['prices'][$c] ?? '-')) !!}</td>
+                                <td class="num">{!! nl2br(e($cell($group['rows'][0]['prices'][$c] ?? '-'))) !!}</td>
                             @endforeach
                         @endif
                     </tr>
@@ -147,7 +141,7 @@
                         <tr @class(['row', 'minimum' => $row['minimum'] ?? false])>
                             <td class="label qty">{{ $row['label'] }}</td>
                             @foreach ($chunk as $c)
-                                <td class="num">{!! nl2br(e($row['prices'][$c] ?? '-')) !!}</td>
+                                <td class="num">{!! nl2br(e($cell($row['prices'][$c] ?? '-'))) !!}</td>
                             @endforeach
                         </tr>
                     @endforeach
@@ -162,19 +156,19 @@
     {{-- chartered lorries: their own block, as the client's CHARTED LORRY, with its own destination columns --}}
     @if ($tables['lorry'])
     @foreach (array_chunk($tables['lorry']['columns'], 4) ?: [[]] as $chunk)
-        @php $colWidth = count($chunk) ? round(58 / count($chunk), 2) : 58; @endphp
-            <table class="tw">
+        @php $colWidth = count($chunk) ? round(48 / count($chunk), 2) : 48; @endphp
+            <table class="tw" @unless ($loop->first) style="page-break-before: always" @endunless>
                 <tr class="head">
-                    <td class="label" style="width:42%">CHARTERED LORRY<span class="under">---------------</span></td>
+                    <td class="label" style="width:52%">CHARTERED LORRY<span class="under">---------------</span></td>
                     @foreach ($chunk as $c)
-                        <td class="num" style="width:{{ $colWidth }}%">{{ $c }}<span class="under">{{ $dash($c, '-') }}</span></td>
+                        <td class="num" style="width:{{ $colWidth }}%">{{ $c }} (RM)<span class="under">{{ $dash($c, '-') }}</span></td>
                     @endforeach
                 </tr>
                 @foreach ($tables['lorry']['rows'] as $row)
                     <tr class="row">
                         <td class="label">{{ $row['label'] }}</td>
                         @foreach ($chunk as $c)
-                            <td class="num">{!! nl2br(e($row['prices'][$c] ?? '-')) !!}</td>
+                            <td class="num">{!! nl2br(e($cell($row['prices'][$c] ?? '-'))) !!}</td>
                         @endforeach
                     </tr>
                 @endforeach
@@ -195,7 +189,7 @@
         @php
             $closing = array_values(array_filter([
                 $party['credit_term_days'] ? 'Terms of payment: '.$party['credit_term_days'].' Days' : null,
-                $issuedBy ? 'Contact Person : '.strtoupper($issuedBy).($salesperson?->phone ? ' ( '.$salesperson->phone.' )' : '') : null,
+                // the contact person is under the date now (user, 6 Nov 2026), not repeated here
                 'If you have any doubts, please contact us.',
             ]));
         @endphp

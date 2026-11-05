@@ -26,6 +26,7 @@ class DailyLorrySchedulePdfController
 
         $pdf = Pdf::loadView('pdf.daily-lorry-schedule', ['schedule' => $schedule])->setPaper('a4');
 
+        \App\Support\PdfPageNumbers::stamp($pdf); // Page X of Y bottom right (client, 5 Nov 2026)
         return $pdf->stream('lorry-schedule-'.$date->format('Ymd').'.pdf');
     }
 }

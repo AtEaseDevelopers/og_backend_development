@@ -3,9 +3,10 @@
 <head>
     <meta charset="utf-8">
     <title>{{ $number }}</title>
+    @include('pdf.partials.common')
     <style>
-        @page { margin: 36px 42px; }
-        body { font-family: DejaVu Sans, sans-serif; font-size: 11px; color: #000; line-height: 1.4; }
+        @page { margin: 30px 30px 40px; }
+        body { font-size: 11px; line-height: 1.4; }
         h1 { font-size: 16px; margin: 0 0 4px; }
         h2 { font-size: 12px; margin: 14px 0 6px; border-bottom: 1px solid #000; padding-bottom: 3px; }
         .muted { color: #444; }
@@ -13,7 +14,9 @@
         .meta td { vertical-align: top; padding: 0 0 4px; }
         table.grid { width: 100%; border-collapse: collapse; margin-top: 4px; }
         table.grid th, table.grid td { border: 1px solid #000; padding: 5px 6px; vertical-align: top; }
-        table.grid th { text-align: left; font-weight: bold; }
+        table.grid th { text-align: left; font-weight: bold; background: #f0f0f0; text-transform: uppercase; font-size: 10px; }
+        table.grid td.c, table.grid th.c { text-align: center; white-space: nowrap; }
+        table.grid td.num, table.grid th.num { text-align: right; white-space: nowrap; }
         .block { margin-bottom: 8px; }
         .block div { margin-bottom: 2px; }
     </style>
@@ -59,28 +62,30 @@
 
     <h2>Customer</h2>
     <div class="block">
-        <div><strong>{{ $customerName }}</strong></div>
-        @if ($billing)<div>{{ $billing }}</div>@endif
-        @if ($pic)<div>PIC: {{ $pic }}</div>@endif
-        @if ($phone)<div>Contact: {{ $phone }}</div>@endif
+        {{-- the billing customer block (client, 5 Nov 2026) --}}
+        @include('pdf.partials.bill-to', ['code' => $customer?->code, 'name' => $customerName, 'reg_no' => $customer?->brn, 'address' => $billing, 'pic' => $pic, 'phone' => $phone, 'email' => $customer?->email])
     </div>
 
     <h2>Goods</h2>
     <table class="grid">
         <thead>
+            {{-- the order form's columns (client, 5 Nov 2026) --}}
             <tr>
-                <th>Type</th>
-                <th>Product</th>
-                <th>Qty</th>
-                <th>Details</th>
+                <th class="c" style="width:5%">No.</th>
+                <th>Item</th>
+                <th class="num" style="width:9%">Qty</th>
+                <th class="c" style="width:12%">UOM</th>
+                <th style="width:34%">Details</th>
             </tr>
         </thead>
         <tbody>
         @forelse ($items as $item)
+            @php $unit = \App\Support\QuantityLabel::unit($item['uom'] ?? null) ?? ((($item['kind'] ?? '') === 'measurement' && filled($item['sub_category'] ?? null)) ? ucfirst(strtolower($item['sub_category'])) : ((($item['kind'] ?? '') === 'lorry') ? 'Trip' : 'Unit')); $kindLabel = $kinds[$item['kind'] ?? ''] ?? null; @endphp
             <tr>
-                <td>{{ $kinds[$item['kind'] ?? ''] ?? ($item['kind'] ?? '—') }}</td>
-                <td>{{ $item['item_name'] }}</td>
-                <td>{{ rtrim(rtrim(number_format((float) ($item['quantity'] ?? 1), 3, '.', ''), '0'), '.') }}</td>
+                <td class="c">{{ $loop->iteration }}</td>
+                <td>{{ $item['item_name'] }}@if ($kindLabel)<div class="muted">{{ $kindLabel }}</div>@endif</td>
+                <td class="num">{{ rtrim(rtrim(number_format((float) ($item['quantity'] ?? 1), 3, '.', ''), '0'), '.') }}</td>
+                <td class="c">{{ $unit }}</td>
                 <td>
                     {{ collect([
                         $item['sub_category'] ?? null,
@@ -91,7 +96,7 @@
                 </td>
             </tr>
         @empty
-            <tr><td colspan="4">No goods listed.</td></tr>
+            <tr><td colspan="5">No goods listed.</td></tr>
         @endforelse
         </tbody>
     </table>

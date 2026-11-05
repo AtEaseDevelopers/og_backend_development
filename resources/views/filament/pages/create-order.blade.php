@@ -276,6 +276,20 @@
                     @error($ep.'form.customer_pic_phone')<div class="ow-field-error">{{ $message }}</div>@enderror
                 </div>
                 @endunless
+                @if ($isQuote)
+                {{-- the quotation's contact person (client, 6 Nov 2026): named at the foot of the PDF with the phone from
+                     their user record; the user creating it unless another is chosen --}}
+                <div class="ow-field">
+                    <label>Contact person</label>
+                    <select wire:model.live="orders.{{ $oi }}.form.contact_person_id" class="ow-select" @disabled(! $headerEditable)>
+                        <option value="">— Contact person —</option>
+                        @foreach ($this->contactPersonOptions() as $id => $label)
+                            <option value="{{ $id }}">{{ $label }}</option>
+                        @endforeach
+                    </select>
+                    @error($ep.'form.contact_person_id')<div class="ow-field-error">{{ $message }}</div>@enderror
+                </div>
+                @endif
                 @unless ($isQuote)
                 <div class="ow-field">
                     <label>Salesperson</label>

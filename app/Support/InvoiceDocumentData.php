@@ -51,6 +51,7 @@ class InvoiceDocumentData
                 'address' => $company?->address ?: $branch?->address,
                 'phone' => $company?->phone ?: $branch?->phone,
                 'email' => $company?->email ?: $branch?->email,
+                'sst_no' => ($company?->tin ?: $branch?->sst_no) ?? null,
                 'website' => config('app.url'),
             ],
             'meta' => [
@@ -62,6 +63,7 @@ class InvoiceDocumentData
                 'order_no' => $invoice->quotation?->orderNumber(),
                 'due_date' => $invoice->due_date?->format('d/m/Y'),
                 'type' => $invoice->isCashBill() ? 'Cash Bill' : ucwords(str_replace('_', ' ', (string) $invoice->type)),
+                'salesperson' => $invoice->quotation?->salesperson?->name,
             ],
             'bill_to' => [
                 'name' => $customer?->company_name ?: '—',
@@ -81,7 +83,21 @@ class InvoiceDocumentData
             'amount_in_words' => AmountInWords::ringgit($totalAmount),
             'disclaimer' => config('og.invoice.disclaimer'),
             'bank_accounts' => config('og.invoice.bank_accounts', []),
+            // the e-Invoice QR (client, 6 Nov 2026): the LHDN validated link once the submission has a UUID, else blank
+            'einvoice_qr' => $this->einvoiceQr($invoice),
         ];
+    }
+
+    /** The QR of the LHDN validated link, when the invoice's e-Invoice submission carries a UUID. */
+    private function einvoiceQr(Invoice $invoice): ?string
+    {
+        $uuid = $invoice->einvoiceSubmission?->uuid;
+
+        if (! filled($uuid) || ! method_exists(\App\Support\BarcodeImage::class, 'qrDataUri')) {
+            return null;
+        }
+
+        return \App\Support\BarcodeImage::qrDataUri('https://myinvois.hasil.gov.my/'.$uuid);
     }
 
     /** @return list<array<string, mixed>> */
@@ -147,11 +163,16 @@ class InvoiceDocumentData
             $date = Carbon::parse($date);
         }
 
-        // the goods on the CSN (user, 30 Oct 2026): "15 × 1100L Recycle Bin" — no charges per line (client, 30 Oct 2026)
+        // the goods on the CSN (user, 30 Oct 2026): "15 × 1100L Recycle Bin", with the measurement and weight the customer
+        // keyed, never the price band's range (client, 6 Nov 2026) — no charges per line (client, 30 Oct 2026)
         $items = $csn->lines
             // the pick-up / drop-off / minimum charge lines are not goods (client, 30 Oct 2026)
             ->reject(fn ($line) => in_array(trim((string) $line->item_name), \App\Domains\Quotation\Actions\CreateOrderFromEnquiry::CHARGE_LINES, true))
-            ->map(fn ($line) => trim(QuantityLabel::format($line->quantity, $line->uom).' × '.$line->item_name))->values()->all();
+            ->map(function ($line) {
+                $measure = trim(implode(' · ', array_filter([$line->dimensions ?? null, ($line->weight ?? null) ? $line->weight.' kg' : null])));
+
+                return trim(QuantityLabel::format($line->quantity, $line->uom).' × '.$line->item_name).($measure !== '' ? ' ('.$measure.')' : '');
+            })->values()->all();
 
         return [
             'date' => $date?->format('d/m/Y') ?? '—',
@@ -161,6 +182,7 @@ class InvoiceDocumentData
             'your_ref' => $refs,
             'from' => $csn->fromLocation?->name ?: '—',
             'to' => $csn->toLocation?->name ?: $csn->delivery_city ?: '—',
+            'consignee' => $csn->consignee_name ?: '—',
             'sst' => $lineTax > 0 ? $this->formatAmount($lineTax) : '',
             'amount' => $this->formatAmount($lineSubtotal > 0 ? $lineSubtotal : $fallbackAmount),
         ];

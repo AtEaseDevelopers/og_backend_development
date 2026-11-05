@@ -275,6 +275,7 @@ class CreateQuotation extends CreateOrder
             'form.quote_type' => 'required|in:'.implode(',', array_keys(Quote::TYPES)),
             // no salesperson and no DO number on a quotation (user, 21 Oct 2026)
             'form.salesperson_id' => 'nullable|exists:users,id',
+            'form.contact_person_id' => 'nullable|exists:users,id',
             'pairs.*.customer_do_number' => 'nullable|string|max:100',
             // each product's drop-off location: its price list price, and its special price once accepted
             'pairs.*.to_location_id' => 'required|exists:locations,id',
@@ -559,6 +560,7 @@ class CreateQuotation extends CreateOrder
                         'customer_pic_name' => trim((string) ($this->form['customer_pic_name'] ?? '')),
                         'customer_pic_phone' => trim((string) ($this->form['customer_pic_phone'] ?? '')),
                         'salesperson_id' => $this->form['salesperson_id'] ?: null,
+                        'contact_person_id' => $this->form['contact_person_id'] ?: null,
                         'order_type' => $this->form['order_type'] ?? null,
                     ],
                     'pairs' => $this->quotePairs(),

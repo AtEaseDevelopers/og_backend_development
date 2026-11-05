@@ -5,50 +5,51 @@
     <title>{{ $quotation->orderNumber() }} {{ ($showAmounts ?? true) ? 'Order Quotation' : 'Order Form' }}</title>
     {{-- the Order Form (user, 29 Oct 2026): the letterhead of the quotation, then the order in boxes — customer, consignor
          and consignee side by side, delivery details, the items with their prices, instructions and the signatures --}}
+    @include('pdf.partials.common')
     <style>
-        @page { margin: 168px 36px 46px 36px; }
-        body { font-family: DejaVu Sans, sans-serif; font-size: 9.5px; color: #000; line-height: 1.35; }
-        header { position: fixed; top: -150px; left: 0; right: 0; }
+        /* larger type and tighter margins (client, 5 Nov 2026: fill the page) */
+        @page { margin: 186px 30px 40px 30px; }
+        body { font-size: 10.5px; line-height: 1.35; }
+        header { position: fixed; top: -170px; left: 0; right: 0; }
         .lh-name { font-size: 17px; font-weight: bold; }
-        .lh-small { font-size: 9px; line-height: 1.35; }
+        .lh-small { font-size: 10px; line-height: 1.35; }
         .lh-rule { border-top: 4px solid #000; margin: 5px 0 6px; }
         .lh-meta { width: 100%; border-collapse: collapse; }
         .lh-meta td { padding: 0; vertical-align: bottom; }
         .lh-meta .k { font-weight: bold; font-size: 10px; }
         .lh-title { font-size: 19px; font-weight: bold; text-align: right; }
-        /* a QR of the document number (user, 30 Oct 2026): scanned into the system's search fields */
-        /* a Code 128 barcode of the document number (user, 30 Oct 2026, in place of the QR) */
-        .lh-qr { width: 190px; text-align: right; vertical-align: top; padding-top: 4px; }
-        .lh-qr img { width: 180px; height: 40px; }
-        .lh-qr-text { font-size: 8px; letter-spacing: .4px; margin-top: 1px; }
-        .pagenum:before { content: counter(page); }
+        /* the Code 128 barcode of the document number (user, 30 Oct 2026) is styled in pdf.partials.common */
 
-        table.box { width: 100%; border-collapse: collapse; margin: 0 0 8px; page-break-inside: avoid; }
-        table.box td, table.box th { border: 1px solid #000; padding: 4px 6px; vertical-align: top; }
-        table.box th { background: #f0f0f0; font-size: 9px; text-align: left; text-transform: uppercase; letter-spacing: .02em; }
-        table.box td.k { width: 17%; color: #333; font-size: 8.5px; text-transform: uppercase; white-space: nowrap; }
-        table.box td.v { font-weight: bold; }
+        /* the header blocks without grid lines, as the consignment note (client, 6 Nov 2026): only the items are a table */
+        table.box { width: 100%; border-collapse: collapse; margin: 0 0 10px; page-break-inside: avoid; }
+        table.box td, table.box th { border: 0; padding: 2px 8px 2px 0; vertical-align: top; }
+        table.box th { font-size: 10.5px; text-align: left; text-transform: uppercase; letter-spacing: .02em; border-bottom: 1px solid #000; padding: 0 0 3px; }
+        /* labels bold, values in normal text (user, 6 Nov 2026) */
+        table.box td.k { width: 17%; font-size: 9.5px; font-weight: bold; text-transform: uppercase; white-space: nowrap; }
+        /* the billing address keeps three lines of room (client, 6 Nov 2026) */
+        .addr3 { min-height: 3.4em; }
+        table.box td.v { font-weight: normal; }
         .two { width: 100%; border-collapse: separate; border-spacing: 0; margin: 0 0 8px; }
         .two > tbody > tr > td { width: 50%; padding: 0; vertical-align: top; }
         .two > tbody > tr > td + td { padding-left: 8px; }
         .two table.box { margin: 0; }
         .two table.box td.k { width: 30%; }
-        .tag { display: inline-block; padding: 0 5px; border: 1px solid #000; border-radius: 3px; font-size: 8px; font-weight: bold; text-transform: uppercase; margin-left: 4px; }
+        /* the pick-up / delivery mode as plain text, not a button (client, 6 Nov 2026) */
+        .tag { font-size: 9.5px; font-weight: normal; text-transform: none; margin-left: 4px; }
+        .tag:before { content: '· '; }
+        .terms { margin-top: 12px; page-break-inside: avoid; }
+        .terms .h { font-weight: bold; font-size: 10.5px; text-transform: uppercase; border-bottom: 1px solid #000; padding-bottom: 3px; margin-bottom: 4px; }
+        .terms ol { margin: 0; padding-left: 16px; }
+        .terms li { margin-bottom: 2px; }
 
-        table.items { width: 100%; border-collapse: collapse; margin: 0 0 8px; }
-        table.items th, table.items td { border: 1px solid #000; padding: 4px 6px; vertical-align: top; }
-        table.items th { background: #f0f0f0; font-size: 9px; text-transform: uppercase; }
-        table.items td.num, table.items th.num { text-align: right; white-space: nowrap; }
-        table.items td.c, table.items th.c { text-align: center; white-space: nowrap; }
-        table.items tr.total td { font-weight: bold; background: #f7f7f7; }
-        table.items td.blank { border-left: 0; border-bottom: 0; }
+        /* table.items: pdf.partials.common (the order form's items table, used by every document) */
 
         .notes { margin: 0 0 10px; }
-        .notes .h { font-weight: bold; font-size: 9px; text-transform: uppercase; margin-bottom: 2px; }
+        .notes .h { font-weight: bold; font-size: 10px; text-transform: uppercase; margin-bottom: 2px; }
         /* signatures (user, 30 Oct 2026): room to sign, the labels centred under the lines */
         table.sign { width: 100%; border-collapse: collapse; margin-top: 28px; page-break-inside: avoid; }
         table.sign td { width: 50%; padding: 0 18px; vertical-align: bottom; }
-        table.sign .line { border-top: 1px solid #000; padding-top: 4px; font-size: 9px; text-align: center; }
+        table.sign .line { border-top: 1px solid #000; padding-top: 4px; font-size: 10px; text-align: center; }
         .muted { color: #444; font-weight: normal; }
     </style>
 </head>
@@ -65,7 +66,6 @@
         $address = strtoupper($company?->address ?? $branch?->address ?? '');
         $phone = $company?->phone ?? $branch?->phone ?? '';
         $email = $company?->email ?? $branch?->email ?? '';
-        $fax = $branch?->fax ?? '';
         $sstNo = ($company?->tin ?: $branch?->sst_no) ?? '';
 
         // the Order Form (no prices) and the Order Quotation (with prices) share this layout (user, 30 Oct 2026)
@@ -131,6 +131,9 @@
         $sst = (float) $quotation->tax_amount;
         $sstRate = rtrim(rtrim(number_format(\App\Support\QuotationMatrix::sstRate(), 2, '.', ''), '0'), '.');
         $total = (float) ($quotation->total_amount ?: $subtotal + $minimumTopUp + $sst);
+        // paid or not, with the payment method (client, 6 Nov 2026): paid once the amount recorded covers the total
+        $paidAmount = max((float) $quotation->paid_amount, (float) ($quotation->proformaInvoice?->paid_amount ?? 0));
+        $paymentStatus = $total > 0 && $paidAmount >= $total ? 'PAID' : ($paidAmount > 0 ? 'PARTLY PAID' : 'UNPAID');
     @endphp
 
     {{-- letterhead, repeated on every page (the quotation's) --}}
@@ -140,7 +143,8 @@
         <div class="lh-small">
             @if ($regNo)(REG NO. : {{ $regNo }} )<br>@endif
             @if ($address){{ $address }}<br>@endif
-            @if ($phone || $fax)@if ($phone)Tel : {{ $phone }}@endif @if ($fax)&nbsp; Fax : {{ $fax }}@endif<br>@endif
+            {{-- no fax on any document (client, 5 Nov 2026) --}}
+            @if ($phone)Tel : {{ $phone }}<br>@endif
             <table class="lh-meta"><tr>
                 <td class="lh-small">@if ($email)Email : {{ $email }}@endif</td>
                 <td class="lh-small">@if ($sstNo)SST No. : {{ $sstNo }}@endif</td>
@@ -148,45 +152,66 @@
         </div>
         </td><td class="lh-qr"><img src="{{ \App\Support\BarcodeImage::code128DataUri($quotation->orderNumber()) }}" alt="Barcode {{ $quotation->orderNumber() }}"><div class="lh-qr-text">{{ $quotation->orderNumber() }}</div></td></tr></table>
         <div class="lh-rule"></div>
+        {{-- the number is under the barcode only; the page number is stamped bottom right (client, 5 Nov 2026);
+             the order type (Cash, Credit / Term, COD) at the left in the title's size, paid or not with the payment
+             method under it; the title at the right (client, 6 Nov 2026) --}}
         <table class="lh-meta"><tr>
-            <td class="k" style="width:34%">Order No. : {{ $quotation->orderNumber() }}</td>
-            <td class="k" style="width:30%">Page No. : <span class="pagenum"></span></td>
+            <td class="lh-title" style="text-align:left">{{ strtoupper($orderType?->getLabel() ?? ($quotation->terms_of_payment ?: '')) }}</td>
             <td class="lh-title">{{ $documentTitle }}</td>
+        </tr><tr>
+            <td class="k" style="padding-top:2px">Payment : {{ $paymentStatus }}@if ($paymentMethod) · {{ $paymentMethod }}@endif</td>
+            <td></td>
         </tr></table>
     </header>
 
     <table class="box">
         <tr><th colspan="4">Customer &amp; order</th></tr>
+        {{-- the billing customer (client, 5 Nov 2026; user, 6 Nov 2026): a labelled row each — code + name, Reg. No.,
+             address, PIC, Tel, Email — beside the order's date, term, enquiry, salesperson and expected delivery --}}
         <tr>
-            <td class="k">Customer</td>
-            <td class="v" style="width:50%">{{ $customer?->company_name ?? '—' }}@if ($customer?->code) <span class="muted">({{ $customer->code }})</span>@endif</td>
+            <td class="k">Bill to</td>
+            <td class="v" style="width:50%">{{ trim(implode(' ', array_filter([$customer?->code, $customer?->company_name]))) ?: '—' }}</td>
             <td class="k">Date</td>
             <td class="v">{{ $orderDate }}</td>
         </tr>
+        {{-- no Payment term row (client, 6 Nov 2026): the order type and payment are in the header --}}
         <tr>
-            <td class="k">Billing address</td>
-            <td class="v">{!! nl2br(e($quotation->customer_address ?: ($customer?->address ?? '—'))) !!}</td>
-            <td class="k">Payment term</td>
-            <td class="v">{{ $paymentTerm }}@if ($paymentMethod) <span class="muted">· {{ $paymentMethod }}</span>@endif</td>
-        </tr>
-        <tr>
-            <td class="k">Attn / contact</td>
-            <td class="v">{{ $contact($quotation->attention ?: $customer?->attention, $quotation->customer_pic_phone ?: $customer?->phone) }}</td>
+            <td class="k">Reg. No.</td>
+            <td class="v">{{ $customer?->brn ?: '—' }}</td>
             <td class="k">Enquiry</td>
             <td class="v">{{ $enquiry?->reference_no ?? '—' }}@if ($receivedThrough) <span class="muted">· {{ $receivedThrough }}</span>@endif</td>
         </tr>
         <tr>
+            <td class="k">Address</td>
+            <td class="v"><div class="addr3">{!! nl2br(e($quotation->customer_address ?: ($customer?->address ?? '—'))) !!}</div></td>
             <td class="k">Salesperson</td>
             <td class="v">{{ $salesperson?->name ?? '—' }}@if ($quotation->saLocation?->code) <span class="muted">· {{ $quotation->saLocation->code }}</span>@endif</td>
-            <td class="k">Expected delivery</td>
-            <td class="v">{{ $quotation->expected_delivery_date ?: '—' }}</td>
+        </tr>
+        <tr>
+            <td class="k">PIC</td>
+            <td class="v">{{ ($quotation->attention ?: $customer?->attention) ?: '—' }}</td>
+            {{-- "Expected pick up" (client, 6 Nov 2026): a dash when the customer drops the goods off --}}
+            <td class="k">Expected pick up</td>
+            <td class="v">{{ $isStore ? '—' : ($quotation->expected_delivery_date ?: '—') }}</td>
+        </tr>
+        <tr>
+            <td class="k">Tel</td>
+            <td class="v">{{ ($quotation->customer_pic_phone ?: $customer?->phone) ?: '—' }}</td>
+            <td class="k"></td>
+            <td class="v"></td>
+        </tr>
+        <tr>
+            <td class="k">Email</td>
+            <td class="v">{{ $customer?->email ?: '—' }}</td>
+            <td class="k"></td>
+            <td class="v"></td>
         </tr>
     </table>
 
     <table class="two"><tbody><tr>
         <td>
             <table class="box">
-                <tr><th colspan="2">Consignor <span class="tag">{{ $consignorMode }}</span>@if ($stops['multi_pickup'] && $stops['pickup_stops'] !== []) <span class="tag">{{ count($stops['pickup_stops']) }} pick-up addresses</span>@endif</th></tr>
+                <tr><th colspan="2">Consignor @if ($stops['multi_pickup'] && $stops['pickup_stops'] !== []) <span class="tag">{{ count($stops['pickup_stops']) }} pick-up addresses</span>@endif</th></tr>
                 <tr><td class="k">Name</td><td class="v">{{ $quotation->consignor_name ?: ($quotation->portal_enquiry_id ? '—' : ($customer?->company_name ?? '—')) }}</td></tr>
                 <tr><td class="k">PIC / Tel</td><td class="v">{{ $contact($quotation->consignor_pic_name, $quotation->consignor_pic_phone) }}</td></tr>
                 @if ($stops['multi_pickup'] && $stops['pickup_stops'] !== [])
@@ -203,7 +228,7 @@
         </td>
         <td>
             <table class="box">
-                <tr><th colspan="2">Consignee <span class="tag">{{ $consigneeMode }}</span>@if ($stops['multi_dropoff'] && $stops['dropoff_stops'] !== []) <span class="tag">{{ count($stops['dropoff_stops']) }} consignees</span>@endif</th></tr>
+                <tr><th colspan="2">Consignee @if ($stops['multi_dropoff'] && $stops['dropoff_stops'] !== []) <span class="tag">{{ count($stops['dropoff_stops']) }} consignees</span>@endif</th></tr>
                 @if ($stops['multi_dropoff'] && $stops['dropoff_stops'] !== [])
                     @foreach ($stops['dropoff_stops'] as $stop)
                         <tr><td class="k">Consignee {{ $loop->iteration }}</td><td class="v">{!! $stopLines($stop, $quotation->consignee_name ?: ($quotation->destinations->sortBy('sequence')->first()?->consignee_name ?? null)) !!}</td></tr>
@@ -253,11 +278,11 @@
             @empty
                 <tr><td colspan="{{ $showAmounts ? 6 : 4 }}" class="c muted">No items</td></tr>
             @endforelse
-            @if ($showAmounts && ($minimumTopUp > 0 || $sst > 0))
+            {{-- Subtotal, SST, then Total, always (client, 6 Nov 2026) --}}
+            @if ($showAmounts)
                 <tr><td colspan="3" class="blank"></td><td colspan="2" class="num">Subtotal</td><td class="num">{{ number_format($subtotal, 2) }}</td></tr>
                 @if ($minimumTopUp > 0)<tr><td colspan="3" class="blank"></td><td colspan="2" class="num">Minimum charge top-up</td><td class="num">{{ number_format($minimumTopUp, 2) }}</td></tr>@endif
-                {{-- SST for a customer ticked "Charge SST" (user, 3 Nov 2026) --}}
-                @if ($sst > 0)<tr><td colspan="3" class="blank"></td><td colspan="2" class="num">SST {{ $sstRate }}%</td><td class="num">{{ number_format($sst, 2) }}</td></tr>@endif
+                <tr><td colspan="3" class="blank"></td><td colspan="2" class="num">SST {{ $sst > 0 ? $sstRate.'%' : '' }}</td><td class="num">{{ number_format($sst, 2) }}</td></tr>
             @endif
             @if ($showAmounts)
                 <tr class="total"><td colspan="3" class="blank"></td><td colspan="2" class="num">TOTAL</td><td class="num">{{ $rm($total) }}</td></tr>
@@ -265,15 +290,17 @@
         </tbody>
     </table>
 
-    <table class="sign"><tr>
-        <td>
-            <div style="height:70px"></div>
-            <div class="line">Prepared by{{ $issuedBy ? ' : '.$issuedBy : '' }}@if ($salesperson?->phone) ( {{ $salesperson->phone }} )@endif</div>
-        </td>
-        <td>
-            <div style="height:70px"></div>
-            <div class="line">Customer</div>
-        </td>
-    </tr></table>
+    {{-- no signatures (client, 6 Nov 2026); terms and conditions — sample wording until the client provides theirs --}}
+    <div class="terms">
+        <div class="h">Terms &amp; conditions</div>
+        <ol>
+            <li>This quotation is valid for 30 days from the date above and is subject to lorry availability.</li>
+            <li>Prices exclude SST unless stated; a minimum charge per pick-up applies.</li>
+            <li>Goods are carried at the owner's risk; please declare fragile or hazardous items and insure where required.</li>
+            <li>Additional charges apply for waiting time, non-standard locations, construction sites and outskirt areas.</li>
+            <li>Payment is due as per the payment term above; cash orders are payable before delivery.</li>
+        </ol>
+        <div class="muted" style="margin-top:3px;font-size:9px">(Sample terms — the client's actual terms and conditions to follow.)</div>
+    </div>
 </body>
 </html>

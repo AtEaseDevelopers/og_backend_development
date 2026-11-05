@@ -46,12 +46,21 @@ class CsnDocumentData
                 'job_sheet_number' => $csn->deliveryOrder?->jobSheet?->number ?: $csn->job_no,
                 // the QR carries the CSN number (user, 30 Oct 2026: scanned into the search fields); the old token QRs still work
                 'qr_value' => $csn->number,
+                'payment_label' => match ($csn->billing_type) {
+                    \App\Enums\CsnBillingType::CashBill => 'PAID',
+                    \App\Enums\CsnBillingType::Cod => 'COD',
+                    \App\Enums\CsnBillingType::Term => 'CREDIT / TERM',
+                    default => '',
+                },
                 // the billing customer (user, 30 Oct 2026)
                 'customer_name' => $csn->customer_name ?: $csn->customer?->company_name,
                 'customer_code' => $csn->customer?->code,
                 'customer_brn' => $csn->customer_brn ?: $csn->customer?->brn,
                 'customer_address' => $csn->customer?->address,
                 'customer_contact' => $this->dropOffContact($csn->customer?->attention, $csn->customer_phone ?: $csn->customer?->phone),
+                'customer_pic' => $csn->customer?->attention,
+                'customer_phone' => $csn->customer_phone ?: $csn->customer?->phone,
+                'customer_email' => $csn->customer?->email,
                 'consignor_phone' => $csn->consignor_phone,
                 // every consignee (the main one and the extra drop-off stops), each to chop & sign
                 'consignees' => $this->consignees($csn),
@@ -155,6 +164,7 @@ class CsnDocumentData
 
                 return [
                     'quantity' => $qty > 0 ? $this->formatQuantity($qty) : '—',
+                    'uom' => \App\Support\QuantityLabel::unit($line['uom'] ?? null) ?? 'Unit',
                     'description' => '- '.($line['item_name'] ?? '—'),
                     'amount_myr' => $this->nullableAmount($line['line_total'] ?? null),
                     'sst_myr' => null,
@@ -168,6 +178,7 @@ class CsnDocumentData
         if ($lines === [] && $transportCharges > 0) {
             $lines[] = [
                 'quantity' => '—',
+                'uom' => '—',
                 'description' => '- Transport charges',
                 'amount_myr' => $this->formatAmount($transportCharges),
                 'sst_myr' => null,
@@ -203,6 +214,7 @@ class CsnDocumentData
                 'address' => $company?->address ?: $branch?->address,
                 'phone' => $company?->phone ?: $branch?->phone,
                 'email' => $company?->email ?: $branch?->email,
+                'sst_no' => ($company?->tin ?: $branch?->sst_no) ?? null,
             ],
             'meta' => [
                 'number' => $fields['number'] ?? '—',
@@ -212,6 +224,8 @@ class CsnDocumentData
                 'lorry_number' => filled($fields['lorry_number'] ?? null) ? $fields['lorry_number'] : '—',
                 'job_sheet_number' => filled($fields['job_sheet_number'] ?? null) ? $fields['job_sheet_number'] : '—',
                 'qr_value' => $fields['qr_value'] ?? ($fields['number'] ?? null),
+                // left of the title (client, 6 Nov 2026): a cash bill shows PAID, else COD or CREDIT / TERM
+                'payment_label' => $fields['payment_label'] ?? '',
             ],
             'bill_to' => [
                 'name' => $fields['customer_name'] ?? '—',
@@ -219,6 +233,9 @@ class CsnDocumentData
                 'reg_no' => $fields['customer_brn'] ?? null,
                 'address' => $fields['customer_address'] ?? null,
                 'contact' => $fields['customer_contact'] ?? null,
+                'pic' => $fields['customer_pic'] ?? null,
+                'phone' => $fields['customer_phone'] ?? null,
+                'email' => $fields['customer_email'] ?? null,
             ],
             'consignor' => [
                 'name' => $fields['consignor_name'] ?? '—',

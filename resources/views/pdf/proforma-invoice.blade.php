@@ -3,17 +3,25 @@
 <head>
     <meta charset="utf-8">
     <title>{{ $proforma->number }}</title>
+    @include('pdf.partials.common')
     <style>
-        @page { margin: 28px 32px; }
-        body { font-family: DejaVu Sans, sans-serif; font-size: 10.5px; color: #111827; }
-        .head { width: 100%; border-bottom: 2px solid #111827; padding-bottom: 8px; margin-bottom: 14px; }
-        .head td { vertical-align: top; }
-        .company { font-size: 14px; font-weight: bold; }
+        @page { margin: 26px 28px 40px; }
+        body { font-size: 11px; }
+        /* the top as the order quotation's (client, 6 Nov 2026) */
+        .lh-name { font-size: 17px; font-weight: bold; }
+        .lh-small { font-size: 10px; line-height: 1.35; }
+        .lh-rule { border-top: 4px solid #000; margin: 5px 0 6px; }
+        .lh-meta { width: 100%; border-collapse: collapse; }
+        .lh-meta td { padding: 0; vertical-align: bottom; }
+        .lh-meta .k { font-weight: bold; font-size: 10px; }
+        .lh-title { font-size: 19px; font-weight: bold; text-align: right; }
         .muted { color: #6b7280; }
-        .doc-title { font-size: 18px; font-weight: bold; text-align: right; letter-spacing: .04em; }
         .meta { width: 100%; margin-bottom: 14px; border-collapse: collapse; }
         .meta td { padding: 2px 0; vertical-align: top; }
-        .label { color: #6b7280; width: 110px; }
+        /* labels bold, values in normal text (user, 6 Nov 2026) */
+        .label { width: 110px; font-weight: bold; }
+        .meta table td { font-weight: normal; }
+        .meta table td.label { font-weight: bold; }
         table.lines { width: 100%; border-collapse: collapse; margin-top: 6px; table-layout: fixed; }
         /* a bordered grid (user, 30 Oct 2026) */
         table.lines th { background: #f3f4f6; text-align: left; padding: 6px; font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; color: #374151; border: 1px solid #111827; }
@@ -27,37 +35,48 @@
     </style>
 </head>
 <body>
-    <table class="head">
-        <tr>
-            <td>
-                <div class="company">{{ $branch?->company_name ?: 'O&G Transport' }}</div>
-                @if ($branch?->company_no)<div class="muted">({{ $branch->company_no }})</div>@endif
-                @if ($branch?->address)<div class="muted">{!! nl2br(e($branch->address)) !!}</div>@endif
-                @if ($branch?->phone || $branch?->fax)<div class="muted">@if ($branch?->phone)Tel: {{ $branch->phone }}@endif @if ($branch?->fax) &nbsp;Fax: {{ $branch->fax }}@endif</div>@endif
-                @if ($branch?->email)<div class="muted">E-mail: {{ $branch->email }}</div>@endif
-                @if ($branch?->sst_no)<div class="muted">SST No.: {{ $branch->sst_no }}</div>@endif
-            </td>
-            <td>
-                {{-- a barcode of the proforma number above the title (user, 30 Oct 2026): scanned into the system's search fields --}}
-                <div style="text-align:right;margin-bottom:4px"><img src="{{ \App\Support\BarcodeImage::code128DataUri($proforma->number) }}" alt="Barcode {{ $proforma->number }}" style="width:180px;height:40px"><div style="font-size:8px;letter-spacing:.4px">{{ $proforma->number }}</div></div>
-                <div class="doc-title">PROFORMA INVOICE</div>
-                <div style="text-align:right;margin-top:4px"><span class="stamp">NOT A TAX INVOICE</span></div>
-            </td>
-        </tr>
-    </table>
+    @php
+        $orderType = $quotation?->orderType();
+        $paymentMethod = $quotation?->payment_method ? ucwords(str_replace('_', ' ', (string) $quotation->payment_method)) : null;
+        $paidAmount = max((float) ($quotation?->paid_amount ?? 0), (float) $proforma->paid_amount);
+        $paymentStatus = (float) $proforma->total_amount > 0 && $paidAmount >= (float) $proforma->total_amount ? 'PAID' : ($paidAmount > 0 ? 'PARTLY PAID' : 'UNPAID');
+    @endphp
+    {{-- the top as the order quotation's (client, 6 Nov 2026): letterhead, the number under its barcode, the order type
+         left and the title right, paid or not with the payment method --}}
+    <table class="lh-meta"><tr><td style="vertical-align:top">
+        <div class="lh-name">{{ strtoupper($branch?->company_name ?: 'O&G Transport') }}</div>
+        <div class="lh-small">
+            @if ($branch?->company_no)(REG NO. : {{ $branch->company_no }} )<br>@endif
+            @if ($branch?->address){{ strtoupper($branch->address) }}<br>@endif
+            @if ($branch?->phone)Tel : {{ $branch->phone }}<br>@endif
+            <table class="lh-meta"><tr>
+                <td class="lh-small">@if ($branch?->email)Email : {{ $branch->email }}@endif</td>
+                <td class="lh-small">@if ($branch?->sst_no)SST No. : {{ $branch->sst_no }}@endif</td>
+            </tr></table>
+        </div>
+    </td><td class="lh-qr"><img src="{{ \App\Support\BarcodeImage::code128DataUri($proforma->number) }}" alt="Barcode {{ $proforma->number }}"><div class="lh-qr-text">{{ $proforma->number }}</div></td></tr></table>
+    <div class="lh-rule"></div>
+    <table class="lh-meta"><tr>
+        <td class="lh-title" style="text-align:left">{{ strtoupper($orderType?->getLabel() ?? '') }}</td>
+        <td class="lh-title">PROFORMA INVOICE</td>
+    </tr><tr>
+        <td class="k" style="padding-top:2px">Payment : {{ $paymentStatus }}@if ($paymentMethod) · {{ $paymentMethod }}@endif</td>
+        <td style="text-align:right;padding-top:2px"><span class="stamp">NOT A TAX INVOICE</span></td>
+    </tr></table>
+    <div style="height:10px"></div>
 
     <table class="meta">
         <tr>
             <td style="width:55%">
                 <table>
                     @php $customer = $proforma->customer; @endphp
-                    <tr><td class="label">Bill to</td><td><strong>{{ $customer?->company_name ?? '—' }}</strong>@if ($customer?->code) <span class="muted">({{ $customer->code }})</span>@endif</td></tr>
-                    @if ($customer?->brn)<tr><td class="label">Co. Reg.</td><td>{{ $customer->brn }}</td></tr>@endif
+                    {{-- the billing customer (client, 5 Nov 2026; user, 6 Nov 2026): a labelled row each --}}
+                    <tr><td class="label">Bill to</td><td>{{ trim(implode(' ', array_filter([$customer?->code, $customer?->company_name]))) ?: '—' }}</td></tr>
+                    @if ($customer?->brn)<tr><td class="label">Reg. No.</td><td>{{ $customer->brn }}</td></tr>@endif
                     @if ($quotation?->customer_address || $customer?->address)<tr><td class="label">Address</td><td>{!! nl2br(e($quotation?->customer_address ?: $customer->address)) !!}</td></tr>@endif
-                    @if ($quotation?->attention || $customer?->attention || $quotation?->customer_pic_phone || $customer?->phone)
-                        <tr><td class="label">Attn / Tel</td><td>{{ trim(implode(' · ', array_filter([$quotation?->attention ?: $customer?->attention, $quotation?->customer_pic_phone ?: $customer?->phone]))) }}</td></tr>
-                    @endif
-                    @if ($customer?->email)<tr><td class="label">E-mail</td><td>{{ $customer->email }}</td></tr>@endif
+                    @if ($quotation?->attention || $customer?->attention)<tr><td class="label">PIC</td><td>{{ $quotation?->attention ?: $customer?->attention }}</td></tr>@endif
+                    @if ($quotation?->customer_pic_phone || $customer?->phone)<tr><td class="label">Tel</td><td>{{ $quotation?->customer_pic_phone ?: $customer?->phone }}</td></tr>@endif
+                    @if ($customer?->email)<tr><td class="label">Email</td><td>{{ $customer->email }}</td></tr>@endif
                     @if ($quotation?->customer_do_number)<tr><td class="label">Customer DO</td><td>{{ $quotation->customer_do_number }}</td></tr>@endif
                     @if ($quotation?->consignor_name)<tr><td class="label">Consignor</td><td>{{ $quotation->consignor_name }}@if ($quotation->fromLocation?->name) <span class="muted">· {{ $quotation->fromLocation->name }}</span>@endif</td></tr>@endif
                     @if ($quotation?->consignee_name || $quotation?->toLocation?->name)<tr><td class="label">Consignee</td><td>{{ $quotation?->consignee_name ?: '—' }}@if ($quotation?->toLocation?->name) <span class="muted">· {{ $quotation->toLocation->name }}</span>@endif</td></tr>@endif
@@ -65,65 +84,52 @@
             </td>
             <td>
                 <table>
-                    <tr><td class="label">Proforma no.</td><td><strong>{{ $proforma->number }}</strong></td></tr>
                     <tr><td class="label">Date</td><td>{{ ($proforma->issued_at ?? $proforma->created_at)?->format('d/m/Y') }}</td></tr>
                     @if ($quotation)
                         <tr><td class="label">Order no.</td><td>{{ $quotation->orderNumber() }}</td></tr>
-                        <tr><td class="label">Record no.</td><td>{{ $quotation->number }}@if (($quotation->version ?? 1) > 1) (v{{ $quotation->version }})@endif</td></tr>
-                        <tr><td class="label">Payment term</td><td>{{ $quotation->orderType()?->getLabel() ?? '—' }}@if ($quotation->payment_method) <span class="muted">· {{ ucwords(str_replace('_', ' ', (string) $quotation->payment_method)) }}</span>@endif</td></tr>
+                        {{-- no Record no., Payment term or CSN rows (client, 6 Nov 2026) --}}
                         <tr><td class="label">Salesperson</td><td>{{ $quotation->salesperson?->name ?? '—' }}@if ($quotation->salesperson?->phone) <span class="muted">· {{ $quotation->salesperson->phone }}</span>@endif</td></tr>
                         @if ($quotation->expected_delivery_date)<tr><td class="label">Expected delivery</td><td>{{ $quotation->expected_delivery_date }}</td></tr>@endif
-                        @if ($proforma->consignmentNote?->number)<tr><td class="label">CSN</td><td>{{ $proforma->consignmentNote->number }}</td></tr>@endif
                     @endif
                 </table>
             </td>
         </tr>
     </table>
 
-    <table class="lines">
+    {{-- the items in the order form's format (client, 5 Nov 2026); Paid and Balance due only once a payment was recorded --}}
+    @php $sst = (float) ($proforma->quotation?->tax_amount ?? 0); $sstRate = rtrim(rtrim(number_format(\App\Support\QuotationMatrix::sstRate(), 2, '.', ''), '0'), '.'); @endphp
+    <table class="items">
         <thead>
             <tr>
-                <th style="width:4%">#</th>
-                <th style="width:48%">Item / service</th>
-                <th style="width:15%">Destination</th>
-                <th class="num" style="width:10%">Qty</th>
-                <th class="num" style="width:11%">Unit (RM)</th>
-                <th class="num" style="width:12%">Amount (RM)</th>
+                <th class="c" style="width:5%">No.</th>
+                <th>Item</th>
+                <th class="num" style="width:9%">Qty</th>
+                <th class="c" style="width:12%">UOM</th>
+                <th class="num" style="width:15%">Unit price (RM)</th>
+                <th class="num" style="width:15%">Amount (RM)</th>
             </tr>
         </thead>
         <tbody>
             @forelse ($lines as $i => $line)
                 <tr>
-                    <td>{{ $i + 1 }}</td>
-                    <td>{{ $line['item'] }}</td>
-                    <td>{{ $line['route'] ?? '—' }}</td>
+                    <td class="c">{{ $i + 1 }}</td>
+                    <td>{{ $line['item'] }}@if ($line['measure'] ?? null)<div class="muted">{{ $line['measure'] }}</div>@endif@if ($line['handling'] ?? null)<div class="muted">{{ $line['handling'] }}</div>@endif</td>
                     <td class="num">{{ $line['qty'] }}</td>
+                    <td class="c">{{ $line['uom'] ?? '—' }}</td>
                     <td class="num">{{ $line['unit'] }}</td>
                     <td class="num">{{ $line['total'] }}</td>
                 </tr>
             @empty
-                <tr><td colspan="6" class="muted">Transport charges</td></tr>
+                <tr><td class="c">1</td><td>Transport charges</td><td class="num">—</td><td class="c">—</td><td class="num">—</td><td class="num">{{ number_format((float) $proforma->total_amount - $sst, 2) }}</td></tr>
             @endforelse
+            {{-- Subtotal, SST, then Total (client, 6 Nov 2026): no Paid / Balance due lines --}}
+            <tr><td colspan="3" class="blank"></td><td colspan="2" class="num">Subtotal</td><td class="num">{{ number_format((float) $proforma->total_amount - $sst, 2) }}</td></tr>
+            <tr><td colspan="3" class="blank"></td><td colspan="2" class="num">SST {{ $sst > 0 ? $sstRate.'%' : '' }}</td><td class="num">{{ number_format($sst, 2) }}</td></tr>
+            <tr class="total"><td colspan="3" class="blank"></td><td colspan="2" class="num">TOTAL</td><td class="num">RM {{ number_format((float) $proforma->total_amount, 2) }}</td></tr>
         </tbody>
     </table>
 
-    {{-- the amount payable (user, 30 Oct 2026); Paid and Balance due only once a payment was recorded --}}
-    @php $sst = (float) ($proforma->quotation?->tax_amount ?? 0); $sstRate = rtrim(rtrim(number_format(\App\Support\QuotationMatrix::sstRate(), 2, '.', ''), '0'), '.'); @endphp
-    <table class="totals">
-        {{-- SST for a customer ticked "Charge SST" (user, 3 Nov 2026): the subtotal and the SST above the total --}}
-        @if ($sst > 0)
-            <tr><td>Subtotal</td><td class="num">RM {{ number_format((float) $proforma->total_amount - $sst, 2) }}</td></tr>
-            <tr><td>SST {{ $sstRate }}%</td><td class="num">RM {{ number_format($sst, 2) }}</td></tr>
-        @endif
-        @if ((float) $proforma->paid_amount > 0)
-            <tr><td>Total</td><td class="num">RM {{ number_format((float) $proforma->total_amount, 2) }}</td></tr>
-            <tr><td>Paid</td><td class="num">RM {{ number_format((float) $proforma->paid_amount, 2) }}</td></tr>
-            <tr class="grand"><td>Balance due</td><td class="num">RM {{ number_format($outstanding, 2) }}</td></tr>
-        @else
-            <tr class="grand"><td>Total amount payable</td><td class="num">RM {{ number_format((float) $proforma->total_amount, 2) }}</td></tr>
-        @endif
-    </table>
-
+    {{-- the client's PI instructions to follow (6 Nov 2026): the payment instructions for now, the rest left blank --}}
     <div class="box">
         <strong>Payment instructions</strong><br>
         {!! nl2br(e($proforma->payment_instructions ?: 'Please make payment to the account(s) provided by our counter and upload your payment proof in the Customer Portal.')) !!}

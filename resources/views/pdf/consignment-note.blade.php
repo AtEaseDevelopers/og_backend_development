@@ -3,6 +3,7 @@
 <head>
     <meta charset="utf-8">
     <title>{{ $meta['number'] ?? 'Consignment Note' }}</title>
+    @include('pdf.partials.common')
     @include('documents.consignment-note-styles', ['forPdf' => true])
 </head>
 <body>

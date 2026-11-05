@@ -40,12 +40,15 @@ class QuotePdfController
             'quote' => $record,
             'company' => $company,
             'salesperson' => filled($form['salesperson_id'] ?? null) ? User::query()->find($form['salesperson_id']) : null,
+            // the contact person named at the foot (client, 6 Nov 2026): the chosen staff, else who created it
+            'contact' => (filled($form['contact_person_id'] ?? null) ? User::query()->find($form['contact_person_id']) : null) ?? $record->creator,
             'party' => [
                 'name' => $customer?->company_name ?? $lead?->name ?? ($own ? ($company?->name ?? $record->branch?->company_name) : null) ?? '—',
                 'address' => filled($form['customer_address'] ?? null) ? $form['customer_address'] : ($customer?->address ?? $lead?->billing_address ?? $lead?->address ?? ($own ? ($company?->address ?? $record->branch?->address) : null)),
                 'email' => $customer?->email ?? $lead?->email ?? ($own ? ($company?->email ?? $record->branch?->email) : null),
                 'phone' => filled($form['customer_pic_phone'] ?? null) ? $form['customer_pic_phone'] : ($customer?->phone ?? $lead?->contact ?? ($own ? ($company?->phone ?? $record->branch?->phone) : null)),
-                'fax' => $customer?->fax ?? ($own ? $record->branch?->fax : null),
+                'code' => $customer?->code,
+                'reg_no' => $customer?->brn ?? ($own ? ($company?->brn ?? $record->branch?->company_no) : null),
                 'attention' => filled($form['customer_pic_name'] ?? null) ? $form['customer_pic_name'] : ($customer?->attention ?? $lead?->pic_name),
                 'credit_term_days' => $customer?->credit_term_days,
             ],
@@ -54,6 +57,7 @@ class QuotePdfController
             'minimums' => $this->minimumNotes($record, $blocks),
         ])->setPaper('a4');
 
+        \App\Support\PdfPageNumbers::stamp($pdf); // Page X of Y bottom right (client, 5 Nov 2026)
         return $pdf->stream($record->number.'.pdf');
     }
 

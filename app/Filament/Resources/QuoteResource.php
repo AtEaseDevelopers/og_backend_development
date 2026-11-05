@@ -63,6 +63,12 @@ class QuoteResource extends Resource
                     ->description(fn (Quote $record) => $record->customer || $record->isPriceList() ? null : 'Lead')
                     ->wrap(),
                 Tables\Columns\TextColumn::make('form.customer_pic_name')->label('PIC')->placeholder('—'),
+                // the contact person and who created it (client, 6 Nov 2026)
+                Tables\Columns\TextColumn::make('contact_person')
+                    ->label('Contact person')
+                    ->state(fn (Quote $record) => filled($record->form['contact_person_id'] ?? null) ? \App\Models\User::query()->whereKey($record->form['contact_person_id'])->value('name') : $record->creator?->name)
+                    ->placeholder('—'),
+                Tables\Columns\TextColumn::make('creator.name')->label('Created by')->placeholder('—')->toggleable(),
                 Tables\Columns\TextColumn::make('quote_date')->label('Quotation date')->date('d/m/Y')->sortable(),
                 Tables\Columns\TextColumn::make('records')
                     ->label('Products')

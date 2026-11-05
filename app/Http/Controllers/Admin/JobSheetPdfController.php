@@ -98,6 +98,7 @@ class JobSheetPdfController
             'groups' => $groups->isEmpty() ? collect([['code' => '', 'title' => 'Self', 'rows' => [], 'qty_total' => 0.0, 'advance_total' => 0.0]]) : $groups,
         ])->setPaper('a4', 'landscape'); // landscape (user, 28 Oct 2026): the columns fit
 
+        \App\Support\PdfPageNumbers::stamp($pdf); // Page X of Y bottom right (client, 5 Nov 2026)
         return $pdf->stream($sheet->number.'.pdf');
     }
 }

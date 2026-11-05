@@ -38,9 +38,8 @@ class QuotationPdfController
             abort_unless($user->canAccessTenant($record->company), 403);
         }
 
-        // two documents from the order record (user, 30 Oct 2026): the Order Form (?amounts=0, no prices) comes first,
-        // the Order Quotation (default, with prices) is what the customer confirms
-        $showAmounts = request()->boolean('amounts', true);
+        // the Order Quotation always carries its prices (user, 6 Nov 2026): the no-price Order Form (?amounts=0) is gone
+        $showAmounts = true;
 
         $pdf = Pdf::loadView('pdf.quotation', [
             'quotation' => $record,
@@ -48,6 +47,7 @@ class QuotationPdfController
             'showAmounts' => $showAmounts,
         ])->setPaper('a4');
 
+        \App\Support\PdfPageNumbers::stamp($pdf); // Page X of Y bottom right (client, 5 Nov 2026)
         return $pdf->stream($record->orderNumber().($showAmounts ? ' Order Quotation' : ' Order Form').'.pdf');
     }
 

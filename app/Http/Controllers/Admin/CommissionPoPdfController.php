@@ -66,6 +66,7 @@ class CommissionPoPdfController
             'total' => round((float) $sections->sum('subtotal'), 2),
         ])->setPaper('a4');
 
+        \App\Support\PdfPageNumbers::stamp($pdf); // Page X of Y bottom right (client, 5 Nov 2026)
         return $pdf->stream($record->number.'.pdf');
     }
 

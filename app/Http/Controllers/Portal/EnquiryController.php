@@ -191,13 +191,13 @@ class EnquiryController extends Controller
         $enquiry->loadMissing(['customer', 'branch', 'company']);
         $number = $enquiry->order_number ?: $enquiry->reference_no;
 
-        return Pdf::loadView('pdf.portal-enquiry', [
+        return \App\Support\PdfPageNumbers::stamp(Pdf::loadView('pdf.portal-enquiry', [
             'enquiry' => $enquiry,
             'payload' => is_array($enquiry->payload) ? $enquiry->payload : [],
             'number' => $number,
             'kinds' => Uom::CATEGORIES,
             'dropOffTypes' => DropOffType::options(),
-        ])->setPaper('a4')->stream($number.'.pdf');
+        ])->setPaper('a4'))->stream($number.'.pdf');
     }
 
     private function storeOrderBlock(

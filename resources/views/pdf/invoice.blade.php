@@ -3,6 +3,7 @@
 <head>
     <meta charset="utf-8">
     <title>{{ $meta['number'] ?? 'Invoice' }}</title>
+    @include('pdf.partials.common')
     @include('documents.invoice-styles', ['forPdf' => true])
 </head>
 <body>

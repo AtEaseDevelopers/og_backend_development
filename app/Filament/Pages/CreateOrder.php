@@ -220,6 +220,9 @@ class CreateOrder extends Page
             // optional: how the order reached us
             'received_through' => '',
             'salesperson_id' => '',
+            // a quotation's contact person (client, 6 Nov 2026): the staff named at the foot of the PDF; the user who
+            // creates it unless another is chosen (orders ignore it)
+            'contact_person_id' => (string) auth()->id(),
             // follows the customer's type once a customer is picked (see orderTypeOptions)
             'order_type' => OrderType::Cash->value,
             // service (pickup / store) is chosen per consignor block; the payment method is captured when the payment is recorded
@@ -1006,6 +1009,20 @@ class CreateOrder extends Page
     }
 
     /** @return array<int|string, string> */
+    /**
+     * The staff a quotation can name as its contact person (client, 6 Nov 2026): the active users of the current
+     * branch (user, 6 Nov 2026: in KL only KL's people), customers excluded.
+     */
+    public function contactPersonOptions(): array
+    {
+        $branchId = CurrentCompany::branchId();
+
+        return User::query()->where('is_active', true)
+            ->whereDoesntHave('roles', fn ($q) => $q->where('name', 'customer'))
+            ->when($branchId, fn ($q) => $q->whereHas('branches', fn ($b) => $b->whereKey($branchId)))
+            ->orderBy('name')->pluck('name', 'id')->all();
+    }
+
     public function salespersonOptions(): array
     {
         return User::query()->role('salesperson')->where('is_active', true)->orderBy('name')->get()

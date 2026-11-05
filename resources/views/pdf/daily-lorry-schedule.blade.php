@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>Daily Lorry Schedule {{ $schedule['date']->format('d.m.Y') }}</title>
+    <title>Daily Lorry Schedule {{ $schedule['date']->format('d/m/Y') }}</title>
     <style>
         @page { margin: 14mm 12mm; }
-        body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 11px; color: #111; }
+        body { font-family: DejaVu Sans, sans-serif; font-size: 11px; color: #111; }
         h1 { font-size: 16px; margin: 0 0 6px; text-decoration: underline; }
         h1 span { margin-left: 24px; }
         h2 { font-size: 13px; margin: 14px 0 4px; }
@@ -28,7 +28,7 @@
 @php $date = $schedule['date']; @endphp
 
 @forelse ($schedule['branches'] as $group)
-    <h1>DATE : {{ $date->format('d.m.Y') }} ({{ strtoupper($date->format('D')) }}) <span>O&amp;G {{ $group['code'] }}</span></h1>
+    <h1>DATE : {{ $date->format('d/m/Y') }} ({{ strtoupper($date->format('D')) }}) <span>O&amp;G {{ $group['code'] }}</span></h1>
     <table>
         <thead>
             <tr><th>Job sheet</th><th>Lorry</th><th>From</th><th>To</th><th>Drops</th></tr>
@@ -65,7 +65,7 @@
 
     @if (! $loop->last)<div style="page-break-after: always"></div>@endif
 @empty
-    <h1>DATE : {{ $date->format('d.m.Y') }} ({{ strtoupper($date->format('D')) }})</h1>
+    <h1>DATE : {{ $date->format('d/m/Y') }} ({{ strtoupper($date->format('D')) }})</h1>
     <p class="empty">No lorry trips scheduled.</p>
 @endforelse
 

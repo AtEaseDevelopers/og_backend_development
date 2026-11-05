@@ -1,17 +1,19 @@
 <style>
     @if(! empty($forPdf))
-        @page { margin: 22px 26px; }
+        @page { margin: 26px 28px 40px; }
         body {
             font-family: DejaVu Sans, sans-serif;
-            font-size: 10px;
+            font-size: 10.5px;
             color: #000;
             line-height: 1.35;
         }
     @endif
 
+    /* the invoice / cash bill after the client's AutoCount sample (6 Nov 2026): the order form's letterhead and
+       billing block, one bordered table of consignment notes, the totals, the notes with the e-Invoice QR, the terms */
     .inv-document {
-        font-family: Arial, Helvetica, DejaVu Sans, sans-serif;
-        font-size: 10px;
+        font-family: DejaVu Sans, sans-serif;
+        font-size: 10.5px;
         color: #000;
         line-height: 1.4;
     }
@@ -21,215 +23,66 @@
         border-collapse: collapse;
     }
 
-    .inv-header td {
-        vertical-align: top;
-        padding: 0 0 10px;
-    }
+    /* the letterhead as the order form's */
+    .inv-document .lh-name { font-size: 17px; font-weight: bold; }
+    .inv-document .lh-small { font-size: 10px; line-height: 1.35; }
+    .inv-document .lh-rule { border-top: 4px solid #000; margin: 5px 0 6px; }
+    .inv-document .lh-meta { width: 100%; border-collapse: collapse; }
+    .inv-document .lh-meta td { padding: 0; vertical-align: bottom; }
+    .inv-document .lh-title { font-size: 19px; font-weight: bold; text-align: right; }
+    .inv-document .lh-qr { width: 190px; text-align: right; vertical-align: top; padding-top: 4px; }
+    .inv-document .lh-qr img { width: 180px; height: 40px; }
+    .inv-document .lh-qr-text { font-size: 14px; font-weight: bold; letter-spacing: .8px; margin-top: 2px; }
 
-    .inv-logo-cell {
-        width: 28%;
-    }
-
-    .inv-logo {
-        max-height: 58px;
-        max-width: 150px;
-    }
-
-    .inv-company-cell {
-        text-align: right;
-        font-size: 9px;
-    }
-
-    .inv-company-name {
-        font-size: 11px;
-        font-weight: bold;
-        margin-bottom: 2px;
-    }
-
-    /* no logo (user, 30 Oct 2026): the letterhead on the left */
-    .inv-company-cell-full {
-        text-align: left;
-        font-size: 9.5px;
-    }
-
-    .inv-company-cell-full .inv-company-name {
-        font-size: 13px;
-    }
-
-    .inv-qr { margin-bottom: 4px; }
-    .inv-qr img { width: 180px; height: 40px; }
-
-    /* the boxed layout (user, 30 Oct 2026) */
-    .inv-title-cell { width: 26%; text-align: right; vertical-align: top; }
-    .inv-boxes { width: 100%; border-collapse: separate; border-spacing: 0; margin: 4px 0 8px; }
-    .inv-box { width: 50%; border: 1px solid #000; padding: 6px 8px; vertical-align: top; font-size: 9.5px; }
-    .inv-box + .inv-box { border-left: 0; }
-    .inv-box-title { font-weight: bold; font-size: 9px; text-transform: uppercase; letter-spacing: .03em; margin-bottom: 3px; }
-    .inv-box .inv-bill-name { font-weight: bold; font-size: 10.5px; }
-    .inv-box-muted { color: #444; margin-top: 3px; }
-    .inv-meta-table { width: 100%; border-collapse: collapse; }
+    /* the billing customer and the details */
+    .inv-parties { margin: 8px 0 10px; }
+    .inv-parties td { vertical-align: top; padding: 0; }
+    .inv-party-col { width: 58%; padding-right: 12px; }
+    .inv-meta-col { width: 42%; padding-left: 10px; }
+    .inv-meta-table { width: auto; }
     .inv-meta-table td { padding: 1px 0; vertical-align: top; }
-    .inv-meta-k { width: 38%; color: #444; }
-    .inv-meta-v { font-weight: bold; }
-    .inv-items-boxed th, .inv-items-boxed td { border: 1px solid #000; padding: 4px 5px; vertical-align: top; }
-    .inv-items-boxed th { background: #f0f0f0; text-align: left; font-size: 9px; }
-    .inv-items-boxed .inv-col-goods { width: 32%; }
-    .inv-items-boxed .inv-col-amt, .inv-items-boxed .inv-col-sst { text-align: right; white-space: nowrap; }
-    .inv-totals-boxed td { border: 1px solid #000; padding: 4px 6px; }
-    .inv-totals-boxed .inv-totals-grand td { background: #f0f0f0; font-weight: bold; }
+    .inv-meta-k { width: 7rem; font-weight: bold; }
+    .inv-meta-v { font-weight: normal; }
 
-    .inv-item-line {
-        color: #444;
-        font-size: 8.5px;
-        padding-left: 6px;
-    }
+    /* the consignment notes: at most five on an invoice, so the rows are large (client, 6 Nov 2026) */
+    .inv-items-boxed th, .inv-items-boxed td { border: 1px solid #000; padding: 7px 6px; vertical-align: top; font-size: 11px; }
+    .inv-items-boxed th { background: #f0f0f0; text-align: left; font-size: 10px; text-transform: uppercase; }
+    .inv-col-no { width: 4%; text-align: center; }
+    .inv-col-date { width: 10%; white-space: nowrap; }
+    .inv-col-csn { width: 13%; white-space: nowrap; }
+    .inv-col-ref { width: 11%; }
+    .inv-col-area { width: 9%; }
+    .inv-col-consignee { width: 14%; }
+    .inv-col-goods { width: auto; }
+    .inv-col-amt { width: 12%; text-align: right; white-space: nowrap; }
+    .inv-ref-line { margin-bottom: 2px; }
 
-    .inv-title-row td {
-        vertical-align: top;
-        padding: 0 0 8px;
-    }
+    /* the amount in words beside the totals */
+    .inv-foot { margin-top: 8px; }
+    .inv-foot td { vertical-align: top; padding: 0; }
+    .inv-words-cell { width: 55%; padding-right: 12px; }
+    .inv-words { font-weight: bold; font-size: 10.5px; text-transform: uppercase; padding-top: 4px; }
+    .inv-totals-cell { width: 45%; }
+    /* as the sample (user, 6 Nov 2026): only the amount has a border, the labels plain at its left */
+    .inv-totals-boxed { border-collapse: separate; border-spacing: 0 4px; }
+    .inv-totals-boxed td { padding: 3px 6px; font-size: 10.5px; }
+    .inv-totals-label { text-align: right; font-weight: bold; border: 0; }
+    .inv-totals-value { text-align: right; white-space: nowrap; width: 34%; border: 1px solid #000; font-weight: bold; }
+    .inv-totals-boxed .inv-totals-grand td.inv-totals-value { font-size: 11.5px; border-width: 2px; }
 
-    .inv-bill-to {
-        width: 58%;
-        padding-right: 12px;
-    }
+    /* the notes and the e-Invoice QR */
+    .inv-notes-row { margin-top: 12px; border-top: 1px solid #000; padding-top: 6px; }
+    .inv-notes-row td { vertical-align: top; padding: 6px 0 0; }
+    .inv-notes { font-size: 9.5px; line-height: 1.45; }
+    .inv-notes-title { font-weight: bold; }
+    .inv-generated { margin-top: 8px; font-size: 9.5px; font-weight: bold; }
+    .inv-einv { width: 120px; text-align: center; font-size: 9px; }
+    .inv-einv-qr { width: 90px; height: 90px; }
+    .inv-einv-box { width: 88px; height: 88px; border: 1px dashed #999; margin: 0 auto; }
+    .inv-einv-label { margin-top: 3px; }
 
-    .inv-bill-label {
-        font-weight: bold;
-        margin-bottom: 4px;
-    }
-
-    .inv-bill-name {
-        font-weight: bold;
-        margin-bottom: 2px;
-    }
-
-    .inv-bill-address {
-        white-space: pre-line;
-    }
-
-    .inv-title-cell {
-        width: 42%;
-        text-align: right;
-    }
-
-    .inv-title {
-        font-size: 16px;
-        font-weight: bold;
-        letter-spacing: 0.5px;
-    }
-
-    .inv-number {
-        margin-top: 4px;
-        font-size: 10px;
-    }
-
-    .inv-meta-row td {
-        padding: 6px 0 10px;
-        border-top: 1px solid #000;
-        border-bottom: 1px solid #000;
-        font-size: 10px;
-    }
-
-    .inv-meta-left {
-        width: 34%;
-    }
-
-    .inv-meta-center {
-        width: 32%;
-        text-align: center;
-    }
-
-    .inv-meta-right {
-        width: 34%;
-        text-align: right;
-    }
-
-    .inv-items th,
-    .inv-items td {
-        border-bottom: 1px solid #000;
-        padding: 6px 5px;
-        vertical-align: top;
-        font-size: 9px;
-    }
-
-    .inv-items th {
-        font-weight: bold;
-        text-align: center;
-        border-top: 1px solid #000;
-    }
-
-    .inv-col-date { width: 9%; text-align: center; }
-    .inv-col-csn { width: 14%; text-align: center; }
-    .inv-col-ref { width: 22%; }
-    .inv-col-dest { width: 9%; text-align: center; }
-    .inv-col-sst { width: 10%; text-align: right; }
-    .inv-col-amt { width: 12%; text-align: right; }
-
-    .inv-ref-line {
-        margin-bottom: 2px;
-    }
-
-    .inv-totals-wrap {
-        margin-top: 8px;
-    }
-
-    .inv-totals {
-        width: 42%;
-        margin-left: auto;
-        border-collapse: collapse;
-    }
-
-    .inv-totals td {
-        padding: 4px 6px;
-        font-size: 10px;
-    }
-
-    .inv-totals-label {
-        text-align: left;
-    }
-
-    .inv-totals-value {
-        text-align: right;
-        white-space: nowrap;
-        min-width: 5.5rem;
-    }
-
-    .inv-totals-divider td {
-        border-top: 1px solid #000;
-        padding-top: 6px;
-    }
-
-    .inv-totals-grand td {
-        font-weight: bold;
-        border-top: 2px solid #000;
-        border-bottom: 3px double #000;
-        padding-top: 6px;
-        padding-bottom: 6px;
-    }
-
-    .inv-words {
-        margin-top: 14px;
-        font-weight: bold;
-        font-size: 10px;
-        text-transform: uppercase;
-    }
-
-    .inv-disclaimer {
-        margin-top: 10px;
-        font-size: 8px;
-        line-height: 1.45;
-        text-align: justify;
-    }
-
-    .inv-banks {
-        margin-top: 12px;
-        font-size: 9px;
-    }
-
-    .inv-banks td {
-        width: 50%;
-        vertical-align: top;
-        padding-right: 8px;
-    }
+    /* the terms & conditions, in the sample's small type */
+    .inv-terms { margin-top: 10px; font-size: 7.5px; line-height: 1.4; text-align: justify; page-break-inside: avoid; }
+    .inv-terms-title { font-size: 10px; font-weight: bold; margin-bottom: 2px; }
+    .inv-terms div { margin-bottom: 1px; }
 </style>

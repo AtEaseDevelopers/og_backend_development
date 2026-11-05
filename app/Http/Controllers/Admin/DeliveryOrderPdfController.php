@@ -36,6 +36,7 @@ class DeliveryOrderPdfController
             'meta' => $document['meta'],
         ])->setPaper('a4');
 
+        \App\Support\PdfPageNumbers::stamp($pdf); // Page X of Y bottom right (client, 5 Nov 2026)
         return $pdf->stream($filename);
     }
 }
