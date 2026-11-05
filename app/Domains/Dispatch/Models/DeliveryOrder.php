@@ -6,6 +6,7 @@ use App\Models\Concerns\BelongsToCompany;
 
 use App\Domains\Consignment\Models\ConsignmentNote;
 use App\Domains\Delivery\Models\BreakBulk;
+use App\Domains\Delivery\Models\DriverTaskProof;
 use App\Domains\Delivery\Models\FailedDelivery;
 use App\Domains\Delivery\Models\ProofOfDelivery;
 use App\Domains\MasterData\Models\Branch;
@@ -114,5 +115,10 @@ class DeliveryOrder extends Model
     public function duplicates(): HasMany
     {
         return $this->hasMany(self::class, 'parent_do_id');
+    }
+
+    public function taskProofs(): HasMany
+    {
+        return $this->hasMany(DriverTaskProof::class);
     }
 }

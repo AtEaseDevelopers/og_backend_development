@@ -124,4 +124,9 @@ class JobSheet extends Model
     {
         return $this->hasMany(self::class, 'parent_job_sheet_id')->orderBy('transfer_code');
     }
+
+    public function scanValidations(): HasMany
+    {
+        return $this->hasMany(DriverScanValidation::class);
+    }
 }

@@ -26,15 +26,15 @@ class CompleteDelivery
 
     public function execute(DeliveryOrder $do, Driver $driver, array $data, ?User $actor = null): ProofOfDelivery
     {
-        if ($do->status === DeliveryOrderStatus::Delivered) {
-            throw new InvalidArgumentException('Delivery order already delivered.');
-        }
-
         if (! empty($data['client_uuid'])) {
             $existing = ProofOfDelivery::query()->where('client_uuid', $data['client_uuid'])->first();
             if ($existing) {
                 return $existing;
             }
+        }
+
+        if ($do->status === DeliveryOrderStatus::Delivered) {
+            throw new InvalidArgumentException('Delivery order already delivered.');
         }
 
         return DB::transaction(function () use ($do, $driver, $data, $actor) {
@@ -119,7 +119,7 @@ class CompleteDelivery
     }
 
     /** COD amount the driver still has to collect: the CSN total, less what was already paid on its order. */
-    private function codDue(ConsignmentNote $csn): float
+    public function codDue(ConsignmentNote $csn): float
     {
         $total = (float) $csn->total_amount;
 

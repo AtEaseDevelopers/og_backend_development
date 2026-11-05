@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Domains\Delivery\Models\DriverTaskProof;
 use App\Domains\Dispatch\Models\DeliveryOrder;
 use App\Domains\Dispatch\Models\JobSheet;
 use App\Domains\Dispatch\Models\Subsheet;
@@ -90,6 +91,7 @@ class JobSheetViewData
                 ])->values()->all(),
             ],
             'grouped_tasks' => $this->groupedTasks($jobSheet),
+            'driver_app' => $this->driverAppRecords($jobSheet),
             'driver_options' => $this->driverOptions($jobSheet),
             'lorry_options' => $this->lorryOptions($jobSheet),
             'list_url' => Filament::getTenant()
@@ -137,6 +139,45 @@ class JobSheetViewData
             'in_transit_start_date' => $jobSheet->checked_in_at?->format('d/m/Y') ?? '—',
             'in_transit_start_time' => $jobSheet->checked_in_at?->format('H:i') ?? '—',
         ];
+    }
+
+    /** Driver app records of the trip (section O): barcode validations and pickup / handover proofs. */
+    private function driverAppRecords(JobSheet $jobSheet): array
+    {
+        $codes = fn (?array $items) => collect($items ?? [])
+            ->map(fn ($item) => $item['label'] ?? $item['do_number'] ?? $item['code'] ?? null)
+            ->filter()
+            ->implode(', ');
+
+        $validations = $jobSheet->scanValidations()->with('driver')->latest('id')->get()
+            ->map(fn ($v) => [
+                'at' => $v->validated_at?->format('d/m/Y H:i'),
+                'driver' => $v->driver?->name,
+                'result' => $v->is_complete ? 'Complete' : ($v->continued_incomplete ? 'Incomplete — driver continued' : 'Incomplete'),
+                'complete' => $v->is_complete,
+                'scanned' => collect($v->scanned ?? [])->where('result', 'matched')->count().' / '.count($v->expected ?? []).' matched',
+                'missing' => $codes($v->missing),
+                'extra' => $codes($v->extra),
+                'unauthorized' => $codes($v->unauthorized),
+            ])->all();
+
+        $proofs = DriverTaskProof::query()
+            ->with(['deliveryOrder', 'driver'])
+            ->whereIn('delivery_order_id', $jobSheet->deliveryOrders->pluck('id'))
+            ->latest('recorded_at')
+            ->get()
+            ->map(fn ($p) => [
+                'at' => $p->recorded_at?->format('d/m/Y H:i'),
+                'type' => ucfirst($p->type),
+                'do_number' => $p->deliveryOrder?->number,
+                'driver' => $p->driver?->name,
+                'handover_to' => $p->handover_to,
+                'gps' => $p->latitude !== null ? $p->latitude.', '.$p->longitude : null,
+                'photos' => collect($p->photo_paths ?? [])->map(fn ($path) => DriverTaskPayload::url($path))->all(),
+                'remarks' => $p->remarks,
+            ])->all();
+
+        return ['validations' => $validations, 'proofs' => $proofs];
     }
 
     /** @return array<string, int> */

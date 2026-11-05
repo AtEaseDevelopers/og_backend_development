@@ -20,6 +20,9 @@
 /storage/pail
 /vendor
 /.local
+/driver_app/android/key.properties
+/driver_app/android/app/*.jks
+/driver_app/android/app/*.keystore
 Homestead.json
 Homestead.yaml
 Thumbs.db

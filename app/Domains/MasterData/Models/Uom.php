@@ -54,6 +54,11 @@ class Uom extends Model
         });
 
         static::creating(function (self $row): void {
+            // branch_id exists only from 2026_10_28_120000; price-list import runs before that on migrate
+            if (! \Illuminate\Support\Facades\Schema::hasColumn($row->getTable(), 'branch_id')) {
+                return;
+            }
+
             $row->branch_id ??= \App\Support\CurrentCompany::branchId();
         });
     }

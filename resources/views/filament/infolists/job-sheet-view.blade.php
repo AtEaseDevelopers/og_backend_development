@@ -125,6 +125,81 @@
         @endforelse
     </div>
 
+    @php $driverApp = $driver_app ?? ['validations' => [], 'proofs' => []]; @endphp
+    @if (! empty($driverApp['validations']) || ! empty($driverApp['proofs']))
+        <div class="jsv-card">
+            <div class="jsv-card-title">Driver App Records</div>
+
+            @if (! empty($driverApp['validations']))
+                <div class="jsv-table-wrap">
+                    <table class="jsv-table">
+                        <thead>
+                            <tr>
+                                <th>Barcode validation</th>
+                                <th>Driver</th>
+                                <th>Result</th>
+                                <th>Scanned</th>
+                                <th>Missing</th>
+                                <th>Extra</th>
+                                <th>Unauthorized</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($driverApp['validations'] as $row)
+                                <tr>
+                                    <td>{{ $display($row['at']) }}</td>
+                                    <td>{{ $display($row['driver']) }}</td>
+                                    <td style="color: {{ $row['complete'] ? '#15803d' : '#b45309' }}; font-weight: 600;">{{ $row['result'] }}</td>
+                                    <td>{{ $row['scanned'] }}</td>
+                                    <td>{{ $display($row['missing']) }}</td>
+                                    <td>{{ $display($row['extra']) }}</td>
+                                    <td>{{ $display($row['unauthorized']) }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @endif
+
+            @if (! empty($driverApp['proofs']))
+                <div class="jsv-table-wrap" style="margin-top: 1rem;">
+                    <table class="jsv-table">
+                        <thead>
+                            <tr>
+                                <th>Pickup / handover</th>
+                                <th>DO</th>
+                                <th>Driver</th>
+                                <th>Handed over to</th>
+                                <th>GPS</th>
+                                <th>Photos</th>
+                                <th>Remarks</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($driverApp['proofs'] as $row)
+                                <tr>
+                                    <td>{{ $row['type'] }} · {{ $display($row['at']) }}</td>
+                                    <td>{{ $display($row['do_number']) }}</td>
+                                    <td>{{ $display($row['driver']) }}</td>
+                                    <td>{{ $display($row['handover_to']) }}</td>
+                                    <td>{{ $display($row['gps']) }}</td>
+                                    <td>
+                                        @forelse ($row['photos'] as $i => $url)
+                                            <a href="{{ $url }}" target="_blank" class="jsv-action-link">Photo {{ $i + 1 }}</a>
+                                        @empty
+                                            —
+                                        @endforelse
+                                    </td>
+                                    <td>{{ $display($row['remarks']) }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @endif
+        </div>
+    @endif
+
     {{-- Sticky footer --}}
     <div class="jsv-footer">
         <div class="jsv-footer-left">

@@ -230,6 +230,16 @@ class Quotation extends Model
         return $this->hasMany(PaymentSubmission::class);
     }
 
+    public function onlinePayments(): HasMany
+    {
+        return $this->hasMany(\App\Domains\Billing\Models\OnlinePayment::class);
+    }
+
+    public function creditApprovalRequests(): HasMany
+    {
+        return $this->hasMany(CreditApprovalRequest::class);
+    }
+
     public function refundNotes(): HasMany
     {
         return $this->hasMany(RefundNote::class);

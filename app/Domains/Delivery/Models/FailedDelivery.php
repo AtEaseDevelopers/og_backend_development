@@ -9,6 +9,20 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class FailedDelivery extends Model
 {
+    /** Predefined failure reasons offered in the driver app; "other" requires remarks. */
+    public const REASONS = [
+        'consignee_unavailable' => 'Consignee not available',
+        'premises_closed' => 'Premises closed',
+        'wrong_address' => 'Wrong / incomplete address',
+        'refused' => 'Consignee refused delivery',
+        'cod_not_ready' => 'COD payment not ready',
+        'damaged_goods' => 'Goods damaged',
+        'access_restricted' => 'No access to site',
+        'reschedule_requested' => 'Customer requested reschedule',
+        'vehicle_issue' => 'Vehicle breakdown / issue',
+        'other' => 'Other',
+    ];
+
     protected $fillable = [
         'delivery_order_id', 'driver_id', 'reason', 'remarks', 'photo_paths',
         'latitude', 'longitude', 'reassignment_option', 'replacement_do_id',

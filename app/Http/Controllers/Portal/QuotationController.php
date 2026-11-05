@@ -2,12 +2,17 @@
 
 namespace App\Http\Controllers\Portal;
 
+use App\Domains\Billing\Actions\OnlinePaymentFlow;
 use App\Domains\Quotation\Actions\AcceptQuotation;
 use App\Domains\Quotation\Actions\RejectQuotation;
+use App\Domains\Quotation\Actions\SwitchRestrictedCreditToCash;
 use App\Domains\Quotation\Models\Quotation;
 use App\Enums\PaymentMethod;
 use App\Enums\QuotationRejectionCategory;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Portal\Concerns\UsesPortalCustomer;
+use App\Support\PortalCredit;
+use App\Support\PortalPaymentStatus;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -16,6 +21,8 @@ use InvalidArgumentException;
 
 class QuotationController extends Controller
 {
+    use UsesPortalCustomer;
+
     public function show(Request $request, Quotation $quotation): View
     {
         $this->authorizeCustomer($request, $quotation);
@@ -24,6 +31,8 @@ class QuotationController extends Controller
             'destinations', 'lines', 'branch', 'customer', 'salesperson', 'proformaInvoice',
             'paymentSubmissions' => fn ($q) => $q->latest('id'),
             'invoices', 'consignmentNotes.deliveryOrder.lorry', 'statusLogs' => fn ($q) => $q->latest('id')->limit(20),
+            'onlinePayments' => fn ($q) => $q->latest('id'),
+            'creditApprovalRequests' => fn ($q) => $q->latest('id'),
         ]);
 
         $versions = Quotation::query()
@@ -36,7 +45,11 @@ class QuotationController extends Controller
             'versions' => $versions,
             'isLatest' => $quotation->isLatestVersion(),
             'rejectionCategories' => QuotationRejectionCategory::options(),
-            'paymentMethods' => PaymentMethod::options(customerFacing: true),
+            'slipMethods' => collect(PaymentMethod::options(customerFacing: true))->except([PaymentMethod::Online->value, PaymentMethod::Counter->value])->all(),
+            'onlineEnabled' => OnlinePaymentFlow::enabled(),
+            'paymentStatus' => PortalPaymentStatus::for($quotation),
+            'credit' => PortalCredit::for($quotation),
+            'canSwitchToCash' => SwitchRestrictedCreditToCash::allowed($quotation),
         ]);
     }
 
@@ -100,13 +113,22 @@ class QuotationController extends Controller
         return back()->with('status', 'Amendment request submitted. Your salesperson will issue a revised quotation.');
     }
 
-    private function authorizeCustomer(Request $request, Quotation $quotation): void
+    /** Section P: Credit / Term restricted (credit limit, term or approval) → the customer pays cash instead. */
+    public function switchToCash(Request $request, Quotation $quotation, SwitchRestrictedCreditToCash $switch): RedirectResponse
     {
-        $customerIds = $request->user()->customers()->pluck('customers.id');
-        if ($request->user()->customer_id) {
-            $customerIds->push($request->user()->customer_id);
+        $this->authorizeCustomer($request, $quotation);
+
+        try {
+            $switch->execute($quotation, $request->user());
+        } catch (InvalidArgumentException $e) {
+            return back()->withErrors(['status' => $e->getMessage()]);
         }
 
-        abort_unless($customerIds->contains($quotation->customer_id), 403);
+        return back()->with('status', 'This order is now a Cash order. Pay below to release it.');
+    }
+
+    private function authorizeCustomer(Request $request, Quotation $quotation): void
+    {
+        $this->authorizeCustomerRecord($quotation->customer_id);
     }
 }

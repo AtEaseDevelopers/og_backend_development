@@ -23,7 +23,7 @@ class BreakBulk extends Model
         'original_driver_id', 'original_lorry_id', 'requested_by_driver_id', 'created_by',
         'replacement_driver_id', 'replacement_lorry_id', 'subcontractor_id',
         'location', 'reason', 'handover_status', 'status', 'revoke_reason',
-        'photo_paths', 'latitude', 'longitude',
+        'photo_paths', 'latitude', 'longitude', 'client_uuid', 'reported_at',
         'released_at', 'collected_at', 'completed_at',
     ];
 
@@ -31,6 +31,7 @@ class BreakBulk extends Model
     {
         return [
             'photo_paths' => 'array',
+            'reported_at' => 'datetime',
             'released_at' => 'datetime',
             'collected_at' => 'datetime',
             'completed_at' => 'datetime',

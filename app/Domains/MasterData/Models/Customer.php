@@ -164,4 +164,9 @@ class Customer extends Model
     {
         return $this->hasMany(CustomerPortalLink::class);
     }
+
+    public function profileChanges(): HasMany
+    {
+        return $this->hasMany(CustomerProfileChange::class);
+    }
 }

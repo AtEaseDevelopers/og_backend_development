@@ -17,6 +17,13 @@ class CreateBreakBulk
 
     public function execute(DeliveryOrder $do, array $data, ?Driver $requestingDriver = null, ?User $actor = null): BreakBulk
     {
+        if (! empty($data['client_uuid'])) {
+            $existing = BreakBulk::query()->where('client_uuid', $data['client_uuid'])->first();
+            if ($existing) {
+                return $existing;
+            }
+        }
+
         $do->loadMissing(['jobSheet.operatingBranch', 'sourceBranch', 'consignmentNote']);
 
         $active = BreakBulk::query()
@@ -51,6 +58,8 @@ class CreateBreakBulk
                 'photo_paths' => $data['photo_paths'] ?? null,
                 'latitude' => $data['latitude'] ?? null,
                 'longitude' => $data['longitude'] ?? null,
+                'client_uuid' => $data['client_uuid'] ?? null,
+                'reported_at' => $data['reported_at'] ?? now(),
             ]);
         });
     }

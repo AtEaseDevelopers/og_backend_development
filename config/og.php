@@ -27,6 +27,14 @@ return [
 
     'portal_whatsapp' => env('OG_PORTAL_WHATSAPP', ''),
 
+    'payment_gateway' => [
+        'enabled' => (bool) env('OG_PAYMENT_GATEWAY_ENABLED', true),
+        'mode' => env('OG_PAYMENT_GATEWAY_MODE', 'simulate'),
+        'name' => env('OG_PAYMENT_GATEWAY_NAME', 'FPX (sandbox)'),
+    ],
+
+    'portal_full_menu' => (bool) env('OG_PORTAL_FULL_MENU', true),
+
     'ocr' => [
         'mode' => env('OG_OCR_MODE', 'document'),
         'tesseract_path' => env('OG_TESSERACT_PATH', 'tesseract'),

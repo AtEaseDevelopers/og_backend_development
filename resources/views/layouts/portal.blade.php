@@ -99,7 +99,17 @@
             @auth
                 @if ($portalCustomer)
                     <a class="{{ $is('portal.dashboard') }}" href="{{ route('portal.dashboard') }}">Dashboard</a>
+                    @if (config('og.portal_full_menu'))
+                        <a class="{{ $is('portal.orders', 'portal.quotations.*', 'portal.enquiry.*') }}" href="{{ route('portal.orders') }}">Orders</a>
+                        <a class="{{ $is('portal.csns.*') }}" href="{{ route('portal.csns.index') }}">Deliveries</a>
+                        <a class="{{ $is('portal.documents.*') }}" href="{{ route('portal.documents.index') }}">Documents</a>
+                        <a class="{{ $is('portal.statement*') }}" href="{{ route('portal.statement') }}">Statement</a>
+                        <a class="{{ $is('portal.profile*') }}" href="{{ route('portal.profile') }}">Profile</a>
+                    @endif
                     <a class="btn small" href="{{ route('portal.enquiry.create') }}">+ New order</a>
+                @endif
+                @if (config('og.portal_full_menu'))
+                    <a href="{{ route('portal.select-company', ['switch' => 1]) }}">Switch account</a>
                 @endif
                 <form action="{{ route('portal.logout') }}" method="POST" style="display:inline">
                     @csrf

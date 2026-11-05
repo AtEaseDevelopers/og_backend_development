@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Domains\Consignment\Models\ConsignmentNote;
 use App\Domains\MasterData\Models\Branch;
 use App\Domains\MasterData\Models\Customer;
 use App\Domains\MasterData\Models\CustomerPortalLink;
+use App\Domains\Quotation\Models\Quotation;
 use App\Mail\SystemNotificationMail;
 use App\Models\User;
 use App\Support\PortalSelection;
@@ -65,7 +67,7 @@ class CustomerPortalTest extends TestCase
         $this->post('/portal/login', ['email' => 'ali@newco.test', 'password' => 'secret123'])->assertRedirect('/portal/select-company');
         $this->get('/portal/select-company')->assertRedirect('/portal');
         $this->assertSame($customer->id, PortalSelection::customerId());
-        $this->get('/portal')->assertOk()->assertSee('NewCo Sdn Bhd')->assertSee('+ New order')->assertDontSee('>Documents</a>', false);
+        $this->get('/portal')->assertOk()->assertSee('NewCo Sdn Bhd')->assertSee('+ New order')->assertSee('Documents', false);
     }
 
     public function test_password_reset_by_email_link(): void
@@ -86,15 +88,30 @@ class CustomerPortalTest extends TestCase
         $this->post('/portal/login', ['email' => $user->email, 'password' => 'newpass123'])->assertRedirect('/portal/select-company');
     }
 
-    public function test_hidden_portal_pages_are_not_routed(): void
+    public function test_portal_full_menu_pages_are_routed(): void
     {
         $user = User::query()->where('email', 'portal@demo.local')->firstOrFail();
+        $customer = Customer::query()->findOrFail($user->approvedCustomerIds()->first());
         $this->actingAs($user);
         $this->get('/portal/select-company')->assertRedirect('/portal');
 
         foreach (['/portal/orders', '/portal/deliveries', '/portal/statement', '/portal/profile', '/portal/documents'] as $url) {
-            $this->get($url)->assertNotFound();
+            $this->get($url)->assertOk();
         }
+        $this->get('/portal/statement/pdf?month='.now()->format('Y-m'))->assertOk()->assertHeader('content-type', 'application/pdf');
+
+        $other = Quotation::query()->where('customer_id', '!=', $customer->id)->first();
+        if ($other) {
+            $this->get('/portal/quotations/'.$other->id)->assertNotFound();
+        }
+
+        $csn = ConsignmentNote::query()->where('customer_id', $customer->id)->whereHas('deliveryOrders')->first()
+            ?? ConsignmentNote::query()->whereHas('deliveryOrders')->first();
+        if ($csn) {
+            $csn->update(['customer_id' => $customer->id]);
+            $this->get('/portal/deliveries/'.$csn->id)->assertOk();
+        }
+
         $this->get('/portal/enquiry/create')->assertOk()
             ->assertSee('+ Add another order', false)
             ->assertSee('id="order-template"', false)

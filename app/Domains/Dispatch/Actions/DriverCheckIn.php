@@ -52,6 +52,18 @@ class DriverCheckIn
             );
         }
 
+        // Section O item 3: the trip must run from the operating branch of its lorry
+        $lorry = $jobSheet->lorry;
+        if ($lorry && ! $lorry->is_active) {
+            throw new InvalidArgumentException('Lorry '.$lorry->registration_no.' is inactive. Contact Admin before checking in.');
+        }
+
+        if ($lorry?->branch_id && $jobSheet->operating_branch_id && (int) $lorry->branch_id !== (int) $jobSheet->operating_branch_id) {
+            throw new InvalidArgumentException(
+                'Branch mismatch: lorry '.$lorry->registration_no.' belongs to another operating branch than this job sheet. Contact Admin to correct the assignment.'
+            );
+        }
+
         return DB::transaction(function () use ($driver, $jobSheet, $lat, $lng, $confirmedLorryId) {
             if (! $jobSheet->driver_id) {
                 $jobSheet->driver_id = $driver->id;
