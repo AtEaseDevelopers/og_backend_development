@@ -4,11 +4,14 @@ namespace App\Filament\Resources;
 
 use App\Domains\MasterData\Models\Driver;
 use App\Filament\Resources\DriverResource\Pages;
+use App\Models\User;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Forms\Get;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Support\Facades\Hash;
 
 class DriverResource extends Resource
 {
@@ -86,7 +89,73 @@ class DriverResource extends Resource
                     Forms\Components\TextInput::make('attendant_emergency_contact')->label('Attendant Emergency Contact')->maxLength(150),
                     Forms\Components\Textarea::make('attendant_address')->label('Attendant Address')->rows(2)->columnSpanFull(),
                 ])->columns(4),
+            Forms\Components\Section::make('Driver app login')
+                ->description('Email and password for the driver mobile app. Leave the password blank when editing to keep the current one.')
+                ->schema([
+                    Forms\Components\TextInput::make('login_email')
+                        ->label('Email')
+                        ->email()
+                        ->maxLength(255)
+                        ->dehydrated(false)
+                        ->unique(
+                            table: 'users',
+                            column: 'email',
+                            ignorable: fn (?Driver $record) => $record
+                                ? User::query()->where('driver_id', $record->id)->first()
+                                : null,
+                        ),
+                    Forms\Components\TextInput::make('login_password')
+                        ->label('Password')
+                        ->password()
+                        ->revealable()
+                        ->dehydrated(false)
+                        ->required(fn (Get $get, string $operation): bool => $operation === 'create' && filled($get('login_email')))
+                        ->helperText('Required when an email is entered on a new driver.'),
+                ])->columns(2),
         ]);
+    }
+
+    public static function syncLogin(Driver $driver, ?string $email, ?string $password): void
+    {
+        $email = trim((string) $email);
+
+        if ($email === '') {
+            return;
+        }
+
+        $user = User::query()->where('driver_id', $driver->id)->first()
+            ?? User::query()->where('email', $email)->first()
+            ?? new User();
+
+        if ($user->exists && $user->driver_id && (int) $user->driver_id !== (int) $driver->id) {
+            return;
+        }
+
+        $user->fill([
+            'name' => $driver->name,
+            'email' => $email,
+            'is_active' => (bool) $driver->is_active,
+            'phone' => $driver->phone,
+            'driver_id' => $driver->id,
+        ]);
+
+        if (filled($password)) {
+            $user->password = Hash::make($password);
+        }
+
+        if (! $user->exists && blank($user->password)) {
+            return;
+        }
+
+        $user->save();
+
+        if (! $user->hasRole('driver')) {
+            $user->assignRole('driver');
+        }
+
+        if ($driver->branch) {
+            $user->assignToBranch($driver->branch, true);
+        }
     }
 
     /**

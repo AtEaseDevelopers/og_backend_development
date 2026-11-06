@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// Server address of the O&G Transport backend (Laravel). Editable on the login screen so the same build works
@@ -10,8 +8,7 @@ class AppConfig {
   static const _storage = FlutterSecureStorage();
   static const _serverKey = 'server_url';
 
-  /// Android emulators reach the host machine through 10.0.2.2; iOS simulators through localhost.
-  static String get defaultServer => Platform.isAndroid ? 'http://10.0.2.2:8000' : 'http://127.0.0.1:8000';
+  static const String defaultServer = 'https://ogtransport.at-eases.com';
 
   static String _server = defaultServer;
 
@@ -19,8 +16,19 @@ class AppConfig {
 
   static String get apiBase => '${_server.replaceAll(RegExp(r'/+$'), '')}/api/v1/driver';
 
+  static bool _isLocalDev(String url) {
+    final host = Uri.tryParse(url)?.host ?? '';
+    return host == '127.0.0.1' || host == 'localhost' || host == '10.0.2.2';
+  }
+
   static Future<void> load() async {
-    _server = await _storage.read(key: _serverKey) ?? defaultServer;
+    final saved = (await _storage.read(key: _serverKey))?.trim();
+    if (saved == null || saved.isEmpty || _isLocalDev(saved)) {
+      _server = defaultServer;
+      await _storage.write(key: _serverKey, value: _server);
+      return;
+    }
+    _server = saved;
   }
 
   static Future<void> setServer(String value) async {

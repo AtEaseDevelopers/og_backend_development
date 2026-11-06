@@ -13,6 +13,8 @@ class CreateDriver extends CreateRecord
 
     protected function afterCreate(): void
     {
-        DriverResource::syncLorry($this->getRecord());
+        $driver = $this->getRecord();
+        DriverResource::syncLorry($driver);
+        DriverResource::syncLogin($driver, $this->data['login_email'] ?? null, $this->data['login_password'] ?? null);
     }
 }

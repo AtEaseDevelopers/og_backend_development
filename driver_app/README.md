@@ -18,8 +18,7 @@ flutter run                                         # pick an emulator / simulat
 ```
 
 Log in with `driver.kl@og.local` / `password`. The server URL is under **Server settings** on the login screen.
-Defaults: `http://10.0.2.2:8000` (Android emulator) and `http://127.0.0.1:8000` (iOS simulator). On a real phone,
-use the computer's LAN address (for example `http://192.168.1.20:8000`) or the production URL.
+Default server is `https://ogtransport.at-eases.com`. A previously saved localhost address is replaced on the next launch. Use **Server settings** on the login screen for a local machine (for example `http://127.0.0.1:8000` on the iOS simulator, or `http://10.0.2.2:8000` on the Android emulator).
 
 Tests: `flutter test`. End-to-end against a running backend:
 `flutter test integration_test/app_test.dart -d <device>`.

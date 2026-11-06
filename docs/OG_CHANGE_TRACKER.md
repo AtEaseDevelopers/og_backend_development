@@ -4,7 +4,7 @@
 > what is done, what is left, and the rules the user has set. Update it whenever an item changes status,
 > and refresh "Last updated" with the output of plain `date` (local Malaysia time).
 
-**Last updated:** Thu Nov  5 14:21:55 +08 2026 · customer portal full menu enabled (orders, deliveries, documents, statement, profile)
+**Last updated:** Fri Nov  6 18:30:47 +08 2026 · driver master data form can set the app email and password
 
 **Previous round:** finished and pushed as commit `a29b179` on `main` (8 Oct 2026: orders, order details,
 billing / COD / Term, CSN bulk actions, QR codes, returned-CSN scanning, cash bill calculator). Its details are
@@ -452,6 +452,10 @@ Legend: [x] done · [~] done in code, not yet browser-checked · [ ] not started
 
 ## Local (not on GitHub) — Section O driver app (user, 16–29 Oct)
 - [~] **Section O** Flutter app in `driver_app/` and driver API. Demo `driver.kl@og.local` / `password`. Android key gitignored. **Not committed.**
+- [x] **Driver login (5 Nov):** password was correct, but `users.driver_id` was empty after `2026_10_21_150000` deleted the old drivers. Recreated `DRV-KL-001` (Ahmad Driver) and linked it to the login and lorry `WXY1234`. API login returns 200.
+- [x] **Driver demo trip (5 Nov):** `DriverAppDemoSeeder` created today's Draft trip `JS-KL-261100001` (Trip 1) on `WXY1234`: Shah Alam Hardware (term), Klang Furniture Mart (COD), JB Distribution Hub (transfer), Petaling Jaya Retail (PSI pickup). Check-in failed because that old demo lorry was inactive; `WXY1234` is active again.
+- [x] **Driver app server (6 Nov):** default API host is `https://ogtransport.at-eases.com`. A saved localhost / `10.0.2.2` address is replaced on the next launch. Local testing still uses Server settings on the login screen.
+- [x] **Driver app login on Master Data (6 Nov):** Drivers create/edit has Email and Password. Saving creates or updates the staff user with the driver role and `driver_id`. Not on the live server until this is deployed.
 - [x] **Section P first draft** (this commit): `/portal` login + **+ New order**; admin Orders badge + orange toast.
 - [x] **Portal full menu (5 Nov 2026):** Orders, Deliveries, Documents, Statement, Profile, quotations, payments, and profile-change approval wired from `.local/portal-full/` into the app. `OG_PORTAL_FULL_MENU` defaults to **true** (set `false` to roll back to dashboard + New order only). Run `php artisan migrate` for `2026_11_05_100000_portal_profile_changes_and_online_payments`.
 - Server: `php artisan migrate` for `2026_10_17_120000_customer_portal_section_p`, then `optimize:clear`. Driver-app migration is still local.
