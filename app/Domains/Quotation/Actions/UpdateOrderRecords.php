@@ -1122,7 +1122,7 @@ class UpdateOrderRecords
         if ($linesChanged || $columnChanged) {
             // Pickup / drop-off / other charges stay as they are (the minimum charge is worked out again)
             $chargeRows = $order->lines
-                ->filter(fn ($line) => in_array($line->item_name, CreateOrderFromEnquiry::CHARGE_LINES, true) && $line->item_name !== OrderMinimumCharge::LINE)
+                ->filter(fn ($line) => in_array($line->item_name, CreateOrderFromEnquiry::CHARGE_LINES, true) && ! in_array($line->item_name, [OrderMinimumCharge::LINE, OrderMinimumCharge::EXTRA_LINE], true))
                 ->map(fn ($line) => [
                     'line_type' => (float) $line->quantity !== 1.0 ? 'uom' : 'item',
                     'item_name' => $line->item_name,

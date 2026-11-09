@@ -33,15 +33,15 @@
     </td><td class="lh-qr">@if($qr)<img src="{{ $qr }}" alt="Barcode {{ $meta['number'] ?? '' }}"><div class="lh-qr-text">{{ $meta['number'] ?? '—' }}</div>@endif</td></tr></table>
     <div class="lh-rule"></div>
     <table class="lh-meta"><tr>
-        <td class="lh-title" style="text-align:left"></td>
-        <td class="lh-title">{{ $isCashBill ? 'CASH BILL' : 'INVOICE' }}</td>
+        <td class="lh-title" style="text-align:left">{{ $isCashBill ? 'CASH BILL' : 'INVOICE' }}</td>
     </tr></table>
 
     {{-- the billing customer and the invoice details: no invoice number, type or payment term here (client, 6 Nov 2026) --}}
     <table class="inv-parties">
-        <tr>
+        <tr><th colspan="2" class="bt-heading">Billing Information</th></tr>
+        <tr class="bt-body">
             <td class="inv-party-col">
-                @include('pdf.partials.bill-to', ['code' => (($meta['account_no'] ?? '—') !== '—') ? $meta['account_no'] : null, 'name' => $billTo['name'] ?? null, 'reg_no' => $billTo['reg_no'] ?? null, 'address' => $billTo['address'] ?? null, 'pic' => $billTo['attention'] ?? null, 'phone' => $billTo['phone'] ?? null, 'email' => $billTo['email'] ?? null])
+                @include('pdf.partials.bill-to', ['heading' => false, 'code' => (($meta['account_no'] ?? '—') !== '—') ? $meta['account_no'] : null, 'name' => $billTo['name'] ?? null, 'reg_no' => $billTo['reg_no'] ?? null, 'address' => $billTo['address'] ?? null, 'pic' => $billTo['attention'] ?? null, 'phone' => $billTo['phone'] ?? null, 'email' => $billTo['email'] ?? null])
             </td>
             <td class="inv-meta-col">
                 <table class="inv-meta-table">

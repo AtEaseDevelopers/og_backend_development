@@ -110,6 +110,15 @@ class ViewUom extends ViewRecord
                     $minimums->push('Drop-off minimum: '.$dropOff->implode(', '));
                 }
 
+                // the extra drop-off charge per consignee after the first (user, 10 Nov 2026)
+                $extra = $set->filter(fn ($tier) => (float) $tier->extra_drop_charge > 0)
+                    ->groupBy(fn ($tier) => $tier->location?->name ?? 'Unknown')
+                    ->map(fn (Collection $rows, string $location) => $location.' RM '.number_format((float) $rows->max('extra_drop_charge'), 2));
+
+                if ($extra->isNotEmpty()) {
+                    $minimums->push('Extra drop-off per consignee: '.$extra->implode(', '));
+                }
+
                 return [
                     'title' => $title,
                     'special' => $code !== null,

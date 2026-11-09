@@ -154,11 +154,12 @@ class EditOrder extends CreateOrder
         $this->recordOrderTypes = $records->mapWithKeys(fn (Quotation $q) => [(int) $q->id => array_map(fn (OrderType $type) => $type->value, $q->allowedOrderTypes())])->all();
         $this->salespersonLocked =$enquiry && $enquiry->salesperson_locked && $enquiry->salesperson_id && ! $user?->isSuperadmin();
 
-        $this->form = $this->formFrom($enquiry, $records);
+        // a saved "A / B" PIC into the first PIC and the extra rows (user, 10 Nov 2026)
+        $this->form = $this->expandFormPics($this->formFrom($enquiry, $records));
         $this->originalForm = $this->form;
         // switching the customer away and back brings the order's own billing address back
         $this->billingAddresses = filled($this->form['customer_id']) ? [$this->form['customer_id'] => $this->form['customer_address']] : [];
-        $this->pairs = $this->enquiryOnly ? $this->pairsFromPayload($enquiry) : $this->pairsFromRecords($records, $enquiry);
+        $this->pairs = array_map(fn (array $pair) => $this->expandPairPics($pair), $this->enquiryOnly ? $this->pairsFromPayload($enquiry) : $this->pairsFromRecords($records, $enquiry));
 
         if ($this->pairs === []) {
             $this->pairs = [$this->pairTemplate()];
@@ -929,8 +930,9 @@ class EditOrder extends CreateOrder
                 'customer_id' => $this->form['customer_id'],
                 // the order's billing address (every record's customer_address)
                 'customer_address' => trim((string) ($this->form['customer_address'] ?? '')),
-                'customer_pic_name' => trim((string) ($this->form['customer_pic_name'] ?? '')),
-                'customer_pic_phone' => trim((string) ($this->form['customer_pic_phone'] ?? '')),
+                // the customer's PICs joined, "A / B" (user, 10 Nov 2026)
+                'customer_pic_name' => static::customerPics($this->form)['name'],
+                'customer_pic_phone' => static::customerPics($this->form)['phone'],
                 'received_through' => (string) ($this->form['received_through'] ?? ''),
                 'salesperson_id' => $this->form['salesperson_id'] ?: null,
                 // each record has its own payment term (its block's); the order form keeps the first block's
@@ -938,9 +940,12 @@ class EditOrder extends CreateOrder
                 // the order form's pickup / store (the first block's); each record takes its own block's
                 'service_type' => $pairs[0]['service_type'] ?? null,
                 // only a header value the user changed is applied to every record (one set per record is kept)
-                'header_changed' => collect(['customer_address', 'customer_pic_name', 'customer_pic_phone'])
-                    ->mapWithKeys(fn (string $key) => [$key => trim((string) ($this->form[$key] ?? '')) !== trim((string) ($this->originalForm[$key] ?? ''))])
-                    ->all(),
+                'header_changed' => [
+                    'customer_address' => trim((string) ($this->form['customer_address'] ?? '')) !== trim((string) ($this->originalForm['customer_address'] ?? '')),
+                    // the joined PICs, so an added / removed extra PIC counts as a change
+                    'customer_pic_name' => static::customerPics($this->form)['name'] !== static::customerPics($this->originalForm)['name'],
+                    'customer_pic_phone' => static::customerPics($this->form)['phone'] !== static::customerPics($this->originalForm)['phone'],
+                ],
                 'known_record_ids' => $this->knownRecordIds,
                 // photos are kept per block (pairs.*.attachments); nothing new for the whole order
                 'attachments' => [],

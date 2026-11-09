@@ -56,27 +56,21 @@
         </div>
     </td><td class="lh-qr"><img src="{{ \App\Support\BarcodeImage::code128DataUri($proforma->number) }}" alt="Barcode {{ $proforma->number }}"><div class="lh-qr-text">{{ $proforma->number }}</div></td></tr></table>
     <div class="lh-rule"></div>
+    {{-- the title at the left, no order type or payment line (client, 7 Nov 2026) --}}
     <table class="lh-meta"><tr>
-        <td class="lh-title" style="text-align:left">{{ strtoupper($orderType?->getLabel() ?? '') }}</td>
-        <td class="lh-title">PROFORMA INVOICE</td>
-    </tr><tr>
-        <td class="k" style="padding-top:2px">Payment : {{ $paymentStatus }}@if ($paymentMethod) · {{ $paymentMethod }}@endif</td>
-        <td style="text-align:right;padding-top:2px"><span class="stamp">NOT A TAX INVOICE</span></td>
+        <td class="lh-title" style="text-align:left">PROFORMA INVOICE</td>
+        <td style="text-align:right;vertical-align:bottom"><span class="stamp">NOT A TAX INVOICE</span></td>
     </tr></table>
     <div style="height:10px"></div>
 
     <table class="meta">
-        <tr>
+        <tr><th colspan="2" class="bt-heading">Billing Information</th></tr>
+        <tr class="bt-body">
             <td style="width:55%">
                 <table>
                     @php $customer = $proforma->customer; @endphp
-                    {{-- the billing customer (client, 5 Nov 2026; user, 6 Nov 2026): a labelled row each --}}
-                    <tr><td class="label">Bill to</td><td>{{ trim(implode(' ', array_filter([$customer?->code, $customer?->company_name]))) ?: '—' }}</td></tr>
-                    @if ($customer?->brn)<tr><td class="label">Reg. No.</td><td>{{ $customer->brn }}</td></tr>@endif
-                    @if ($quotation?->customer_address || $customer?->address)<tr><td class="label">Address</td><td>{!! nl2br(e($quotation?->customer_address ?: $customer->address)) !!}</td></tr>@endif
-                    @if ($quotation?->attention || $customer?->attention)<tr><td class="label">PIC</td><td>{{ $quotation?->attention ?: $customer?->attention }}</td></tr>@endif
-                    @if ($quotation?->customer_pic_phone || $customer?->phone)<tr><td class="label">Tel</td><td>{{ $quotation?->customer_pic_phone ?: $customer?->phone }}</td></tr>@endif
-                    @if ($customer?->email)<tr><td class="label">Email</td><td>{{ $customer->email }}</td></tr>@endif
+                    {{-- the standard billing block (client, 7 Nov 2026) --}}
+                    <tr><td colspan="2" style="padding-bottom:4px">@include('pdf.partials.bill-to', ['heading' => false, 'code' => $customer?->code, 'name' => $customer?->company_name, 'reg_no' => $customer?->brn, 'address' => $quotation?->customer_address ?: $customer?->address, 'pic' => $quotation?->attention ?: $customer?->attention, 'phone' => $quotation?->customer_pic_phone ?: $customer?->phone, 'email' => $customer?->email])</td></tr>
                     @if ($quotation?->customer_do_number)<tr><td class="label">Customer DO</td><td>{{ $quotation->customer_do_number }}</td></tr>@endif
                     @if ($quotation?->consignor_name)<tr><td class="label">Consignor</td><td>{{ $quotation->consignor_name }}@if ($quotation->fromLocation?->name) <span class="muted">· {{ $quotation->fromLocation->name }}</span>@endif</td></tr>@endif
                     @if ($quotation?->consignee_name || $quotation?->toLocation?->name)<tr><td class="label">Consignee</td><td>{{ $quotation?->consignee_name ?: '—' }}@if ($quotation?->toLocation?->name) <span class="muted">· {{ $quotation->toLocation->name }}</span>@endif</td></tr>@endif
@@ -123,9 +117,9 @@
                 <tr><td class="c">1</td><td>Transport charges</td><td class="num">—</td><td class="c">—</td><td class="num">—</td><td class="num">{{ number_format((float) $proforma->total_amount - $sst, 2) }}</td></tr>
             @endforelse
             {{-- Subtotal, SST, then Total (client, 6 Nov 2026): no Paid / Balance due lines --}}
-            <tr><td colspan="3" class="blank"></td><td colspan="2" class="num">Subtotal</td><td class="num">{{ number_format((float) $proforma->total_amount - $sst, 2) }}</td></tr>
-            <tr><td colspan="3" class="blank"></td><td colspan="2" class="num">SST {{ $sst > 0 ? $sstRate.'%' : '' }}</td><td class="num">{{ number_format($sst, 2) }}</td></tr>
-            <tr class="total"><td colspan="3" class="blank"></td><td colspan="2" class="num">TOTAL</td><td class="num">RM {{ number_format((float) $proforma->total_amount, 2) }}</td></tr>
+            <tr class="tot"><td colspan="3" class="blank"></td><td colspan="2" class="num lbl">Subtotal</td><td class="num amt">{{ number_format((float) $proforma->total_amount - $sst, 2) }}</td></tr>
+            <tr class="tot"><td colspan="3" class="blank"></td><td colspan="2" class="num lbl">SST {{ $sst > 0 ? $sstRate.'%' : '' }}</td><td class="num amt">{{ number_format($sst, 2) }}</td></tr>
+            <tr class="tot total"><td colspan="3" class="blank"></td><td colspan="2" class="num lbl">TOTAL</td><td class="num amt">RM {{ number_format((float) $proforma->total_amount, 2) }}</td></tr>
         </tbody>
     </table>
 

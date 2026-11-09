@@ -14,12 +14,57 @@ use App\Domains\MasterData\Models\Store;
  */
 class OrderFormOptions
 {
+    /** The KL branch's pick-up area (user, 10 Nov 2026), as the price list's Pickup Location. */
+    public const KLANG_VALLEY = 'Klang Valley';
+
+    /** Areas inside the Klang Valley: on a KL order's "From" list they are Klang Valley (lower case, exact names). */
+    public const KLANG_VALLEY_AREAS = [
+        'kuala lumpur', 'kl', 'petaling jaya', 'pj', 'shah alam', 'subang', 'subang jaya', 'usj', 'klang', 'port klang',
+        'pelabuhan klang', 'puchong', 'cheras', 'ampang', 'kajang', 'bangi', 'bandar baru bangi', 'semenyih', 'seri kembangan',
+        'serdang', 'balakong', 'selayang', 'batu caves', 'gombak', 'rawang', 'sungai buloh', 'kepong', 'damansara',
+        'kota damansara', 'mont kiara', 'bukit jalil', 'sri petaling', 'setapak', 'wangsa maju', 'sentul', 'cyberjaya',
+        'putrajaya', 'sepang', 'dengkil', 'sri damansara', 'bandar sunway', 'sunway', 'glenmarie', 'ara damansara',
+    ];
+
+    /**
+     * The "From (price list location)" list of the Create order page: for the KL branch Klang Valley instead of
+     * the areas inside it (user, 10 Nov 2026); another branch the destinations as before, without Klang Valley.
+     *
+     * @return array<int, string>
+     */
+    public static function fromLocationOptions(?string $branchCode): array
+    {
+        $isKl = strcasecmp((string) $branchCode, 'KL') === 0;
+        $locations = Location::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']);
+        $options = [];
+
+        foreach ($locations as $location) {
+            $name = trim((string) $location->name);
+            $isValley = strcasecmp($name, self::KLANG_VALLEY) === 0;
+
+            if ($isKl ? in_array(strtolower($name), self::KLANG_VALLEY_AREAS, true) : $isValley) {
+                continue;
+            }
+
+            $options[$location->id] = $name;
+        }
+
+        // Klang Valley first on a KL order
+        if ($isKl && ($id = array_search(self::KLANG_VALLEY, $options, true)) !== false) {
+            $options = [$id => self::KLANG_VALLEY] + $options;
+        }
+
+        return $options;
+    }
+
     /** @return array<int, string> */
     public static function locationOptions(): array
     {
-        // the location's name only (its code repeated the name: "BAN_LONG — Ban Long", user 20 Oct 2026)
+        // the location's name only (its code repeated the name: "BAN_LONG — Ban Long", user 20 Oct 2026); Klang Valley
+        // is a pick-up area, not a destination (user, 10 Nov 2026)
         return Location::query()
             ->where('is_active', true)
+            ->where('name', '!=', self::KLANG_VALLEY)
             ->orderBy('name')
             ->get()
             ->mapWithKeys(fn (Location $location) => [

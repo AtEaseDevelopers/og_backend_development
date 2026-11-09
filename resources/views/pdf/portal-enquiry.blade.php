@@ -63,7 +63,7 @@
     <h2>Customer</h2>
     <div class="block">
         {{-- the billing customer block (client, 5 Nov 2026) --}}
-        @include('pdf.partials.bill-to', ['code' => $customer?->code, 'name' => $customerName, 'reg_no' => $customer?->brn, 'address' => $billing, 'pic' => $pic, 'phone' => $phone, 'email' => $customer?->email])
+        @include('pdf.partials.bill-to', ['heading' => false, 'code' => $customer?->code, 'name' => $customerName, 'reg_no' => $customer?->brn, 'address' => $billing, 'pic' => $pic, 'phone' => $phone, 'email' => $customer?->email])
     </div>
 
     <h2>Goods</h2>

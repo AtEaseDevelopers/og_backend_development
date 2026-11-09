@@ -171,6 +171,8 @@ class CustomerInformationImporter
         $customer->status = 'active';
         $created = ! $customer->exists;
         $customer->save();
+        // a customer's PIC list from the imported contact columns, when it has none yet (user, 10 Nov 2026)
+        $customer->createPicsFromContactColumns();
         $result[$created ? 'created' : 'updated']++;
 
         if (($delivery = $this->lines($row, 'deliver_')) !== null) {

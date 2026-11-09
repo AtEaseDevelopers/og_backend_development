@@ -69,7 +69,39 @@ class ConsignmentNoteResource extends Resource
             $query->where(fn (Builder $q) => $q->where('company_id', $companyId)->orWhere('moved_to_company_id', $companyId));
         }
 
+        // a transfer code's staff only see the CSNs with a subsheet of their codes (user, 10 Nov 2026)
+        if (($codes = static::staffTransferCodes()) !== null) {
+            $query->whereHas('subsheets', fn (Builder $s) => $s->whereIn('transfer_code', $codes));
+        }
+
         return $query;
+    }
+
+    /**
+     * The transfer codes the signed-in user is staff of (Master Data → Transfer Codes → Staff), or null when the
+     * user sees every CSN: not staff of an active code, or a super admin. A code's staff see only the CSNs with a
+     * subsheet of their codes, and under them only those subsheets (user, 10 Nov 2026).
+     *
+     * @return list<string>|null
+     */
+    public static function staffTransferCodes(): ?array
+    {
+        $user = auth()->user();
+
+        if (! $user || $user->hasRole('super_admin')) {
+            return null;
+        }
+
+        static $cache = [];
+
+        $codes = $cache[$user->id] ??= TransferCode::query()
+            ->where('is_active', true)
+            ->whereHas('staff', fn (Builder $q) => $q->whereKey($user->id))
+            ->orderBy('code')
+            ->pluck('code')
+            ->all();
+
+        return $codes === [] ? null : $codes;
     }
 
     /** A CSN moved here from another company is only assigned to a lorry here. */
@@ -268,8 +300,13 @@ class ConsignmentNoteResource extends Resource
                     ->modalDescription(fn ($livewire) => 'A CSN already on a lorry moves to the lorry picked (not once delivered). Cancelled CSNs and CSNs not ready for dispatch are skipped.'
                         .(($livewire->selectedSubsheets ?? []) !== [] ? ' The '.count($livewire->selectedSubsheets).' subsheet(s) ticked under the CSNs go on the same lorry.' : ''))
                     ->modalSubmitActionLabel('Assign')
-                    ->form(fn ($livewire) => static::assignLorryFormSchema($livewire->selectedSubsheetRecords()))
-                    ->action(fn (Collection $records, array $data, $livewire) => static::assignSelection($records, $livewire->selectedSubsheetRecords(), $data, $livewire))
+                    // the ticked CSNs listed above the lorry (user, 10 Nov 2026)
+                    ->form(fn (Collection $records, $livewire) => [static::selectedCsnsPlaceholder($records), ...static::assignLorryFormSchema($livewire->selectedSubsheetRecords()), static::csnTransferCodeField()])
+                    ->action(function (Collection $records, array $data, $livewire): void {
+                        // a transfer code picked: each CSN gets a subsheet with that code and the subsheet goes on the lorry
+                        [$csns, $subsheets] = static::withTransferCode($records, $data['csn_transfer_code'] ?? null);
+                        static::assignSelection($csns, $livewire->selectedSubsheetRecords()->merge($subsheets)->values(), $data, $livewire);
+                    })
                     ->deselectRecordsAfterCompletion(),
                 // the CSNs count in another month for commission and term billing (user, 3 Nov 2026)
                 Tables\Actions\BulkAction::make('bulkMoveMonth')
@@ -799,6 +836,94 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
      * @param  Collection<int, Subsheet>|null  $subsheets
      * @return array<int, Forms\Components\Component>
      */
+    /**
+     * The CSNs ticked in the table, listed in a bulk action's window (user, 10 Nov 2026): number, customer, DO,
+     * the lorry it is on now; a cancelled CSN or one not ready for dispatch is marked as skipped.
+     */
+    public static function selectedCsnsPlaceholder(Collection $records): Forms\Components\Placeholder
+    {
+        $records = $records->loadMissing(['customer', 'deliveryOrder.lorry']);
+
+        return Forms\Components\Placeholder::make('selected_csns')
+            ->label('Selected CSNs ('.$records->count().')')
+            ->content(function () use ($records): HtmlString {
+                $rows = $records->map(function (ConsignmentNote $csn): string {
+                    $lorry = $csn->deliveryOrder?->lorry?->registration_no;
+                    $skip = match (true) {
+                        $csn->status === CsnStatus::Cancelled => 'Cancelled · skipped',
+                        ! $csn->deliveryOrder && ! $csn->canAssignToLorry() => 'Not ready for dispatch · skipped',
+                        default => null,
+                    };
+
+                    return '<tr>'
+                        .'<td style="padding:.3rem .5rem;font-weight:600;white-space:nowrap">'.e($csn->number).'</td>'
+                        .'<td style="padding:.3rem .5rem">'.e($csn->customer?->company_name ?? '—').'</td>'
+                        .'<td style="padding:.3rem .5rem;white-space:nowrap">'.e($csn->customer_do_number ?: '—').'</td>'
+                        .'<td style="padding:.3rem .5rem;white-space:nowrap">'.($skip ? '<span style="color:rgb(220 38 38)">'.e($skip).'</span>' : e($lorry ? 'On '.$lorry : 'Not on a lorry')).'</td>'
+                        .'</tr>';
+                })->implode('');
+
+                return new HtmlString('<div style="max-height:14rem;overflow:auto;border:1px solid rgb(229 231 235);border-radius:.5rem">'
+                    .'<table style="width:100%;font-size:.8rem;border-collapse:collapse">'
+                    .'<thead><tr style="text-align:left;color:rgb(100 116 139);background:rgb(248 250 252)">'
+                    .'<th style="padding:.3rem .5rem">CSN</th><th style="padding:.3rem .5rem">Customer</th><th style="padding:.3rem .5rem">DO</th><th style="padding:.3rem .5rem">Lorry now</th>'
+                    .'</tr></thead><tbody>'.$rows.'</tbody></table></div>');
+            })
+            ->columnSpanFull();
+    }
+
+    /**
+     * Transfer code on Assign to lorry (user, 10 Nov 2026), optional: with one picked each CSN gets a transfer subsheet
+     * with that code and the subsheet goes on the lorry (as Bulk order processing); without one the CSN itself goes.
+     */
+    public static function csnTransferCodeField(): Forms\Components\Select
+    {
+        return Forms\Components\Select::make('csn_transfer_code')
+            ->label('Transfer code')
+            ->placeholder('None · the CSN goes on the lorry')
+            ->helperText('Optional · with a code each CSN gets a transfer subsheet with it, and the subsheet goes on the lorry')
+            ->options(fn () => static::transferCodeOptions('transfer'))
+            ->searchable()
+            ->columnSpanFull();
+    }
+
+    /**
+     * The CSNs to put on the lorry and the subsheets made for a transfer code: no code, the CSNs as they are; a
+     * code, a transfer subsheet with it for each CSN (a cancelled one skipped) in place of the CSN.
+     *
+     * @return array{0: Collection, 1: Collection}
+     */
+    public static function withTransferCode(Collection $csns, ?string $code): array
+    {
+        $code = trim((string) $code);
+
+        if ($code === '') {
+            return [$csns, collect()];
+        }
+
+        [$subsheets, $failed] = [collect(), []];
+
+        foreach ($csns as $csn) {
+            if ($csn->status === CsnStatus::Cancelled) {
+                $failed[] = $csn->number.' (cancelled)';
+
+                continue;
+            }
+
+            try {
+                $subsheets->push(app(CreateSubsheet::class)->forCsn($csn, ['transfer_code' => $code, 'task_type' => 'transfer', 'notes' => 'Assign to lorry']));
+            } catch (Throwable $e) {
+                $failed[] = $csn->number.' ('.$e->getMessage().')';
+            }
+        }
+
+        if ($failed !== []) {
+            Notification::make()->title('No subsheet for '.count($failed).' CSN(s)')->body(implode('; ', $failed))->warning()->send();
+        }
+
+        return [collect(), $subsheets];
+    }
+
     public static function assignLorryFormSchema(?Collection $subsheets = null): array
     {
         $subsheets ??= collect();

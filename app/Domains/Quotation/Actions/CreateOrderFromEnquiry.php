@@ -34,7 +34,7 @@ use InvalidArgumentException;
 class CreateOrderFromEnquiry
 {
     /** Charge lines of a record (not products); "Minimum charge" is added by QuotationMatrix::sync itself. */
-    public const CHARGE_LINES = ['Pickup charge', 'Drop-off charge', 'Other charges', OrderMinimumCharge::LINE];
+    public const CHARGE_LINES = ['Pickup charge', 'Drop-off charge', 'Other charges', OrderMinimumCharge::LINE, OrderMinimumCharge::EXTRA_LINE];
 
     public function __construct(
         private DocumentNumberingService $numbering,

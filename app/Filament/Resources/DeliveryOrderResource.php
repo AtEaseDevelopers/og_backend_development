@@ -72,27 +72,14 @@ class DeliveryOrderResource extends Resource
                     )),
             ])
             ->actions([
+                // no Delivery Order document (client, 7 Nov 2026): the CSN is the document
                 Tables\Actions\ViewAction::make(),
-                Tables\Actions\Action::make('previewPdf')
-                    ->label('PDF')
-                    ->icon('heroicon-o-document-arrow-down')
-                    ->url(fn (DeliveryOrder $record): string => static::pdfUrl($record))
-                    ->openUrlInNewTab()
-                    ->visible(fn (DeliveryOrder $record): bool => $record->consignmentNote()->exists()),
             ]);
     }
 
     public static function canCreate(): bool
     {
         return false;
-    }
-
-    public static function pdfUrl(DeliveryOrder $record): string
-    {
-        return route('filament.admin.delivery-orders.pdf', [
-            'tenant' => Filament::getTenant(),
-            'deliveryOrder' => $record,
-        ]);
     }
 
     public static function getPages(): array

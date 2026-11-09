@@ -32,7 +32,7 @@ class CustomerForm
             static::section('Notes', 'heroicon-o-chat-bubble-bottom-center-text', static::noteFields()),
             static::section('Order type & pricing consent', 'heroicon-o-document-check', static::consentFields())
                 ->description('Credit-term customers may hold a consent letter so approved special prices proceed without another customer confirmation.'),
-            static::section('Contact persons & delivery locations', 'heroicon-o-users', static::listFields())
+            static::section('Customer branch / delivery locations', 'heroicon-o-users', static::listFields())
                 ->collapsible()
                 ->collapsed(fn (string $operation) => $operation === 'edit'),
             static::section('Customer portal access', 'heroicon-o-key', static::portalLoginFields())
@@ -136,20 +136,64 @@ class CustomerForm
     }
 
     /** @return list<Forms\Components\Component> */
-    public static function contactFields(): array
+    /**
+     * The customer's contact (user, 10 Nov 2026): a list of PICs, each a PIC name and a contact number as on the
+     * Create order page (one row to start, "+ Add PIC" for more; the first is the default), then the other contact
+     * details. $relationship false: a plain list the caller saves (the Contact card's Edit window).
+     *
+     * @return list<Forms\Components\Component>
+     */
+    public static function contactFields(bool $relationship = true): array
     {
+        // shown as a table (user, 10 Nov 2026): a header row, one line per PIC with its remove button, and only the
+        // rows scroll when the list grows, so the window does not get longer
+        $head = Forms\Components\Placeholder::make('pic_table_head')
+            ->label('PIC name & contact number')
+            ->content(new \Illuminate\Support\HtmlString(<<<'HTML'
+                <style>
+                    .og-pic-head { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; padding: .45rem 2.75rem .45rem .75rem; margin-bottom: -1.5rem;
+                        font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: rgb(100 116 139);
+                        background: rgb(248 250 252); border: 1px solid rgb(229 231 235); border-bottom: 0; border-radius: .6rem .6rem 0 0; }
+                    .og-pic-table > ul { max-height: 15.5rem; overflow-y: auto; border: 1px solid rgb(229 231 235); border-radius: 0 0 .6rem .6rem; }
+                    .og-pic-table > ul > div { gap: 0 !important; }
+                    .og-pic-table li.fi-fo-repeater-item { position: relative; border-radius: 0; box-shadow: none; --tw-ring-shadow: 0 0 #0000; --tw-ring-offset-shadow: 0 0 #0000; border-top: 1px solid rgb(241 245 249); }
+                    .og-pic-table li.fi-fo-repeater-item:first-child { border-top: 0; }
+                    .og-pic-table .fi-fo-repeater-item-header { position: absolute; right: .35rem; top: 50%; transform: translateY(-50%); padding: 0; border: 0; z-index: 1; }
+                    .og-pic-table .fi-fo-repeater-item-content { padding: .4rem 2.75rem .4rem .75rem; border-top: 0 !important; }
+                    .og-pic-table .fi-fo-repeater-item-content .fi-fo-component-ctn { gap: .75rem; }
+                    .og-pic-table .fi-fo-repeater-item-content .fi-fo-field-wrp-label { display: none; }
+                    .dark .og-pic-head { background: rgb(31 41 55); border-color: rgb(55 65 81); color: rgb(148 163 184); }
+                    .dark .og-pic-table > ul { border-color: rgb(55 65 81); }
+                    .dark .og-pic-table li.fi-fo-repeater-item { border-top-color: rgb(55 65 81); }
+                </style>
+                <div class="og-pic-head"><span>PIC name</span><span>Contact number</span></div>
+                HTML))
+            ->columnSpanFull();
+
+        $pics = Forms\Components\Repeater::make('pics')
+            ->hiddenLabel()
+            ->schema([
+                ...($relationship ? [] : [Forms\Components\Hidden::make('id')]),
+                Forms\Components\TextInput::make('name')->label('PIC name')->placeholder('PIC name')->maxLength(255),
+                Forms\Components\TextInput::make('phone')->label('Contact number')->placeholder('Contact number')->tel()->maxLength(50),
+            ])
+            ->columns(2)
+            ->defaultItems(1)
+            ->reorderable(false)
+            ->addActionLabel('+ Add PIC')
+            ->helperText('The first PIC is the default one on new orders.')
+            ->extraAttributes(['class' => 'og-pic-table'])
+            ->columnSpanFull();
+
+        if ($relationship) {
+            $pics->relationship('pics', fn ($query) => $query->orderByDesc('is_default')->orderBy('id'));
+        }
+
         return [
-            // grouped for the user, not in the workbook's order (user, 25 Oct 2026): people, then numbers, then online
+            $head,
+            $pics,
             Forms\Components\Grid::make(4)->schema([
-                Forms\Components\TextInput::make('attention')->label('Attention')->maxLength(255),
-                Forms\Components\TextInput::make('contact_person_3')->label('Contact person 1')->maxLength(150),
-                Forms\Components\TextInput::make('contact_person_4')->label('Contact person 2')->maxLength(150),
                 Forms\Components\TextInput::make('business_nature')->label('Business nature')->maxLength(255),
-                Forms\Components\TextInput::make('phone')->label('Phone 1')->tel()->maxLength(50),
-                Forms\Components\TextInput::make('phone_2')->label('Phone 2')->tel()->maxLength(50),
-                Forms\Components\TextInput::make('phone_3')->label('Phone 3')->tel()->maxLength(50),
-                Forms\Components\TextInput::make('phone_4')->label('Phone 4')->tel()->maxLength(50),
-                Forms\Components\TextInput::make('mobile')->label('Mobile')->tel()->maxLength(50),
                 Forms\Components\TextInput::make('fax')->label('Fax')->tel()->maxLength(50),
                 Forms\Components\TextInput::make('email')->label('Email address')->email()->maxLength(255),
                 Forms\Components\TextInput::make('website')->label('Website')->url()->maxLength(255),
@@ -377,19 +421,7 @@ class CustomerForm
     private static function listFields(): array
     {
         return [
-            Forms\Components\Repeater::make('pics')
-                ->label('Other contact persons')
-                ->relationship()
-                ->schema([
-                    Forms\Components\TextInput::make('name')->required()->maxLength(255),
-                    Forms\Components\TextInput::make('phone')->tel()->maxLength(50),
-                    Forms\Components\TextInput::make('email')->email()->maxLength(255),
-                    Forms\Components\Toggle::make('is_default')->label('Default contact'),
-                ])
-                ->columns(4)
-                ->defaultItems(0)
-                ->addActionLabel('Add contact person')
-                ->columnSpanFull(),
+            // the contact persons are the PIC list of the Contact section (user, 10 Nov 2026)
             // the customer's own branches / sites (not O&G's)
             Forms\Components\Repeater::make('branches')
                 ->label('Customer branch / delivery locations')

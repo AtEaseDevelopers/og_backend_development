@@ -45,7 +45,8 @@
 
     /* the "side" layout: the consignor at the left, the consignee beside in a tall box */
     .csn-doc-side .csn-doc-side-left { width: 44%; }
-    .csn-doc-side .csn-doc-side-right { width: 56%; min-height: 210px; height: 210px; }
+    .csn-doc-side .csn-doc-side-right { width: 56%; min-height: 200px; height: 200px; }
+    .csn-doc-side { margin-bottom: 8px; }
     .csn-doc-side-party + .csn-doc-side-party { margin-top: 10px; padding-top: 8px; border-top: 1px dotted #999; }
 
     .csn-doc-header td {

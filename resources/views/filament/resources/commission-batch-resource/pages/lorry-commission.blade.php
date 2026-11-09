@@ -40,8 +40,8 @@
     @endphp
     @forelse ($byDate as $date => $dateLines)
         @php $daySheets = $dateLines->groupBy(fn ($line) => (int) ($line->deliveryOrder?->job_sheet_id ?? 0)); @endphp
-        <div class="cml-card" x-data="{ open: false }">
-            <div class="cml-head" style="cursor:pointer" x-on:click="open = ! open" title="Show the job sheets of this day">
+        <div class="cml-card" x-data="{ open: true }">
+            <div class="cml-head" style="cursor:pointer" x-on:click="open = ! open" title="Show / hide the job sheets of this day">
                 <span>
                     <strong>{{ $date !== '' ? \Illuminate\Support\Carbon::parse($date)->format('d/m/Y') : 'No date' }}</strong>
                     <span class="cml-sub"> · {{ $daySheets->count() }} job sheet(s) · {{ $dateLines->pluck('consignment_note_id')->unique()->count() }} CSN(s)</span>
@@ -51,8 +51,8 @@
             <div x-show="open" x-cloak>
                 @foreach ($daySheets as $sheetId => $sheetLines)
                     @php $sheet = $sheetLines->first()->deliveryOrder?->jobSheet; @endphp
-                    <div class="cml-card" x-data="{ openSheet: false }" style="margin-top:.6rem">
-                        <div class="cml-head" style="cursor:pointer;margin-bottom:0" x-on:click="openSheet = ! openSheet" title="Show the CSNs of this job sheet">
+                    <div class="cml-card" x-data="{ openSheet: true }" style="margin-top:.6rem">
+                        <div class="cml-head" style="cursor:pointer;margin-bottom:0" x-on:click="openSheet = ! openSheet" title="Show / hide the CSNs of this job sheet">
                             <span>
                                 @if ($sheetId)
                                     <a href="{{ \App\Filament\Resources\CommissionBatchResource::getUrl('job-sheet', ['record' => $this->getRecord(), 'jobSheet' => $sheetId]) }}" x-on:click.stop>Job sheet {{ $sheet?->number }}</a>

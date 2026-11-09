@@ -38,6 +38,7 @@ class UomPriceRows
                 $tier->pickup_min_charge,
                 $tier->construction_min_charge,
                 $tier->drop_off_min_charge,
+                $tier->extra_drop_charge,
                 $tier->effective_from?->toDateString(),
                 $tier->expires_on?->toDateString(),
             ]))
@@ -54,6 +55,7 @@ class UomPriceRows
                     'pickup_min_charge' => self::money($first->pickup_min_charge),
                     'construction_min_charge' => self::money($first->construction_min_charge),
                     'drop_off_min_charge' => self::money($first->drop_off_min_charge),
+                    'extra_drop_charge' => self::money($first->extra_drop_charge),
                     'effective_from' => $first->effective_from?->toDateString(),
                     'expires_on' => $first->expires_on?->toDateString(),
                     'source' => $first->source,
@@ -111,7 +113,7 @@ class UomPriceRows
     public static function blankRow(): array
     {
         return array_fill_keys(array_merge(
-            ['pickup_location', 'pickup_min_charge', 'construction_min_charge', 'drop_off_min_charge', 'effective_from', 'expires_on'],
+            ['pickup_location', 'pickup_min_charge', 'construction_min_charge', 'drop_off_min_charge', 'extra_drop_charge', 'effective_from', 'expires_on'],
             ...array_map(fn (string $l) => ["range_{$l}_from", "range_{$l}_to", "range_{$l}_price", "range_{$l}_fixed"], self::RANGES),
         ), null);
     }
@@ -163,6 +165,8 @@ class UomPriceRows
             'pickup_min_charge' => is_numeric($row['pickup_min_charge'] ?? null) ? (float) $row['pickup_min_charge'] : null,
             'construction_min_charge' => is_numeric($row['construction_min_charge'] ?? null) ? (float) $row['construction_min_charge'] : null,
             'drop_off_min_charge' => is_numeric($row['drop_off_min_charge'] ?? null) ? (float) $row['drop_off_min_charge'] : null,
+            // charged for each consignee after the first (Multiple consignees); empty = none (user, 10 Nov 2026)
+            'extra_drop_charge' => is_numeric($row['extra_drop_charge'] ?? null) && (float) $row['extra_drop_charge'] > 0 ? (float) $row['extra_drop_charge'] : null,
             'effective_from' => filled($row['effective_from'] ?? null) ? Carbon::parse($row['effective_from'])->toDateString() : null,
             'expires_on' => filled($row['expires_on'] ?? null) ? Carbon::parse($row['expires_on'])->toDateString() : null,
             'source' => filled($row['source'] ?? null) ? $row['source'] : 'UOM page',

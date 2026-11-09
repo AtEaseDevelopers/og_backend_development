@@ -8,9 +8,9 @@
     @include('pdf.partials.common')
     <style>
         /* larger type and tighter margins (client, 5 Nov 2026: fill the page) */
-        @page { margin: 186px 30px 40px 30px; }
+        @page { margin: 172px 30px 40px 30px; }
         body { font-size: 10.5px; line-height: 1.35; }
-        header { position: fixed; top: -170px; left: 0; right: 0; }
+        header { position: fixed; top: -156px; left: 0; right: 0; }
         .lh-name { font-size: 17px; font-weight: bold; }
         .lh-small { font-size: 10px; line-height: 1.35; }
         .lh-rule { border-top: 4px solid #000; margin: 5px 0 6px; }
@@ -26,8 +26,16 @@
         table.box th { font-size: 10.5px; text-align: left; text-transform: uppercase; letter-spacing: .02em; border-bottom: 1px solid #000; padding: 0 0 3px; }
         /* labels bold, values in normal text (user, 6 Nov 2026) */
         table.box td.k { width: 17%; font-size: 9.5px; font-weight: bold; text-transform: uppercase; white-space: nowrap; }
-        /* the billing address keeps three lines of room (client, 6 Nov 2026) */
-        .addr3 { min-height: 3.4em; }
+        /* compact blocks (client, 7 Nov 2026): the billing side and the order side are separate tables, so a wrapped
+           value on one side leaves no gap on the other */
+        .two-info { width: 100%; border-collapse: collapse; margin: 0 0 10px; page-break-inside: avoid; }
+        .two-info > tbody > tr > td { width: 50%; padding: 0; vertical-align: top; }
+        .two-info > tbody > tr > td + td { padding-left: 10px; }
+        .two-info table.box { margin: 0; }
+        .two-info table.box td { padding: 1px 6px 1px 0; }
+        .two-info table.box td.k { width: 28%; }
+        .two-info table.box th { padding-bottom: 2px; }
+        .nowrap { white-space: nowrap; }
         table.box td.v { font-weight: normal; }
         .two { width: 100%; border-collapse: separate; border-spacing: 0; margin: 0 0 8px; }
         .two > tbody > tr > td { width: 50%; padding: 0; vertical-align: top; }
@@ -70,7 +78,10 @@
 
         // the Order Form (no prices) and the Order Quotation (with prices) share this layout (user, 30 Oct 2026)
         $showAmounts = $showAmounts ?? true;
-        $documentTitle = $showAmounts ? 'ORDER QUOTATION' : 'ORDER FORM';
+        // the Order Quotation becomes the Order Form once the customer has confirmed (client, 7 Nov 2026)
+        $isConfirmed = $quotation->confirmed_at !== null
+            || in_array($quotation->status, [\App\Enums\QuotationStatus::Accepted, \App\Enums\QuotationStatus::Confirmed, \App\Enums\QuotationStatus::Converted], true);
+        $documentTitle = $isConfirmed ? 'ORDER FORM' : 'ORDER QUOTATION';
         $orderDate = optional($quotation->confirmed_at ?? $quotation->quoted_at ?? $quotation->created_at)->format('d/m/Y');
         $issuedBy = $quotation->issued_by_name ?: ($salesperson?->name ?? '');
         $rm = fn ($amount) => 'RM '.number_format((float) $amount, 2, '.', ',');
@@ -155,63 +166,36 @@
         {{-- the number is under the barcode only; the page number is stamped bottom right (client, 5 Nov 2026);
              the order type (Cash, Credit / Term, COD) at the left in the title's size, paid or not with the payment
              method under it; the title at the right (client, 6 Nov 2026) --}}
+        {{-- the title at the left, the order type (CASH, CREDIT / TERM, COD) at the right; no payment line (client, 7 Nov 2026) --}}
+        {{-- the payment term (CASH, CREDIT / TERM, COD) at the right of the title, as the CSN (client, 7 Nov 2026) --}}
         <table class="lh-meta"><tr>
-            <td class="lh-title" style="text-align:left">{{ strtoupper($orderType?->getLabel() ?? ($quotation->terms_of_payment ?: '')) }}</td>
-            <td class="lh-title">{{ $documentTitle }}</td>
-        </tr><tr>
-            <td class="k" style="padding-top:2px">Payment : {{ $paymentStatus }}@if ($paymentMethod) · {{ $paymentMethod }}@endif</td>
-            <td></td>
+            <td class="lh-title" style="text-align:left">{{ $documentTitle }}</td>
+            <td class="lh-title">{{ strtoupper($orderType?->getLabel() ?? ($quotation->terms_of_payment ?: '')) }}</td>
         </tr></table>
     </header>
 
-    <table class="box">
-        <tr><th colspan="4">Customer &amp; order</th></tr>
-        {{-- the billing customer (client, 5 Nov 2026; user, 6 Nov 2026): a labelled row each — code + name, Reg. No.,
-             address, PIC, Tel, Email — beside the order's date, term, enquiry, salesperson and expected delivery --}}
-        <tr>
-            <td class="k">Bill to</td>
-            <td class="v" style="width:50%">{{ trim(implode(' ', array_filter([$customer?->code, $customer?->company_name]))) ?: '—' }}</td>
-            <td class="k">Date</td>
-            <td class="v">{{ $orderDate }}</td>
-        </tr>
-        {{-- no Payment term row (client, 6 Nov 2026): the order type and payment are in the header --}}
-        <tr>
-            <td class="k">Reg. No.</td>
-            <td class="v">{{ $customer?->brn ?: '—' }}</td>
-            <td class="k">Enquiry</td>
-            <td class="v">{{ $enquiry?->reference_no ?? '—' }}@if ($receivedThrough) <span class="muted">· {{ $receivedThrough }}</span>@endif</td>
-        </tr>
-        <tr>
-            <td class="k">Address</td>
-            <td class="v"><div class="addr3">{!! nl2br(e($quotation->customer_address ?: ($customer?->address ?? '—'))) !!}</div></td>
-            <td class="k">Salesperson</td>
-            <td class="v">{{ $salesperson?->name ?? '—' }}@if ($quotation->saLocation?->code) <span class="muted">· {{ $quotation->saLocation->code }}</span>@endif</td>
-        </tr>
-        <tr>
-            <td class="k">PIC</td>
-            <td class="v">{{ ($quotation->attention ?: $customer?->attention) ?: '—' }}</td>
-            {{-- "Expected pick up" (client, 6 Nov 2026): a dash when the customer drops the goods off --}}
-            <td class="k">Expected pick up</td>
-            <td class="v">{{ $isStore ? '—' : ($quotation->expected_delivery_date ?: '—') }}</td>
-        </tr>
-        <tr>
-            <td class="k">Tel</td>
-            <td class="v">{{ ($quotation->customer_pic_phone ?: $customer?->phone) ?: '—' }}</td>
-            <td class="k"></td>
-            <td class="v"></td>
-        </tr>
-        <tr>
-            <td class="k">Email</td>
-            <td class="v">{{ $customer?->email ?: '—' }}</td>
-            <td class="k"></td>
-            <td class="v"></td>
-        </tr>
-    </table>
+    {{-- Billing Information (client, 7 Nov 2026): the billing customer at the left (code + name, Reg. No., address, PIC,
+         Tel, Email) and the order details at the right, each its own compact table --}}
+    <table class="two-info"><tbody><tr>
+        <td>
+            @include('pdf.partials.bill-to', ['code' => $customer?->code, 'name' => $customer?->company_name, 'reg_no' => $customer?->brn, 'address' => $quotation->customer_address ?: $customer?->address, 'pic' => $quotation->attention ?: $customer?->attention, 'phone' => $quotation->customer_pic_phone ?: $customer?->phone, 'email' => $customer?->email])
+        </td>
+        <td>
+            <table class="box">
+                <tr><th colspan="2">Order</th></tr>
+                <tr><td class="k">Date</td><td class="v">{{ $orderDate }}</td></tr>
+                <tr><td class="k">Enquiry</td><td class="v">{{ $enquiry?->reference_no ?? '—' }}@if ($receivedThrough) <span class="muted">· {{ $receivedThrough }}</span>@endif</td></tr>
+                <tr><td class="k">Salesperson</td><td class="v">{{ $salesperson?->name ?? '—' }}@if ($quotation->saLocation?->code) <span class="muted">· {{ $quotation->saLocation->code }}</span>@endif</td></tr>
+                {{-- "Expected pick up" (client, 6 Nov 2026): a dash when the customer drops the goods off --}}
+                <tr><td class="k">Expected pick up</td><td class="v">{{ $isStore ? '—' : ($quotation->expected_delivery_date ?: '—') }}</td></tr>
+            </table>
+        </td>
+    </tr></tbody></table>
 
     <table class="two"><tbody><tr>
         <td>
             <table class="box">
-                <tr><th colspan="2">Consignor @if ($stops['multi_pickup'] && $stops['pickup_stops'] !== []) <span class="tag">{{ count($stops['pickup_stops']) }} pick-up addresses</span>@endif</th></tr>
+                <tr><th colspan="2">Consignor [{{ $consignorMode }}]@if ($stops['multi_pickup'] && $stops['pickup_stops'] !== []) <span class="tag">{{ count($stops['pickup_stops']) }} pick-up addresses</span>@endif</th></tr>
                 <tr><td class="k">Name</td><td class="v">{{ $quotation->consignor_name ?: ($quotation->portal_enquiry_id ? '—' : ($customer?->company_name ?? '—')) }}</td></tr>
                 <tr><td class="k">PIC / Tel</td><td class="v">{{ $contact($quotation->consignor_pic_name, $quotation->consignor_pic_phone) }}</td></tr>
                 @if ($stops['multi_pickup'] && $stops['pickup_stops'] !== [])
@@ -228,7 +212,7 @@
         </td>
         <td>
             <table class="box">
-                <tr><th colspan="2">Consignee @if ($stops['multi_dropoff'] && $stops['dropoff_stops'] !== []) <span class="tag">{{ count($stops['dropoff_stops']) }} consignees</span>@endif</th></tr>
+                <tr><th colspan="2">Consignee [{{ $consigneeMode }}]@if ($stops['multi_dropoff'] && $stops['dropoff_stops'] !== []) <span class="tag">{{ count($stops['dropoff_stops']) }} consignees</span>@endif</th></tr>
                 @if ($stops['multi_dropoff'] && $stops['dropoff_stops'] !== [])
                     @foreach ($stops['dropoff_stops'] as $stop)
                         <tr><td class="k">Consignee {{ $loop->iteration }}</td><td class="v">{!! $stopLines($stop, $quotation->consignee_name ?: ($quotation->destinations->sortBy('sequence')->first()?->consignee_name ?? null)) !!}</td></tr>
@@ -280,12 +264,12 @@
             @endforelse
             {{-- Subtotal, SST, then Total, always (client, 6 Nov 2026) --}}
             @if ($showAmounts)
-                <tr><td colspan="3" class="blank"></td><td colspan="2" class="num">Subtotal</td><td class="num">{{ number_format($subtotal, 2) }}</td></tr>
-                @if ($minimumTopUp > 0)<tr><td colspan="3" class="blank"></td><td colspan="2" class="num">Minimum charge top-up</td><td class="num">{{ number_format($minimumTopUp, 2) }}</td></tr>@endif
-                <tr><td colspan="3" class="blank"></td><td colspan="2" class="num">SST {{ $sst > 0 ? $sstRate.'%' : '' }}</td><td class="num">{{ number_format($sst, 2) }}</td></tr>
+                <tr class="tot"><td colspan="3" class="blank"></td><td colspan="2" class="num lbl">Subtotal</td><td class="num amt">{{ number_format($subtotal, 2) }}</td></tr>
+                @if ($minimumTopUp > 0)<tr class="tot"><td colspan="3" class="blank"></td><td colspan="2" class="num lbl">Minimum charge top-up</td><td class="num amt">{{ number_format($minimumTopUp, 2) }}</td></tr>@endif
+                <tr class="tot"><td colspan="3" class="blank"></td><td colspan="2" class="num lbl">SST {{ $sst > 0 ? $sstRate.'%' : '' }}</td><td class="num amt">{{ number_format($sst, 2) }}</td></tr>
             @endif
             @if ($showAmounts)
-                <tr class="total"><td colspan="3" class="blank"></td><td colspan="2" class="num">TOTAL</td><td class="num">{{ $rm($total) }}</td></tr>
+                <tr class="tot total"><td colspan="3" class="blank"></td><td colspan="2" class="num lbl">TOTAL</td><td class="num amt">{{ $rm($total) }}</td></tr>
             @endif
         </tbody>
     </table>

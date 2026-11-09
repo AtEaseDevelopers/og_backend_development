@@ -70,16 +70,14 @@ class CustomerResource extends Resource
                         Infolists\Components\TextEntry::make('delivery_postcode')->label('Deliver postcode')->placeholder('—')
                             ->state(fn (Customer $record) => $record->addresses()->where('type', 'delivery')->orderByDesc('is_default')->value('postcode')),
                     ])->compact()->inlineLabel()->columns(1)->columnSpan(1),
-                    Infolists\Components\Section::make('Contact')->icon('heroicon-o-phone')->headerActions([static::editCard('contact', 'Contact', CustomerForm::contactFields())])->schema([
-                        Infolists\Components\TextEntry::make('attention')->placeholder('—'),
-                        Infolists\Components\TextEntry::make('contact_person_3')->label('Contact person 1')->hidden(fn (?string $state) => blank($state)),
-                        Infolists\Components\TextEntry::make('contact_person_4')->label('Contact person 2')->hidden(fn (?string $state) => blank($state)),
+                    Infolists\Components\Section::make('Contact')->icon('heroicon-o-phone')->headerActions([static::editCard('contact', 'Contact', CustomerForm::contactFields(relationship: false))])->schema([
+                        // the PIC list (user, 10 Nov 2026): "PIC name · contact number", the default first
+                        Infolists\Components\TextEntry::make('pic_list')->label('PIC')
+                            ->state(fn (Customer $record) => $record->pics()->orderByDesc('is_default')->orderBy('id')->get()
+                                ->map(fn ($pic) => ($pic->name ?: '—').' · '.($pic->phone ?: '—'))->all())
+                            ->listWithLineBreaks()
+                            ->placeholder('—'),
                         Infolists\Components\TextEntry::make('business_nature')->label('Business nature')->hidden(fn (?string $state) => blank($state)),
-                        Infolists\Components\TextEntry::make('phone')->label('Phone 1')->placeholder('—'),
-                        Infolists\Components\TextEntry::make('phone_2')->label('Phone 2')->hidden(fn (?string $state) => blank($state)),
-                        Infolists\Components\TextEntry::make('phone_3')->label('Phone 3')->hidden(fn (?string $state) => blank($state)),
-                        Infolists\Components\TextEntry::make('phone_4')->label('Phone 4')->hidden(fn (?string $state) => blank($state)),
-                        Infolists\Components\TextEntry::make('mobile')->label('Mobile')->hidden(fn (?string $state) => blank($state)),
                         Infolists\Components\TextEntry::make('fax')->hidden(fn (?string $state) => blank($state)),
                         Infolists\Components\TextEntry::make('email')->label('Email address')->placeholder('—'),
                         Infolists\Components\TextEntry::make('website')->hidden(fn (?string $state) => blank($state)),
@@ -119,6 +117,14 @@ class CustomerResource extends Resource
                 Infolists\Components\Tabs\Tab::make('Special price')
                     ->badge(fn (Customer $record) => static::specialPriceCount($record) ?: null)
                     ->schema([
+                        // the customer's special prices as an Excel file in the client's template layout (user, 10 Nov 2026)
+                        Infolists\Components\Actions::make([
+                            Infolists\Components\Actions\Action::make('exportSpecialPrice')
+                                ->label('Export special price (Excel)')
+                                ->icon('heroicon-o-arrow-down-tray')
+                                ->color('gray')
+                                ->action(fn (Customer $record) => \App\Support\SpecialPriceExport::download($record)),
+                        ])->alignEnd()->visible(fn (Customer $record) => static::specialPriceCount($record) > 0)->columnSpanFull(),
                         Infolists\Components\ViewEntry::make('special_prices')
                             ->hiddenLabel()
                             ->view('filament.infolists.customer-special-prices')
@@ -134,6 +140,38 @@ class CustomerResource extends Resource
      *
      * @param  list<\Filament\Forms\Components\Component>  $fields
      */
+    /**
+     * The Contact card's PIC list saved (user, 10 Nov 2026): rows changed, added or removed, blank ones skipped; the
+     * first is the default (the customer's attention / phone follow it).
+     *
+     * @param  list<array{id?: ?int, name?: ?string, phone?: ?string}>  $rows
+     */
+    public static function savePics(Customer $record, array $rows): void
+    {
+        $keep = [];
+
+        foreach (array_values($rows) as $index => $row) {
+            $values = ['name' => trim((string) ($row['name'] ?? '')) ?: null, 'phone' => trim((string) ($row['phone'] ?? '')) ?: null];
+
+            if ($values['name'] === null && $values['phone'] === null) {
+                continue;
+            }
+
+            $pic = filled($row['id'] ?? null) ? $record->pics()->find($row['id']) : null;
+            $pic ? $pic->update($values) : $pic = $record->pics()->create($values);
+            $keep[] = $pic->id;
+        }
+
+        $record->pics()->whereNotIn('id', $keep)->get()->each->delete();
+        // the first row of the list is the default, whatever the saves above chose on the way
+        $record->pics()->update(['is_default' => false]);
+        if ($keep !== []) {
+            $record->pics()->whereKey($keep[0])->update(['is_default' => true]);
+        }
+        $record->syncContactFromPics();
+        \App\Domains\MasterData\Models\ConsignorConsignee::syncFromCustomer($record->fresh());
+    }
+
     private static function editCard(string $key, string $heading, array $fields): Infolists\Components\Actions\Action
     {
         return Infolists\Components\Actions\Action::make('edit_'.$key)
@@ -149,6 +187,10 @@ class CustomerResource extends Resource
             ->fillForm(function (Customer $record) use ($key): array {
                 $data = $record->attributesToArray();
 
+                if ($key === 'contact') {
+                    $data['pics'] = $record->pics()->orderByDesc('is_default')->orderBy('id')->get(['id', 'name', 'phone'])->toArray() ?: [['id' => null, 'name' => '', 'phone' => '']];
+                }
+
                 if ($key === 'address') {
                     $delivery = $record->addresses()->where('type', 'delivery')->orderByDesc('is_default')->first();
                     $data['delivery_address_text'] = $delivery?->address;
@@ -158,6 +200,11 @@ class CustomerResource extends Resource
                 return $data;
             })
             ->action(function (Customer $record, array $data) use ($key, $heading): void {
+                if ($key === 'contact') {
+                    static::savePics($record, (array) ($data['pics'] ?? []));
+                    unset($data['pics']);
+                }
+
                 if ($key === 'address') {
                     $delivery = trim((string) ($data['delivery_address_text'] ?? ''));
 
@@ -238,6 +285,7 @@ class CustomerResource extends Resource
                     $row['pickup_min_charge'] !== null ? 'Pick-up '.$money($row['pickup_min_charge']) : null,
                     $row['construction_min_charge'] !== null ? 'Construction site '.$money($row['construction_min_charge']) : null,
                     $row['drop_off_min_charge'] !== null ? 'Drop-off '.$money($row['drop_off_min_charge']) : null,
+                    ($row['extra_drop_charge'] ?? null) !== null ? 'Extra drop-off '.$money($row['extra_drop_charge']).' / consignee' : null,
                 ])),
                 'effective' => match (true) {
                     filled($row['effective_from']) && filled($row['expires_on']) => Carbon::parse($row['effective_from'])->format('d/m/Y').' – '.Carbon::parse($row['expires_on'])->format('d/m/Y'),

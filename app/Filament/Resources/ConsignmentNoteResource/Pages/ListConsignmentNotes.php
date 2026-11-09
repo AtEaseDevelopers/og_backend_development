@@ -195,7 +195,12 @@ class ListConsignmentNotes extends ListRecords
     protected function getTableQuery(): Builder
     {
         return $this->applyFilterBar(parent::getTableQuery())
-            ->with(['company:id,code,name', 'movedToCompany:id,code,name', 'movedBy:id,name', 'deliveryOrder.lorry', 'deliveryOrders.failedDelivery', 'quotation', 'transferCode', 'subsheets.subLorry', 'subsheets.deliveryOrder', 'returnedCsn.receivedBy'])
+            ->with([
+                'company:id,code,name', 'movedToCompany:id,code,name', 'movedBy:id,name', 'deliveryOrder.lorry', 'deliveryOrders.failedDelivery', 'quotation', 'transferCode',
+                // a transfer code's staff see only the subsheets of their codes under each CSN (user, 10 Nov 2026)
+                'subsheets' => fn ($q) => ($codes = ConsignmentNoteResource::staffTransferCodes()) === null ? $q : $q->whereIn('transfer_code', $codes),
+                'subsheets.subLorry', 'subsheets.deliveryOrder', 'returnedCsn.receivedBy',
+            ])
             ->withCount('breakBulks');
     }
 
@@ -300,6 +305,8 @@ class ListConsignmentNotes extends ListRecords
                         ->options(fn () => ConsignmentNoteResource::lorryOptions())
                         ->required()
                         ->searchable(),
+                    // the CSNs may go through a transfer code (user, 10 Nov 2026); a code's staff assign subsheets that have one
+                    $this->myTransferCodes() !== [] ? null : ConsignmentNoteResource::csnTransferCodeField(),
                     // scan or type a number (user, 21 Oct 2026): Enter ticks that CSN / subsheet below and clears the box
                     $this->assignableItems() === [] ? null : Forms\Components\TextInput::make('scan')
                         ->label('Scan or type a CSN number')
@@ -368,9 +375,14 @@ class ListConsignmentNotes extends ListRecords
                         return;
                     }
 
-                    ConsignmentNoteResource::assignSelection(
+                    [$csns, $made] = ConsignmentNoteResource::withTransferCode(
                         $csnIds === [] ? collect() : ConsignmentNote::query()->whereIn('id', $csnIds)->get(),
-                        $this->mySubsheets()->whereIn('id', $subsheetIds)->values(),
+                        $data['csn_transfer_code'] ?? null,
+                    );
+
+                    ConsignmentNoteResource::assignSelection(
+                        $csns,
+                        $this->mySubsheets()->whereIn('id', $subsheetIds)->values()->merge($made)->values(),
                         ['lorry_id' => $data['lorry_id']],
                         $this,
                     );

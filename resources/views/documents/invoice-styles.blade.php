@@ -38,7 +38,7 @@
     .inv-parties { margin: 8px 0 10px; }
     .inv-parties td { vertical-align: top; padding: 0; }
     .inv-party-col { width: 58%; padding-right: 12px; }
-    .inv-meta-col { width: 42%; padding-left: 10px; }
+    .inv-parties td.inv-meta-col { width: 42%; padding-left: 10px; }
     .inv-meta-table { width: auto; }
     .inv-meta-table td { padding: 1px 0; vertical-align: top; }
     .inv-meta-k { width: 7rem; font-weight: bold; }

@@ -47,7 +47,7 @@ class CsnDocumentData
                 // the QR carries the CSN number (user, 30 Oct 2026: scanned into the search fields); the old token QRs still work
                 'qr_value' => $csn->number,
                 'payment_label' => match ($csn->billing_type) {
-                    \App\Enums\CsnBillingType::CashBill => 'PAID',
+                    \App\Enums\CsnBillingType::CashBill => 'CASH', // the payment term, as the order form (client, 7 Nov 2026)
                     \App\Enums\CsnBillingType::Cod => 'COD',
                     \App\Enums\CsnBillingType::Term => 'CREDIT / TERM',
                     default => '',
@@ -224,7 +224,7 @@ class CsnDocumentData
                 'lorry_number' => filled($fields['lorry_number'] ?? null) ? $fields['lorry_number'] : '—',
                 'job_sheet_number' => filled($fields['job_sheet_number'] ?? null) ? $fields['job_sheet_number'] : '—',
                 'qr_value' => $fields['qr_value'] ?? ($fields['number'] ?? null),
-                // left of the title (client, 6 Nov 2026): a cash bill shows PAID, else COD or CREDIT / TERM
+                // right of the title (client, 7 Nov 2026): CASH, COD or CREDIT / TERM
                 'payment_label' => $fields['payment_label'] ?? '',
             ],
             'bill_to' => [

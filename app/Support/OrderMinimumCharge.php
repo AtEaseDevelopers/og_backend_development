@@ -15,6 +15,12 @@ class OrderMinimumCharge
 {
     public const LINE = 'Minimum charge';
 
+    /**
+     * Extra drop-off charge (user, 10 Nov 2026): a record with Multiple consignees pays the route's "Extra Drop-Off
+     * Charge" (price list row) once for each consignee after the first; a route without one adds nothing.
+     */
+    public const EXTRA_LINE = 'Extra drop-off charge';
+
     private const LABELS = [
         'pickup' => 'Pick-up minimum',
         'construction' => 'Construction site minimum',
@@ -25,11 +31,13 @@ class OrderMinimumCharge
 
     /**
      * @param  list<array{item_name: string, quantity: float, line_total: float, priced: bool}>  $lines  the record's lines to this destination
-     * @return array{minimum: float, label: ?string, subtotal: float, top_up: float, pending: bool, note: ?string}
+     * @param  int  $extraConsignees  the consignees after the first (Multiple consignees)
+     * @return array{minimum: float, label: ?string, subtotal: float, top_up: float, pending: bool, note: ?string, extra_count: int, extra_unit: float, extra_total: float, extra_note: ?string}
      */
-    public function forDestination(?int $customerId, string $location, ?string $dropOffType, ?string $serviceType, array $lines): array
+    public function forDestination(?int $customerId, string $location, ?string $dropOffType, ?string $serviceType, array $lines, int $extraConsignees = 0): array
     {
         $minimums = ['pickup' => 0.0, 'construction' => 0.0, 'drop_off' => 0.0];
+        $extraUnit = 0.0;
         $subtotal = 0.0;
         $pending = false;
         $construction = $dropOffType === DropOffType::Construction->value;
@@ -45,6 +53,7 @@ class OrderMinimumCharge
             }
 
             $minimums['drop_off'] = max($minimums['drop_off'], (float) $tier->drop_off_min_charge);
+            $extraUnit = max($extraUnit, (float) $tier->extra_drop_charge);
 
             if ($construction) {
                 $minimums['construction'] = max($minimums['construction'], (float) $tier->construction_min_charge);
@@ -61,7 +70,16 @@ class OrderMinimumCharge
         // no top-up while a product still has no price (the total is not known yet)
         $topUp = ! $pending && $minimum > $subtotal + 0.005 ? round($minimum - $subtotal, 2) : 0.0;
 
+        $extraCount = max(0, $extraConsignees);
+        $extraTotal = $extraUnit > 0 && $extraCount > 0 ? round($extraUnit * $extraCount, 2) : 0.0;
+
         return [
+            'extra_count' => $extraTotal > 0 ? $extraCount : 0,
+            'extra_unit' => $extraTotal > 0 ? $extraUnit : 0.0,
+            'extra_total' => $extraTotal,
+            'extra_note' => $extraTotal > 0
+                ? $extraCount.' more consignee'.($extraCount > 1 ? 's' : '').' × RM '.number_format($extraUnit, 2)
+                : null,
             'minimum' => $minimum,
             'label' => $key ? self::LABELS[$key] : null,
             'subtotal' => $subtotal,

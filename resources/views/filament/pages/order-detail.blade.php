@@ -60,9 +60,10 @@
         </div>
 
         {{-- the documents to print after "Confirm, pay & print" (client, 1 Nov 2026): opened in new tabs on arrival, and
-             kept here as buttons in case the browser blocks pop-ups --}}
+             kept here as buttons in case the browser blocks pop-ups; the CSN goes to the tab the button opened on the
+             click ("og-print-csn", user 10 Nov 2026), which a browser does not block --}}
         @if ($this->printDocs !== [])
-            <div class="ow-banner ow-banner-success" x-data x-init="$nextTick(() => { @foreach ($this->printDocs as $doc) window.open(@js($doc['url']), '_blank'); @endforeach })">
+            <div class="ow-banner ow-banner-success" x-data x-init="$nextTick(() => { @foreach ($this->printDocs as $doc) window.open(@js($doc['url']), @js(str_starts_with($doc['label'], 'CSN') ? 'og-print-csn' : '_blank')); @endforeach })">
                 <div>
                     <div class="ow-banner-title">Ready to print</div>
                     <div class="ow-banner-text">The documents open in new tabs. If the browser blocked them, use the buttons.</div>

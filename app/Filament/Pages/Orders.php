@@ -169,6 +169,9 @@ class Orders extends Page
      * Bulk order processing (user, 28 Oct 2026): the orders at Pending item (a Store order paid and billed, waiting
      * for its goods) verified, their CSNs created and put on one lorry in one go. With a transfer code chosen each
      * CSN gets a subsheet with that code and the subsheet goes on the lorry; without one the CSN itself goes.
+     * The lorry is optional (user, 10 Nov 2026): the point is to open the CSNs, so without a lorry they are only
+     * created (the button then reads "Verify & create CSN"). The order list has a search box that also takes a
+     * barcode scan: a scan anywhere in the window lands in it, and Enter on an exact order number ticks that order.
      */
     public function bulkProcessAction(): Action
     {
@@ -184,7 +187,8 @@ class Orders extends Page
                     ->label('Lorry')
                     ->placeholder('Select lorry')
                     ->options(fn () => ConsignmentNoteResource::lorryOptions())
-                    ->required()
+                    ->helperText('Optional · without a lorry the CSNs are only created')
+                    ->live()
                     ->searchable(),
                 Forms\Components\Select::make('transfer_code')
                     ->label('Transfer code')
@@ -200,11 +204,22 @@ class Orders extends Page
                         $o->created_at?->format('d/m/Y'),
                     ])->filter()->implode(' · ')])->all())
                     ->bulkToggleable()
+                    ->searchable()
+                    ->searchPrompt('Search or scan an order no. · Enter ticks an exact match')
+                    ->searchDebounce(150)
+                    // the search box takes the focus when the window opens; a key typed anywhere else in the window
+                    // (a barcode scanner) goes into it; Enter in the search box (the scanner sends one) never submits
+                    // the window, it ticks the order whose number equals the search and clears the box for the next scan
+                    ->extraAttributes([
+                        'x-init' => 'setTimeout(() => $root.querySelector("input[type=search]")?.focus(), 350)',
+                        'x-on:keydown.window' => 'if ($event.key.length === 1 && ! ["INPUT", "TEXTAREA", "SELECT"].includes($event.target.tagName)) { $root.querySelector("input[type=search]")?.focus() }',
+                        'x-on:keydown.enter.window' => 'const box = $root.querySelector("input[type=search]"); if ($event.target !== box) return; $event.preventDefault(); const q = (box.value || "").trim().toLowerCase(); if (! q) return; const hit = Array.from($root.querySelectorAll("span.fi-fo-checkbox-list-option-label")).find((l) => l.textContent.trim().toLowerCase() === q); if (! hit) return; const tick = hit.closest("label")?.querySelector("input[type=checkbox]"); if (tick && ! tick.checked) tick.click(); search = ""; box.value = ""',
+                    ])
                     ->live()
                     ->required()
                     ->validationMessages(['required' => 'Tick at least one order.']),
             ])
-            ->modalSubmitActionLabel('Verify, create CSN & assign to lorry')
+            ->modalSubmitActionLabel(fn () => filled(data_get($this->mountedActionsData, '0.lorry_id')) ? 'Verify, create CSN & assign to lorry' : 'Verify & create CSN')
             ->action(function (array $data): void {
                 $orders = $this->pendingItemOrders()->whereIn('id', array_map('intval', (array) ($data['order_ids'] ?? [])));
 
@@ -242,7 +257,7 @@ class Orders extends Page
                     }
                 }
 
-                if ($csns->isNotEmpty() || $subsheets->isNotEmpty()) {
+                if (filled($data['lorry_id'] ?? null) && ($csns->isNotEmpty() || $subsheets->isNotEmpty())) {
                     ConsignmentNoteResource::assignSelection($csns, $subsheets->values(), ['lorry_id' => $data['lorry_id']]);
                 }
 
@@ -592,6 +607,7 @@ class Orders extends Page
             ['key' => 'salesperson', 'label' => 'Salesperson', 'num' => false],
             ['key' => 'service', 'label' => 'Service', 'num' => false],
             ['key' => 'stage', 'label' => 'Order stage', 'num' => false],
+            ['key' => 'csn', 'label' => 'CSN', 'num' => false],
             ['key' => 'payment', 'label' => 'Payment', 'num' => false],
             ['key' => 'amount', 'label' => 'Amount', 'num' => true],
             ['key' => 'next', 'label' => 'Next step', 'num' => false],

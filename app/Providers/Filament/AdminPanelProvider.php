@@ -6,7 +6,6 @@ use App\Domains\MasterData\Models\Company;
 use App\Filament\Pages\Auth\Login;
 use App\Filament\Pages\Dashboard;
 use App\Http\Controllers\Admin\ConsignmentNotePdfController;
-use App\Http\Controllers\Admin\DeliveryOrderPdfController;
 use App\Http\Controllers\Admin\InvoicePdfController;
 use App\Http\Controllers\Admin\OcrUploadDocumentController;
 use App\Http\Controllers\Admin\QuotationPdfController;
@@ -97,8 +96,6 @@ class AdminPanelProvider extends PanelProvider
                     ->name('invoices.pdf');
                 Route::get('/proforma-invoices/{proformaInvoice}/pdf', \App\Http\Controllers\Admin\ProformaInvoicePdfController::class)
                     ->name('proforma-invoices.pdf');
-                Route::get('/delivery-orders/{deliveryOrder}/pdf', DeliveryOrderPdfController::class)
-                    ->name('delivery-orders.pdf');
                 Route::get('/ocr-uploads/{ocrUpload}/document', OcrUploadDocumentController::class)
                     ->name('ocr-uploads.document');
                 Route::get('/daily-lorry-schedule/pdf', \App\Http\Controllers\Admin\DailyLorrySchedulePdfController::class)

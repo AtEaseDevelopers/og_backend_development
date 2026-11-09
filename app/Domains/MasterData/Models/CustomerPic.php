@@ -18,8 +18,17 @@ class CustomerPic extends Model
 
     protected static function booted(): void
     {
-        // the customer's consignor / consignee row may take its address / PIC from the default one (user, 25 Oct 2026)
-        $sync = fn (self $row) => $row->customer && ConsignorConsignee::syncFromCustomer($row->customer);
+        // a blank row (no PIC name, no contact number) is not saved (user, 10 Nov 2026)
+        static::creating(fn (self $row) => filled(trim((string) $row->name)) || filled(trim((string) $row->phone)));
+
+        // the customer's attention / phone follow the default PIC (user, 10 Nov 2026), then its consignor / consignee
+        // row may take its address / PIC from the default one (user, 25 Oct 2026)
+        $sync = function (self $row): void {
+            if ($customer = Customer::query()->find($row->customer_id)) {
+                $customer->syncContactFromPics();
+                ConsignorConsignee::syncFromCustomer($customer->fresh());
+            }
+        };
         static::saved($sync);
         static::deleted($sync);
     }

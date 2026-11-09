@@ -12,6 +12,7 @@
     $pairs = $this->orders[$workingOrder]['pairs'] ?? [];
     $lockedCount = count(array_filter(array_keys($pairs), fn ($i) => $this->isPairLocked($i)));
     $locations = $this->locationOptions();
+    $fromLocations = $this->fromLocationOptions();
     $stores = $this->storeOptions();
     $serviceOptions = $this->serviceTypeOptions();
     $newAddress = \App\Support\OrderFormOptions::NEW_ADDRESS;
@@ -22,6 +23,11 @@
     <style>
         .ow-page .ow-party-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem .75rem; flex-wrap: wrap; margin-bottom: .6rem; }
         .ow-page .ow-party-head .ow-party-title { margin: 0; }
+        /* the consignor card light blue, the consignee card light pink (user, 10 Nov 2026) */
+        .ow-page .ow-party.ow-party-consignor { background: #eff6ff; border-color: #bfdbfe; }
+        .ow-page .ow-party.ow-party-consignee { background: #fdf2f8; border-color: #fbcfe8; }
+        .dark .ow-page .ow-party.ow-party-consignor { background: rgb(30 58 138 / .18); border-color: rgb(59 130 246 / .35); }
+        .dark .ow-page .ow-party.ow-party-consignee { background: rgb(131 24 67 / .18); border-color: rgb(236 72 153 / .35); }
         .ow-page .ow-seg { display: inline-flex; border: 1px solid var(--ow-line); border-radius: .5rem; overflow: hidden; background: var(--ow-bg); }
         .ow-page .ow-seg label { position: relative; display: inline-flex; align-items: center; margin: 0; padding: .3rem .85rem; font-size: .78rem; line-height: 1.2; color: var(--ow-muted); cursor: pointer; border-right: 1px solid var(--ow-line); user-select: none; }
         .ow-page .ow-seg label:last-child { border-right: 0; }
@@ -34,6 +40,14 @@
         .ow-page .ow-quick { display: inline-flex; gap: .75rem; font-size: .72rem; white-space: nowrap; }
         .ow-page .ow-quick .ow-btn-link { font-size: inherit; padding: 0; }
         .ow-page .ow-party .ow-pic-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; margin-top: .6rem; }
+        /* extra PIC rows (user, 10 Nov 2026): under the first, a remove button beside the number */
+        .ow-page .ow-pic-extra { margin-top: .4rem; }
+        .ow-page .ow-pic-extra-row { display: flex; align-items: center; gap: .35rem; margin-top: .4rem; }
+        .ow-page .ow-pic-extra-row .ow-input { flex: 1; min-width: 0; }
+        .ow-page .ow-pic-typed { position: relative; }
+        .ow-page .ow-pic-typed .ow-input { padding-right: 2rem; }
+        .ow-page .ow-pic-to-list { position: absolute; right: .35rem; top: 50%; transform: translateY(-50%); border: 0; background: none; cursor: pointer; color: rgb(100 116 139); font-size: .95rem; padding: .15rem .3rem; }
+        .ow-page .ow-pic-to-list:hover { color: rgb(var(--primary-600)); }
         .ow-page .ow-party .ow-pic-grid .ow-field + .ow-field { margin-top: 0; }
         .ow-page .ow-party .ow-pic-grid + .ow-field { margin-top: .6rem; }
         .ow-page .ow-store-card { margin-top: .4rem; border: 1px dashed var(--ow-line); border-radius: .5rem; padding: .5rem .65rem; background: var(--ow-bg); font-size: .8rem; }
@@ -265,15 +279,52 @@
                         @error($ep.'form.received_through')<div class="ow-field-error">{{ $message }}</div>@enderror
                     </div>
                 @endif
+                {{-- the customer's PICs (user, 10 Nov 2026): picked from the customer's saved PICs (Master Data →
+                     Customers → Contact), which fills the number, or typed; "+ Add PIC" adds another --}}
+                @php $savedPics = $this->customerPicOptions((string) ($form['customer_id'] ?? '')); @endphp
                 <div class="ow-field">
-                    <label for="ow-customer-pic-{{ $oi }}">PIC name</label>
-                    <input id="ow-customer-pic-{{ $oi }}" type="text" wire:model.live.debounce.400ms="orders.{{ $oi }}.form.customer_pic_name" class="ow-input" autocomplete="off" placeholder="Customer's person in charge" @disabled(! $headerEditable)>
+                    <div class="ow-label-row">
+                        <label for="ow-customer-pic-{{ $oi }}">PIC name</label>
+                        @if ($headerEditable)<button type="button" wire:click="inOrder({{ $oi }}, 'addPic', 'customer', 0)" class="ow-btn-link">+ Add PIC</button>@endif
+                    </div>
+                    @include('filament.pages.partials.customer-pic-name', [
+                        'model' => 'orders.'.$oi.'.form.customer_pic_name',
+                        'value' => (string) ($form['customer_pic_name'] ?? ''),
+                        'typed' => (bool) ($form['customer_pic_typed'] ?? false),
+                        'savedPics' => $savedPics,
+                        'editable' => $headerEditable,
+                        'inputId' => 'ow-customer-pic-'.$oi,
+                        'placeholder' => "Customer's person in charge",
+                        'listAction' => "inOrder({$oi}, 'usePicList', -1)",
+                        'extraClass' => '',
+                    ])
                     @error($ep.'form.customer_pic_name')<div class="ow-field-error">{{ $message }}</div>@enderror
+                    @foreach ($form['customer_pics_extra'] ?? [] as $pi => $extraPic)
+                        <div wire:key="ow-o{{ $oi }}-customer-pic-{{ $pi }}">
+                            @include('filament.pages.partials.customer-pic-name', [
+                                'model' => 'orders.'.$oi.'.form.customer_pics_extra.'.$pi.'.name',
+                                'value' => (string) ($extraPic['name'] ?? ''),
+                                'typed' => (bool) ($extraPic['typed'] ?? false),
+                                'savedPics' => $savedPics,
+                                'editable' => $headerEditable,
+                                'inputId' => null,
+                                'placeholder' => 'PIC name '.($pi + 2),
+                                'listAction' => "inOrder({$oi}, 'usePicList', {$pi})",
+                                'extraClass' => 'ow-pic-extra',
+                            ])
+                        </div>
+                    @endforeach
                 </div>
                 <div class="ow-field">
                     <label for="ow-customer-phone-{{ $oi }}">Contact number</label>
                     <input id="ow-customer-phone-{{ $oi }}" type="tel" inputmode="tel" wire:model.live.debounce.400ms="orders.{{ $oi }}.form.customer_pic_phone" class="ow-input" autocomplete="off" @disabled(! $headerEditable)>
                     @error($ep.'form.customer_pic_phone')<div class="ow-field-error">{{ $message }}</div>@enderror
+                    @foreach ($form['customer_pics_extra'] ?? [] as $pi => $extraPic)
+                        <div class="ow-pic-extra-row" wire:key="ow-o{{ $oi }}-customer-phone-{{ $pi }}">
+                            <input type="tel" inputmode="tel" wire:model.live.debounce.400ms="orders.{{ $oi }}.form.customer_pics_extra.{{ $pi }}.phone" class="ow-input" autocomplete="off" placeholder="Contact number {{ $pi + 2 }}" @disabled(! $headerEditable)>
+                            @if ($headerEditable)<button type="button" wire:click="inOrder({{ $oi }}, 'removePic', 'customer', 0, {{ $pi }})" class="ow-icon-btn" title="Remove this PIC" aria-label="Remove this PIC">✕</button>@endif
+                        </div>
+                    @endforeach
                 </div>
                 @endunless
                 @if ($isQuote)
@@ -364,7 +415,7 @@
                     $fieldId = 'ow-o'.$oi.'-p'.$i;
                 @endphp
                 <div class="ow-grid-2">
-                    <div class="ow-party">
+                    <div class="ow-party ow-party-consignor">
                         <div class="ow-party-head">
                             <div class="ow-party-title" id="{{ $fieldId }}-consignor-title">Consignor</div>
                             {{-- Pickup (collected from the consignor) or Store (brought to an O&G branch): radios, so arrow keys switch --}}
@@ -379,26 +430,69 @@
                         </div>
                         @include('filament.pages.partials.saved-party-select', ['role' => 'consignor', 'parties' => $savedConsignors, 'model' => "orders.{$oi}.pairs.{$i}.consignor_party_id", 'oi' => $oi, 'pi' => $i, 'current' => $pair['consignor_name'] ?? '', 'partyId' => $pair['consignor_party_id'] ?? ''])
                         @error($ep.'pairs.'.$i.'.consignor_name')<div class="ow-field-error">{{ $message }}</div>@enderror
-                        {{-- Customer Drop Off (user, 3 Nov 2026): no store fields — the consignor's own address, From, PIC and contact are used --}}
+                        {{-- Customer Drop Off: the store the customer brings the goods to (Master Data → Stores), back on the form (user,
+                             10 Nov 2026); the consignor's own address, From, PIC and contact stay as they are (user, 3 Nov 2026) --}}
+                        @if ($isStore)
+                            @php $storeInfo = $this->storeInfo($pair['store_id'] ?? null); @endphp
+                            <div class="ow-field" wire:key="ow-o{{ $oi }}-pair-{{ $i }}-store">
+                                <label for="{{ $fieldId }}-store">Store (drop-off point) @unless ($isQuote)<span class="ow-req">*</span>@endunless</label>
+                                <select id="{{ $fieldId }}-store" wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.store_id" class="ow-select" @disabled($locked)>
+                                    <option value="">— Select store —</option>
+                                    @foreach ($stores as $id => $store)
+                                        <option value="{{ $id }}" @if ($store['sub'] !== '') data-og-sub="{{ $store['sub'] }}" @endif>{{ $store['label'] }}</option>
+                                    @endforeach
+                                </select>
+                                @error($ep.'pairs.'.$i.'.store_id')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                @if ($storeInfo)
+                                    <div class="ow-store-card">
+                                        @if ($storeInfo['address'] !== '')
+                                            <div class="ow-store-address">{{ $storeInfo['address'] }}</div>
+                                        @endif
+                                        @if ($storeInfo['branch'] !== '' || $storeInfo['pic'] !== '' || $storeInfo['phone'] !== '')
+                                            <div class="ow-note">{{ collect([$storeInfo['branch'] !== '' ? 'Branch '.$storeInfo['branch'] : null, $storeInfo['pic'] !== '' ? 'PIC '.$storeInfo['pic'] : null, $storeInfo['phone'] !== '' ? 'Tel '.$storeInfo['phone'] : null])->filter()->implode(' · ') }}</div>
+                                        @endif
+                                    </div>
+                                @elseif ($stores === [])
+                                    <div class="ow-note" style="margin-top:.25rem">No store yet · add one in Master Data → Stores.</div>
+                                @endif
+                            </div>
+                        @endif
                         <div class="ow-field">
                             <label for="{{ $fieldId }}-from">From (price list location)</label>
                             <select id="{{ $fieldId }}-from" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.from_location_id" class="ow-select">
                                 <option value="">— Select —</option>
-                                @foreach ($locations as $id => $label)
+                                @foreach ($fromLocations as $id => $label)
                                     <option value="{{ $id }}">{{ $label }}</option>
                                 @endforeach
+                                {{-- a saved order's From that is no longer on the list (an area now under Klang Valley) still shows --}}
+                                @if (filled($pair['from_location_id'] ?? null) && ! isset($fromLocations[$pair['from_location_id']]) && isset($locations[$pair['from_location_id']]))
+                                    <option value="{{ $pair['from_location_id'] }}">{{ $locations[$pair['from_location_id']] }}</option>
+                                @endif
                             </select>
                         </div>
                         <div class="ow-pic-grid">
+                            {{-- more than one PIC (user, 10 Nov 2026): "+ Add PIC" adds a row; free to type --}}
                             <div class="ow-field">
-                                <label for="{{ $fieldId }}-consignor-pic">PIC name</label>
+                                <div class="ow-label-row">
+                                    <label for="{{ $fieldId }}-consignor-pic">PIC name</label>
+                                    @unless ($locked)<button type="button" wire:click="inOrder({{ $oi }}, 'addPic', 'consignor', {{ $i }})" class="ow-btn-link">+ Add PIC</button>@endunless
+                                </div>
                                 <input id="{{ $fieldId }}-consignor-pic" type="text" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.consignor_pic_name" class="ow-input" autocomplete="off">
                                 @error($ep.'pairs.'.$i.'.consignor_pic_name')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                @foreach ($pair['consignor_pics_extra'] ?? [] as $pi => $extraPic)
+                                    <input type="text" wire:key="ow-o{{ $oi }}-pair-{{ $i }}-consignor-pic-{{ $pi }}" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.consignor_pics_extra.{{ $pi }}.name" class="ow-input ow-pic-extra" autocomplete="off" placeholder="PIC name {{ $pi + 2 }}" @disabled($locked)>
+                                @endforeach
                             </div>
                             <div class="ow-field">
                                 <label for="{{ $fieldId }}-consignor-phone">Contact number</label>
                                 <input id="{{ $fieldId }}-consignor-phone" type="tel" inputmode="tel" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.consignor_pic_phone" class="ow-input" autocomplete="off">
                                 @error($ep.'pairs.'.$i.'.consignor_pic_phone')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                @foreach ($pair['consignor_pics_extra'] ?? [] as $pi => $extraPic)
+                                    <div class="ow-pic-extra-row" wire:key="ow-o{{ $oi }}-pair-{{ $i }}-consignor-phone-{{ $pi }}">
+                                        <input type="tel" inputmode="tel" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.consignor_pics_extra.{{ $pi }}.phone" class="ow-input" autocomplete="off" placeholder="Contact number {{ $pi + 2 }}" @disabled($locked)>
+                                        @unless ($locked)<button type="button" wire:click="inOrder({{ $oi }}, 'removePic', 'consignor', {{ $i }}, {{ $pi }})" class="ow-icon-btn" title="Remove this PIC" aria-label="Remove this PIC">✕</button>@endunless
+                                    </div>
+                                @endforeach
                             </div>
                         </div>
                         {{-- the consignor's own address on a Pickup and a Customer Drop Off alike, with Multiple address (user, 3 Nov 2026) --}}
@@ -406,8 +500,9 @@
                             <div class="ow-label-row">
                                 <label for="{{ $fieldId }}-pickup">Consignor Address</label>
                                 @unless ($isQuote || $locked)
-                                    {{-- several addresses on this side, each with its own DO number (user, 28 Oct 2026) --}}
-                                    <label class="ow-check" style="display:inline-flex;align-items:center;gap:.3rem;font-weight:400"><input type="checkbox" wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.multi_pickup" @disabled(! empty($pair['multi_dropoff']))> <span>Multiple address</span></label>
+                                    {{-- several addresses on this side, each with its own DO number (user, 28 Oct 2026); only one side can
+                                         have several, so ticking this box unticks Multiple consignees (user, 10 Nov 2026) --}}
+                                    <label class="ow-check" style="display:inline-flex;align-items:center;gap:.3rem;font-weight:400"><input type="checkbox" wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.multi_pickup" x-on:change="if ($event.target.checked) $wire.set('orders.{{ $oi }}.pairs.{{ $i }}.multi_dropoff', false)"> <span>Multiple address</span></label>
                                 @endunless
                             </div>
                                 {{-- a text box (user, 26 Oct 2026): filled from the consignor's address, still editable --}}
@@ -444,7 +539,7 @@
                             </div>
                     </div>
 
-                    <div class="ow-party">
+                    <div class="ow-party ow-party-consignee">
                         @php $consigneeStore = ($pair['consignee_mode'] ?? '') === 'store'; @endphp
                         <div class="ow-party-head">
                             <div class="ow-party-title" id="{{ $fieldId }}-consignee-title">Consignee</div>
@@ -501,15 +596,28 @@
                             </select>
                         </div>
                         <div class="ow-pic-grid">
+                            {{-- more than one PIC (user, 10 Nov 2026): "+ Add PIC" adds a row; free to type --}}
                             <div class="ow-field">
-                                <label for="{{ $fieldId }}-consignee-pic">PIC name</label>
+                                <div class="ow-label-row">
+                                    <label for="{{ $fieldId }}-consignee-pic">PIC name</label>
+                                    @unless ($locked)<button type="button" wire:click="inOrder({{ $oi }}, 'addPic', 'consignee', {{ $i }})" class="ow-btn-link">+ Add PIC</button>@endunless
+                                </div>
                                 <input id="{{ $fieldId }}-consignee-pic" type="text" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.consignee_pic_name" class="ow-input" autocomplete="off">
                                 @error($ep.'pairs.'.$i.'.consignee_pic_name')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                @foreach ($pair['consignee_pics_extra'] ?? [] as $pi => $extraPic)
+                                    <input type="text" wire:key="ow-o{{ $oi }}-pair-{{ $i }}-consignee-pic-{{ $pi }}" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.consignee_pics_extra.{{ $pi }}.name" class="ow-input ow-pic-extra" autocomplete="off" placeholder="PIC name {{ $pi + 2 }}" @disabled($locked)>
+                                @endforeach
                             </div>
                             <div class="ow-field">
                                 <label for="{{ $fieldId }}-consignee-phone">Contact number</label>
                                 <input id="{{ $fieldId }}-consignee-phone" type="tel" inputmode="tel" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.consignee_pic_phone" class="ow-input" autocomplete="off">
                                 @error($ep.'pairs.'.$i.'.consignee_pic_phone')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                @foreach ($pair['consignee_pics_extra'] ?? [] as $pi => $extraPic)
+                                    <div class="ow-pic-extra-row" wire:key="ow-o{{ $oi }}-pair-{{ $i }}-consignee-phone-{{ $pi }}">
+                                        <input type="tel" inputmode="tel" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.consignee_pics_extra.{{ $pi }}.phone" class="ow-input" autocomplete="off" placeholder="Contact number {{ $pi + 2 }}" @disabled($locked)>
+                                        @unless ($locked)<button type="button" wire:click="inOrder({{ $oi }}, 'removePic', 'consignee', {{ $i }}, {{ $pi }})" class="ow-icon-btn" title="Remove this PIC" aria-label="Remove this PIC">✕</button>@endunless
+                                    </div>
+                                @endforeach
                             </div>
                         </div>
                         @if (! $consigneeStore)
@@ -517,8 +625,9 @@
                             <div class="ow-label-row">
                                 <label for="{{ $fieldId }}-dropoff">Consignee Address</label>
                                 @unless ($isQuote || $locked)
-                                    {{-- several addresses on this side, each with its own DO number (user, 28 Oct 2026) --}}
-                                    <label class="ow-check" style="display:inline-flex;align-items:center;gap:.3rem;font-weight:400"><input type="checkbox" wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.multi_dropoff" @disabled(! empty($pair['multi_pickup']))> <span>Multiple consignees</span></label>
+                                    {{-- several consignees, each with its own DO number (user, 28 Oct 2026); ticking this box unticks
+                                         Multiple address on the consignor side (user, 10 Nov 2026) --}}
+                                    <label class="ow-check" style="display:inline-flex;align-items:center;gap:.3rem;font-weight:400"><input type="checkbox" wire:model.live="orders.{{ $oi }}.pairs.{{ $i }}.multi_dropoff" x-on:change="if ($event.target.checked) $wire.set('orders.{{ $oi }}.pairs.{{ $i }}.multi_pickup', false)"> <span>Multiple consignees</span></label>
                                 @endunless
                             </div>
                             {{-- a text box (user, 26 Oct 2026): filled from the consignee's address, still editable --}}
@@ -676,7 +785,7 @@
                                                          optional (user, 2 Nov 2026) — the size band they fit sets the price, else the price is keyed in --}}
                                                     @foreach (array_intersect_key(['length' => 'L (cm)', 'width' => 'W (cm)', 'height' => 'H (cm)'], array_flip($dims)) as $dim => $dimLabel)
                                                         <div class="ow-dim">
-                                                            <span>{{ $dimLabel }} @if ($isQuote)<span class="ow-req">*</span>@endif</span>
+                                                            <span>{{ $dimLabel }} @if ($isQuote || $kind === 'measurement')<span class="ow-req">*</span>@endif</span>
                                                             @if ($isQuote && $kind === 'measurement')
                                                                 <div class="ow-dim-range">
                                                                     <input type="text" inputmode="decimal" autocomplete="off" placeholder="Min" aria-label="{{ $dimLabel }} min" wire:model.live.debounce.600ms="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.{{ $dim }}" class="ow-input" x-on:input="$el.value = $el.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1')">
@@ -685,6 +794,7 @@
                                                                 </div>
                                                             @else
                                                                 <input type="text" inputmode="decimal" autocomplete="off" aria-label="{{ $dimLabel }}" wire:model.live.debounce.600ms="orders.{{ $oi }}.pairs.{{ $i }}.items.{{ $j }}.{{ $dim }}" class="ow-input" x-on:input="$el.value = $el.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1')" @disabled($locked)>
+                                                                @error($ep.'pairs.'.$i.'.items.'.$j.'.'.$dim)<div class="ow-field-error">{{ $message }}</div>@enderror
                                                             @endif
                                                         </div>
                                                     @endforeach
@@ -809,6 +919,13 @@
 
                 {{-- price list minimum (pick-up / construction site / drop-off): a lower total is topped up --}}
                 @php $minimum = $totals['minimums'][$i] ?? null; @endphp
+                {{-- Multiple consignees (user, 10 Nov 2026): the route's extra drop-off charge for each consignee after the first --}}
+                @if ($minimum && ($minimum['extra_total'] ?? 0) > 0)
+                    <div class="ow-minimum-charge">
+                        <span><strong>Extra drop-off charge</strong> · {{ $minimum['extra_note'] }}</span>
+                        <strong>+ RM {{ number_format($minimum['extra_total'], 2) }}</strong>
+                    </div>
+                @endif
                 @if ($minimum && $minimum['top_up'] > 0)
                     <div class="ow-minimum-charge">
                         <span><strong>Minimum charge</strong> · {{ $minimum['label'] }} RM {{ number_format($minimum['minimum'], 2) }} (products RM {{ number_format($minimum['subtotal'], 2) }})</span>
@@ -1078,7 +1195,18 @@
                 @if (! $editing && ! $isQuote)
                     {{-- the customer at the counter with the goods (client, 1 Nov 2026): one click confirms, records the Cash
                          payment, issues the Cash Bill and creates the CSN, then opens both to print --}}
-                    <button type="button" wire:click="saveAndPrint" wire:loading.attr="disabled" class="ow-btn ow-btn-primary" title="Save the order with its Cash records confirmed and paid now; the Cash Bill and CSN open to print">Confirm, pay &amp; print →</button>
+                    {{-- the CSN opens in a new tab, ready to check and print (user, 10 Nov 2026): the tab is opened on the click
+                         itself (a tab opened later is blocked as a pop-up) and moved to the CSN PDF once the order is saved;
+                         it closes when nothing was created (a check failed, or the CSN waits for the goods) --}}
+                    <button type="button"
+                            x-data
+                            x-on:click="
+                                window.ogPrintTab = window.open('', 'og-print-csn');
+                                if (window.ogPrintTab) { window.ogPrintTab.document.write('<title>Preparing the CSN…</title><p style=&quot;font:16px system-ui,sans-serif;padding:2rem;color:#334155&quot;>Saving the order and preparing the CSN…</p>'); }
+                            "
+                            x-on:og-print-tab.window="if (window.ogPrintTab && ! window.ogPrintTab.closed) { window.ogPrintTab.location.href = $event.detail.url } else { window.open($event.detail.url, '_blank') } window.ogPrintTab = null"
+                            x-on:og-print-tab-cancel.window="if (window.ogPrintTab && ! window.ogPrintTab.closed) { window.ogPrintTab.close() } window.ogPrintTab = null"
+                            wire:click="saveAndPrint" wire:loading.attr="disabled" class="ow-btn ow-btn-primary" title="Save the order with its Cash records confirmed and paid now; the CSN opens in a new tab to print">Confirm, pay &amp; print →</button>
                 @endif
             </div>
         </div>

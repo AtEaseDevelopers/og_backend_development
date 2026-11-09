@@ -150,6 +150,58 @@ class Customer extends Model
         return $this->hasMany(CustomerPic::class);
     }
 
+    /**
+     * The customer's PIC list from its contact columns (user, 10 Nov 2026), for a customer that has none yet (the
+     * migration, an imported customer): attention + phone 1, phone 2, contact person 3 + phone 3, contact person 4
+     * + phone 4. The first is the default.
+     */
+    public function createPicsFromContactColumns(): void
+    {
+        if ($this->pics()->exists()) {
+            return;
+        }
+
+        $rows = collect([
+            [$this->attention, $this->phone],
+            [null, $this->phone_2],
+            [$this->contact_person_3, $this->phone_3],
+            [$this->contact_person_4, $this->phone_4],
+        ])->map(fn (array $row) => ['name' => trim((string) $row[0]) ?: null, 'phone' => trim((string) $row[1]) ?: null])
+            ->filter(fn (array $row) => $row['name'] !== null || $row['phone'] !== null)
+            ->values();
+
+        foreach ($rows as $index => $row) {
+            $this->pics()->create($row + ['is_default' => $index === 0]);
+        }
+    }
+
+    /**
+     * After the PIC list changes (user, 10 Nov 2026): one default (the first unless one is marked), and the customer's
+     * attention / phone 1 follow it (orders, documents and the portal read those); the older contact person 3 – 4 and
+     * phone 2 – 4 columns are emptied, their values being in the list.
+     */
+    public function syncContactFromPics(): void
+    {
+        $pics = $this->pics()->orderByDesc('is_default')->orderBy('id')->get();
+        $default = $pics->first();
+
+        if ($default && ! $default->is_default) {
+            $default->forceFill(['is_default' => true])->saveQuietly();
+        }
+
+        $pics->skip(1)->filter->is_default->each(fn (CustomerPic $pic) => $pic->forceFill(['is_default' => false])->saveQuietly());
+
+        $this->forceFill([
+            'attention' => $default?->name,
+            'phone' => $default?->phone,
+            'phone_2' => null,
+            'phone_3' => null,
+            'phone_4' => null,
+            'contact_person_3' => null,
+            'contact_person_4' => null,
+        ])->saveQuietly();
+    }
+
     public function pricing(): HasMany
     {
         return $this->hasMany(CustomerPricing::class);

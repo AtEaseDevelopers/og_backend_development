@@ -33,12 +33,6 @@ class ViewDeliveryOrder extends ViewRecord
         $record = $this->getRecord();
 
         return [
-            Actions\Action::make('previewPdf')
-                ->label('Preview PDF')
-                ->icon('heroicon-o-document-arrow-down')
-                ->url(fn (): string => DeliveryOrderResource::pdfUrl($record))
-                ->openUrlInNewTab()
-                ->visible(fn (): bool => $record->consignmentNote()->exists()),
             Actions\Action::make('backToMonitoring')
                 ->label('Back to Delivery Monitoring')
                 ->color('gray')

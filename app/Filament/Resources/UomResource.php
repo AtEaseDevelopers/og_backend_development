@@ -44,6 +44,11 @@ class UomResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'name';
 
+    /** The largest quantity / size / weight (decimal 10,2) and amount (fixed charge decimal 12,2) the price table holds. */
+    public const MAX_QUANTITY = 99999999.99;
+
+    public const MAX_MONEY = 9999999999.99;
+
     /**
      * The menu's category (user, 21 Oct 2026, as the price list template's Category): UOM = Measurement, Items =
      * Item (ItemProductResource), Lorries = Chartered Lorry (LorryProductResource). All are priced the same way.
@@ -137,7 +142,7 @@ class UomResource extends Resource
                 ])))->columns(3),
             Forms\Components\Section::make($lorry ? 'Weight limit' : 'Size and weight limits')
                 ->schema(array_map(
-                    fn (string $column) => Forms\Components\TextInput::make($column)->label(self::LIMITS[$column])->numeric()->minValue(0),
+                    fn (string $column) => Forms\Components\TextInput::make($column)->label(self::LIMITS[$column])->numeric()->minValue(0)->maxValue(self::MAX_QUANTITY),
                     $columns['limits'],
                 ))
                 ->columns(4),
@@ -165,7 +170,8 @@ class UomResource extends Resource
     protected static function priceRowFields(): array
     {
         $columns = static::columns();
-        $money = fn (string $name, string $label) => Forms\Components\TextInput::make($name)->label($label)->numeric()->minValue(0)->prefix('RM');
+        // upper limits as the database columns hold (user, 10 Nov 2026: a larger number stopped the save with an error page)
+        $money = fn (string $name, string $label) => Forms\Components\TextInput::make($name)->label($label)->numeric()->minValue(0)->maxValue(self::MAX_MONEY)->prefix('RM');
         $ranges = [];
 
         foreach (array_slice(UomPriceRows::RANGES, 0, $columns['ranges']) as $i => $letter) {
@@ -176,10 +182,13 @@ class UomResource extends Resource
                 ->label("Quantity From {$upper}")
                 ->numeric()
                 ->minValue(0)
+                ->maxValue(self::MAX_QUANTITY)
                 ->requiredWith("range_{$letter}_price");
             $to = $columns['quantity_to'] ? Forms\Components\TextInput::make("range_{$letter}_to")
                 ->label("Quantity To {$upper}")
                 ->numeric()
+                ->minValue(0)
+                ->maxValue(self::MAX_QUANTITY)
                 ->placeholder('and above')
                 ->rules([fn (Forms\Get $get): Closure => function (string $attribute, $value, Closure $fail) use ($get, $letter) {
                     $start = $get("range_{$letter}_from");
@@ -233,7 +242,7 @@ class UomResource extends Resource
                     ->required(),
                 Forms\Components\TextInput::make('pickup_location')
                     ->label('Pickup Location')
-                    ->maxLength(150)
+                    ->maxLength(100)
                     ->datalist(fn () => UomRateTier::query()->whereNotNull('pickup_location')->distinct()->orderBy('pickup_location')->pluck('pickup_location')->all()),
                 Forms\Components\Select::make('location_id')
                     ->label('Drop-Off Location')
@@ -247,8 +256,11 @@ class UomResource extends Resource
                     ->selectablePlaceholder(false)
                     ->required(),
             ]),
-            Forms\Components\Grid::make(5)->schema(array_values(array_filter([
+            Forms\Components\Grid::make(['default' => 2, 'md' => 3, 'xl' => 6])->schema(array_values(array_filter([
                 ...array_map(fn (string $column) => $money($column, $minimumLabels[$column]), $columns['minimums']),
+                // per extra consignee of an order with Multiple consignees (user, 10 Nov 2026); empty = none
+                $money('extra_drop_charge', 'Extra Drop-Off Charge (RM)')
+                    ->helperText('Each consignee after the first (Multiple consignees). Empty = none.'),
                 Forms\Components\DatePicker::make('effective_from')->label('Effective Date')->native(false)->displayFormat('d/m/Y'),
                 $columns['expiry'] ? Forms\Components\DatePicker::make('expires_on')->label('Expiry Date')->native(false)->displayFormat('d/m/Y')->afterOrEqual('effective_from') : null,
             ]))),

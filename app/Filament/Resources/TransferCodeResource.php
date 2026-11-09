@@ -55,7 +55,7 @@ class TransferCodeResource extends Resource
                 ->multiple()
                 ->searchable()
                 ->preload()
-                ->helperText('They assign the subsheets with this transfer code to a lorry from the CSN page (Assign subsheets to lorry).')
+                ->helperText('They only see the CSNs with this transfer code on the CSN page (a super admin always sees all), and assign its subsheets to a lorry there (Assign subsheets to lorry).')
                 ->columnSpanFull(),
             Forms\Components\Toggle::make('is_active')->default(true),
         ]);

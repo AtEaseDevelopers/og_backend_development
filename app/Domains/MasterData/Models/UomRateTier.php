@@ -13,7 +13,7 @@ class UomRateTier extends Model
      */
     protected $fillable = [
         'uom_id', 'location_id', 'customer_code', 'branch_id', 'drop_off_type', 'pickup_location',
-        'min_qty', 'max_qty', 'price', 'fixed_charge', 'pickup_min_charge', 'construction_min_charge', 'drop_off_min_charge',
+        'min_qty', 'max_qty', 'price', 'fixed_charge', 'pickup_min_charge', 'construction_min_charge', 'drop_off_min_charge', 'extra_drop_charge',
         'effective_from', 'expires_on', 'source',
     ];
 
@@ -27,6 +27,7 @@ class UomRateTier extends Model
             'pickup_min_charge' => 'decimal:2',
             'construction_min_charge' => 'decimal:2',
             'drop_off_min_charge' => 'decimal:2',
+            'extra_drop_charge' => 'decimal:2',
             'effective_from' => 'date',
             'expires_on' => 'date',
         ];

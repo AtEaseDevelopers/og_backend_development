@@ -65,7 +65,12 @@
 {{-- the client's CSN layout (user, 30 Oct 2026; client, 6 Nov 2026): the letterhead as the order form's, the payment
      (PAID / COD / CREDIT / TERM) left of the title; billing customer, items, remark, consignor, the route in large type,
      then every consignee with a chop & sign box (Name, IC No., Date) --}}
-<div @class(['csn-document', 'csn-document--pdf' => $forPdf, 'csn-document--no-pricing', 'csn-document--side' => $layout === 'side'])>
+{{-- at most 5 items on a page (client, 7 Nov 2026): the 6th item starts a new page that repeats the whole CSN with only
+     that page's items in the table --}}
+@php $allLines = $lines; $pages = array_chunk($allLines, 5) ?: [[]]; @endphp
+@foreach ($pages as $pageIndex => $pageLines)
+@php $lines = $pageLines; $itemOffset = $pageIndex * 5; @endphp
+<div @class(['csn-document', 'csn-document--pdf' => $forPdf, 'csn-document--no-pricing', 'csn-document--side' => $layout === 'side']) @if ($pageIndex > 0) style="page-break-before: always" @endif>
     {{-- Letterhead as the order form's --}}
     <table class="lh-meta"><tr><td style="vertical-align:top">
         <div class="lh-name">{{ strtoupper($letterhead['company_name'] ?? 'O&G Transport') }}</div>
@@ -80,16 +85,18 @@
         </div>
     </td><td class="lh-qr">@if ($qr)<img src="{{ $qr }}" alt="Barcode {{ $meta['number'] ?? '' }}"><div class="lh-qr-text">{{ $meta['number'] ?? '' }}</div>@endif</td></tr></table>
     <div class="lh-rule"></div>
+    {{-- the title at the left, the payment (PAID / COD / CREDIT / TERM) at the right (client, 7 Nov 2026) --}}
     <table class="lh-meta"><tr>
-        <td class="lh-title" style="text-align:left">{{ $meta['payment_label'] ?? '' }}</td>
-        <td class="lh-title">{{ strtoupper($documentTitle) }}</td>
+        <td class="lh-title" style="text-align:left">{{ strtoupper($documentTitle) }}</td>
+        <td class="lh-title">{{ $meta['payment_label'] ?? '' }}</td>
     </tr></table>
 
     {{-- Billing customer (code + name, Reg. No., address, PIC, Tel, Email) and the document details --}}
     <table class="csn-doc-parties">
-        <tr>
+        <tr><th colspan="2" class="bt-heading">Billing Information</th></tr>
+        <tr class="bt-body">
             <td class="csn-doc-party-col">
-                @include('pdf.partials.bill-to', ['code' => $billTo['code'] ?? null, 'name' => $billTo['name'] ?? null, 'reg_no' => $billTo['reg_no'] ?? null, 'address' => $billTo['address'] ?? null, 'pic' => $billTo['pic'] ?? null, 'phone' => $billTo['phone'] ?? null, 'email' => $billTo['email'] ?? null])
+                @include('pdf.partials.bill-to', ['heading' => false, 'code' => $billTo['code'] ?? null, 'name' => $billTo['name'] ?? null, 'reg_no' => $billTo['reg_no'] ?? null, 'address' => $billTo['address'] ?? null, 'pic' => $billTo['pic'] ?? null, 'phone' => $billTo['phone'] ?? null, 'email' => $billTo['email'] ?? null])
             </td>
             <td class="csn-doc-meta-col">
                 <table class="csn-doc-meta-table">
@@ -102,46 +109,9 @@
         </tr>
     </table>
 
-    {{-- Items (no pricing), in the order form's format --}}
-    <table class="csn-doc-items">
-        <thead>
-            <tr>
-                <th class="csn-doc-no">No.</th>
-                <th class="csn-doc-desc">Item</th>
-                <th class="csn-doc-qty">Qty</th>
-                <th class="csn-doc-uom">UOM</th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse($lines as $line)
-                <tr>
-                    <td class="csn-doc-no">{{ $loop->iteration }}</td>
-                    <td class="csn-doc-desc">{{ ltrim((string) ($line['description'] ?? '—'), '- ') }}</td>
-                    <td class="csn-doc-qty">{{ $line['quantity'] ?? '—' }}</td>
-                    <td class="csn-doc-uom">{{ $line['uom'] ?? '—' }}</td>
-                </tr>
-            @empty
-                <tr>
-                    <td class="csn-doc-no">—</td>
-                    <td class="csn-doc-desc"><div class="csn-doc-muted">No cargo details.</div></td>
-                    <td class="csn-doc-qty">—</td>
-                    <td class="csn-doc-uom">—</td>
-                </tr>
-            @endforelse
-        </tbody>
-    </table>
-
-    {{-- Remark (the driver note) and marking: always there, to write on when empty --}}
-    <table class="csn-doc-remark">
-        <tr>
-            <td>
-                <div class="csn-doc-footer-field"><span class="csn-doc-label">Remark:</span> {{ filled($footer['remarks'] ?? null) ? $footer['remarks'] : '' }}</div>
-                @if(filled($footer['marking'] ?? null))
-                    <div class="csn-doc-footer-field"><span class="csn-doc-label">Marking:</span> {{ $footer['marking'] }}</div>
-                @endif
-            </td>
-        </tr>
-    </table>
+    @if ($layout === 'stack')
+        @include('documents.consignment-note-items', ['lines' => $lines, 'footer' => $footer, 'itemOffset' => $itemOffset])
+    @endif
 
     @if ($layout === 'stack')
         {{-- Consignor(s), the route in large type, then every consignee with its chop & sign box --}}
@@ -178,19 +148,24 @@
             <span class="csn-doc-route-label">To:</span> {{ $route['to'] ?? '—' }}
         </div>
 
+        {{-- one row per consignee (client, 7 Nov 2026): the consignor in the first row's left cell, the left cell of the
+             next rows empty; the items and the remark come after --}}
         <table class="csn-doc-consignees csn-doc-side">
-            <tr>
-                <td class="csn-doc-consignee-box csn-doc-consignor-box csn-doc-side-left">
-                    @foreach ($consignorList as $party)
-                        <div class="csn-doc-side-party">{!! $consignorBox($party, $loop->iteration, count($consignorList)) !!}</div>
-                    @endforeach
-                </td>
-                <td class="csn-doc-consignee-box csn-doc-side-right">
-                    @foreach ($consigneeList as $consignee)
-                        <div class="csn-doc-side-party">{!! $consigneeBox($consignee, $loop->iteration, count($consigneeList)) !!}</div>
-                    @endforeach
-                </td>
-            </tr>
+            @foreach ($consigneeList as $consignee)
+                <tr>
+                    <td class="csn-doc-consignee-box csn-doc-consignor-box csn-doc-side-left">
+                        @if ($loop->first)
+                            @foreach ($consignorList as $party)
+                                <div class="csn-doc-side-party">{!! $consignorBox($party, $loop->iteration, count($consignorList)) !!}</div>
+                            @endforeach
+                        @endif
+                    </td>
+                    <td class="csn-doc-consignee-box csn-doc-side-right">{!! $consigneeBox($consignee, $loop->iteration, count($consigneeList)) !!}</td>
+                </tr>
+            @endforeach
         </table>
+
+        @include('documents.consignment-note-items', ['lines' => $lines, 'footer' => $footer, 'itemOffset' => $itemOffset])
     @endif
 </div>
+@endforeach

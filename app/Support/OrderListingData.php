@@ -28,7 +28,7 @@ class OrderListingData
     public const STEPS = OrderStage::STEPS;
 
     /** Sortable table columns (header click). */
-    public const SORTS = ['order', 'date', 'route', 'salesperson', 'service', 'stage', 'payment', 'amount', 'next'];
+    public const SORTS = ['order', 'date', 'route', 'salesperson', 'service', 'stage', 'csn', 'payment', 'amount', 'next'];
 
     /**
      * Excel-style column filters: each table column filters on the values it shows (one checklist per field).
@@ -41,6 +41,7 @@ class OrderListingData
         'salesperson' => ['salesperson' => 'Salesperson'],
         'service' => ['service_type' => 'Service'],
         'stage' => ['stage' => 'Order stage'],
+        'csn' => ['csn' => 'CSN'],
         'payment' => ['payment_status' => 'Payment status', 'payment_method' => 'Payment method'],
         'amount' => ['order_type' => 'Payment term'],
         'next' => ['next_step' => 'Next step'],
@@ -60,6 +61,7 @@ class OrderListingData
             'service_type' => $row['service_type'] ?? null,
             'salesperson' => $row['salesperson'] ?? null,
             'stage' => $row['stage']['label'] ?? null,
+            'csn' => implode(', ', array_column($row['csns'] ?? [], 'number')),
             'payment_status' => $row['payment']['label'] ?? null,
             'payment_method' => $row['payment']['method'] ?? null,
             'order_type' => $row['order_type'] ?? null,
@@ -249,6 +251,7 @@ class OrderListingData
             'total' => 0.0,
             'next_step' => $stage['next'],
             'next_url' => $url.($stage['key'] === 'quotation' ? '?tab=pricing' : ''),
+            'csns' => [],
             'is_closed' => $stage['closed'],
             'attention' => $stage['attention'],
             'ready_to_bill' => false,
@@ -273,7 +276,7 @@ class OrderListingData
     private function orderRows(array $filters): Collection
     {
         $query = Quotation::query()
-            ->with(['customer', 'branch', 'salesperson', 'saLocation', 'destinations', 'lines', 'proformaInvoice', 'portalEnquiry.user', 'paymentSubmissions', 'fromLocation', 'toLocation', 'creator'])
+            ->with(['customer', 'branch', 'salesperson', 'saLocation', 'destinations', 'lines', 'proformaInvoice', 'portalEnquiry.user', 'paymentSubmissions', 'fromLocation', 'toLocation', 'creator', 'consignmentNotes:id,quotation_id,number,status'])
             ->withCount(['consignmentNotes', 'invoices'])
             ->where('status', '!=', QuotationStatus::Superseded->value);
 
@@ -366,6 +369,12 @@ class OrderListingData
             'total' => $total,
             'next_step' => $stage['next'],
             'next_url' => $nextUrl,
+            // the CSNs the order was converted to, each linking to its CSN page (user, 10 Nov 2026)
+            'csns' => $q->consignmentNotes->sortBy('id')->map(fn ($csn) => [
+                'number' => $csn->number,
+                'url' => ConsignmentNoteResource::getUrl('view', ['record' => $csn->id]),
+                'cancelled' => $csn->status === \App\Enums\CsnStatus::Cancelled,
+            ])->values()->all(),
             // a Store order paid / released waiting for its goods: "Ready for CSN" on the row
             'ready_for_csn' => $stage['key'] === 'item' && $stage['next'] === 'Ready for CSN',
             'is_closed' => $stage['closed'],
@@ -407,6 +416,7 @@ class OrderListingData
                         if ($table === 'quotations') {
                             $one->where('number', 'like', '%'.$tag.'%')
                                 ->orWhere('consignee_name', 'like', '%'.$tag.'%')
+                                ->orWhereHas('consignmentNotes', fn (Builder $c) => $c->where('number', 'like', '%'.$tag.'%'))
                                 ->orWhereHas('portalEnquiry', fn (Builder $e) => $e->where('reference_no', 'like', '%'.$tag.'%')->orWhere('order_number', 'like', '%'.$tag.'%'));
                         } else {
                             $one->where('reference_no', 'like', '%'.$tag.'%')->orWhere('order_number', 'like', '%'.$tag.'%');
@@ -425,6 +435,7 @@ class OrderListingData
                 if ($table === 'quotations') {
                     $builder->where('number', 'like', '%'.$needle.'%')
                         ->orWhere('consignee_name', 'like', '%'.$needle.'%')
+                        ->orWhereHas('consignmentNotes', fn (Builder $c) => $c->where('number', 'like', '%'.$needle.'%'))
                         ->orWhereHas('portalEnquiry', fn (Builder $e) => $e->where('reference_no', 'like', '%'.$needle.'%')->orWhere('order_number', 'like', '%'.$needle.'%'));
                 } else {
                     $builder->where('reference_no', 'like', '%'.$needle.'%')
@@ -527,6 +538,7 @@ class OrderListingData
             'payment' => strnatcasecmp((string) $a['payment']['label'], (string) $b['payment']['label']),
             'amount' => $amount($a) <=> $amount($b),
             'next' => strnatcasecmp((string) $a['next_step'], (string) $b['next_step']),
+            'csn' => strnatcasecmp((string) ($a['csns'][0]['number'] ?? ''), (string) ($b['csns'][0]['number'] ?? '')),
         })->values();
     }
 

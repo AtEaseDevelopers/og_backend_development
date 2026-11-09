@@ -68,7 +68,7 @@
                                    wire:model.live.debounce.400ms="search"
                                    x-on:keydown.enter.prevent="$wire.addSearchTag()"
                                    class="ow-input"
-                                   placeholder="{{ $searchTags === [] ? 'Search order, enquiry, customer or DO…' : 'Add another…' }}">
+                                   placeholder="{{ $searchTags === [] ? 'Search order, CSN, enquiry, customer or DO…' : 'Add another…' }}">
                         </div>
                     </div>
                     {{-- The two date ranges are used most, so they are always shown (not behind "Filters +") --}}
@@ -418,6 +418,16 @@
                                 <td>
                                     <span class="ow-pill ow-pill-{{ $row['stage']['color'] }}">{{ $row['stage']['label'] }}</span>
                                     <div class="ow-l2">{{ $row['stage']['hint'] }}</div>
+                                </td>
+                                @endif
+                                @if ($show('csn'))
+                                {{-- the CSNs the order was converted to, each opening its CSN page (user, 10 Nov 2026) --}}
+                                <td>
+                                    @forelse ($row['csns'] ?? [] as $csn)
+                                        <div style="white-space:nowrap"><a href="{{ $csn['url'] }}" class="ow-next" @if ($csn['cancelled']) style="text-decoration:line-through" title="Cancelled" @endif>{{ $csn['number'] }}</a></div>
+                                    @empty
+                                        <span class="ow-l3">—</span>
+                                    @endforelse
                                 </td>
                                 @endif
                                 @if ($show('payment'))

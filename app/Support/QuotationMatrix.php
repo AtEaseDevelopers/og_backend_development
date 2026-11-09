@@ -170,7 +170,7 @@ class QuotationMatrix
             $itemName = trim((string) ($row['item_name'] ?? ''));
 
             // the minimum charge is worked out below from the lines, never kept from before
-            if ($itemName === '' || $itemName === OrderMinimumCharge::LINE) {
+            if ($itemName === '' || $itemName === OrderMinimumCharge::LINE || $itemName === OrderMinimumCharge::EXTRA_LINE) {
                 continue;
             }
 
@@ -210,6 +210,9 @@ class QuotationMatrix
         // a drop-off below its minimum charge (price list: pick-up / construction site / drop-off minimum) is
         // topped up with a "Minimum charge" line
         $minimums = app(OrderMinimumCharge::class);
+        // Multiple consignees (user, 10 Nov 2026): the consignees after the first pay the route's extra drop-off charge
+        $extraConsignees = max(0, collect((array) ($quotation->stops ?? []))->where('type', \App\Support\OrderStops::DROPOFF)->count() - 1);
+        $firstColumn = array_key_first($byColumn);
 
         foreach ($byColumn as $column => $lines) {
             $typeSetting = $destinationTypes->get($column, []);
@@ -219,7 +222,22 @@ class QuotationMatrix
                 $typeSetting['drop_off_type'] ?? null,
                 $typeSetting['service_type'] ?? $quotation->service_type?->value,
                 $lines,
+                $column === $firstColumn ? $extraConsignees : 0,
             );
+
+            if ($minimum['extra_total'] > 0) {
+                $quotation->lines()->create([
+                    'quotation_destination_id' => $destinations[$column]->id,
+                    'item_name' => OrderMinimumCharge::EXTRA_LINE,
+                    'charge_type' => 'extra_drop',
+                    'uom' => null,
+                    'quantity' => $minimum['extra_count'],
+                    'unit_price' => $minimum['extra_unit'],
+                    'line_total' => $minimum['extra_total'],
+                    'handling_notes' => $minimum['extra_note'],
+                ]);
+                $subtotal += $minimum['extra_total'];
+            }
 
             if ($minimum['top_up'] > 0) {
                 $quotation->lines()->create([

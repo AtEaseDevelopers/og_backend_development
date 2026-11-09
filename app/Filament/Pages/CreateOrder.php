@@ -217,6 +217,10 @@ class CreateOrder extends Page
             // the customer's person in charge and contact number (every record's attention / customer_pic_phone)
             'customer_pic_name' => '',
             'customer_pic_phone' => '',
+            // more PICs of the customer (user, 10 Nov 2026): [{name, phone}], saved with the first as "A / B"
+            'customer_pics_extra' => [],
+            // the first PIC typed instead of picked from the customer's saved PICs
+            'customer_pic_typed' => false,
             // optional: how the order reached us
             'received_through' => '',
             'salesperson_id' => '',
@@ -552,8 +556,8 @@ class CreateOrder extends Page
                 return $matched ? 'Size band: '.$item['item_name'].' · enter the L, W, H ranges and weight to check it.' : 'Enter the L, W, H ranges (min – max) and weight: the size band they fit sets the price.';
             }
 
-            // Create order (user, 2 Nov 2026): the size is optional; without it the price is keyed in
-            return 'Optional: enter L, W, H and weight and the size band they fit sets the price · or key in the price.';
+            // Create order: L, W and H are required (user, 10 Nov 2026; 0 allowed), the weight is optional
+            return 'Enter L, W and H (0 if none) and the weight: the size band they fit sets the price · or key in the price.';
         }
 
         return $matched
@@ -650,14 +654,16 @@ class CreateOrder extends Page
     /** A button of order n (add / remove a block or product, consignor quick actions, remove a photo). */
     public function inOrder(int $index, string $method, mixed ...$arguments): void
     {
-        $allowed = ['addPair', 'removePair', 'addItem', 'removeItem', 'clearConsignor', 'useCustomerAsConsignor', 'removePhoto', 'addStop', 'removeStop'];
+        $allowed = ['addPair', 'removePair', 'addItem', 'removeItem', 'clearConsignor', 'useCustomerAsConsignor', 'removePhoto', 'addStop', 'removeStop', 'addPic', 'removePic', 'usePicList'];
 
         if (! in_array($method, $allowed, true) || ! isset($this->orders[$index])) {
             return;
         }
 
         $this->switchToOrder($index);
-        $this->{$method}(...array_map('intval', $arguments));
+        // only the numbers are cast: the side ('pickup' / 'dropoff') of addStop / removeStop must stay a string
+        // (it was cast to 0, so "+ Add address" on the consignee side added a pick-up stop; user, 10 Nov 2026)
+        $this->{$method}(...array_map(fn ($a) => is_numeric($a) ? (int) $a : $a, $arguments));
         $this->stashActive();
     }
 
@@ -738,8 +744,21 @@ class CreateOrder extends Page
         $this->payment['method'] = filled($this->payment['method'] ?? null) ? $this->payment['method'] : PaymentMethod::Cash->value;
         $this->payment['payment_date'] = filled($this->payment['payment_date'] ?? null) ? $this->payment['payment_date'] : now()->toDateString();
         $this->printAfterSave = true;
-        $this->save();
+
+        try {
+            $this->save();
+        } finally {
+            // the new tab opened by the click (user, 10 Nov 2026): the CSN PDF when one was created, else it closes
+            if ($this->printTabUrl !== null) {
+                $this->dispatch('og-print-tab', url: $this->printTabUrl);
+            } else {
+                $this->dispatch('og-print-tab-cancel');
+            }
+        }
     }
+
+    /** The PDF the click's new tab opens after "Confirm, pay & print" (the first CSN created), null = none. */
+    protected ?string $printTabUrl = null;
 
     /** Some order of the page is paid now. */
     public function paysAny(): bool
@@ -759,7 +778,7 @@ class CreateOrder extends Page
 
         foreach ($this->pairs as $i => $pair) {
             if (($pair['order_type'] ?? '') === OrderType::Cash->value) {
-                $cash += array_sum($totals['lines'][$i] ?? []) + (float) ($totals['minimums'][$i]['top_up'] ?? 0) + (float) ($totals['taxes'][$i] ?? 0);
+                $cash += array_sum($totals['lines'][$i] ?? []) + (float) ($totals['minimums'][$i]['top_up'] ?? 0) + (float) ($totals['minimums'][$i]['extra_total'] ?? 0) + (float) ($totals['taxes'][$i] ?? 0);
             }
         }
 
@@ -1150,6 +1169,12 @@ class CreateOrder extends Page
         return OrderFormOptions::locationOptions();
     }
 
+    /** The "From" list: for the KL branch Klang Valley instead of the areas inside it (user, 10 Nov 2026). @return array<int, string> */
+    public function fromLocationOptions(): array
+    {
+        return OrderFormOptions::fromLocationOptions(\App\Support\CurrentCompany::branch()?->code);
+    }
+
     /** @return array<int|string, string> */
     public function addressOptions(): array
     {
@@ -1249,6 +1274,9 @@ class CreateOrder extends Page
             'to_location_id' => '',
             'consignee_pic_name' => '',
             'consignee_pic_phone' => '',
+            // more PICs on each side (user, 10 Nov 2026): [{name, phone}], saved with the first as "A / B"
+            'consignor_pics_extra' => [],
+            'consignee_pics_extra' => [],
             // saved customer address id, OrderFormOptions::NEW_ADDRESS (typed in drop_off_location) or blank
             'drop_off_preset' => '',
             'drop_off_location' => '',
@@ -1309,8 +1337,37 @@ class CreateOrder extends Page
             return;
         }
 
+        // "+ Type a new PIC" picked (user, 10 Nov 2026): the PIC becomes a text box, blank
+        if ($key === 'customer_pic_name' && $value === '__type__') {
+            $this->form['customer_pic_name'] = '';
+            $this->form['customer_pic_typed'] = true;
+
+            return;
+        }
+
+        if (preg_match('/^customer_pics_extra\.(\d+)\.name$/', $key, $m) && $value === '__type__') {
+            $this->form['customer_pics_extra'][(int) $m[1]]['name'] = '';
+            $this->form['customer_pics_extra'][(int) $m[1]]['typed'] = true;
+
+            return;
+        }
+
         if (in_array($key, ['customer_pic_name', 'customer_pic_phone'], true)) {
-            $this->syncConsignorPic([$key => $this->previousCustomerPic[$key] ?? '']);
+            $previous = [$key => $this->previousCustomerPic[$key] ?? ''];
+
+            // a saved PIC of the customer picked by name (user, 10 Nov 2026): its contact number comes with it
+            if ($key === 'customer_pic_name' && ($phone = $this->savedPicPhone((string) $value)) !== null) {
+                $previous['customer_pic_phone'] = trim((string) ($this->form['customer_pic_phone'] ?? ''));
+                $this->form['customer_pic_phone'] = $phone;
+            }
+
+            $this->syncConsignorPic($previous);
+
+            return;
+        }
+
+        if (preg_match('/^customer_pics_extra\.(\d+)\.name$/', $key, $m) && ($phone = $this->savedPicPhone((string) $value)) !== null) {
+            $this->form['customer_pics_extra'][(int) $m[1]]['phone'] = $phone;
 
             return;
         }
@@ -1339,6 +1396,9 @@ class CreateOrder extends Page
             // the customer's person in charge and contact number (and the consignors' that still had the old ones)
             $this->form['customer_pic_name'] = (string) ($consignor['attention'] ?? '');
             $this->form['customer_pic_phone'] = (string) ($consignor['customer_pic_phone'] ?? '');
+            // another customer: its own PICs (the extra rows of the previous one go), picked from its list
+            $this->form['customer_pic_typed'] = false;
+            $this->form['customer_pics_extra'] = [];
             $this->syncConsignorPic($previousPic);
 
             foreach ($this->pairs as &$pair) {
@@ -1399,11 +1459,12 @@ class CreateOrder extends Page
             $side = $m[2];
             $pair = &$this->pairs[$index];
 
-            // one side at a time (user, 3 Nov 2026): several pick-up addresses or several consignees, not both
+            // one side at a time (user, 3 Nov 2026): several pick-up addresses or several consignees, not both. The other
+            // side's rows are kept (user, 10 Nov 2026): ticking it back shows what was typed; a side's rows are only
+            // saved while its box is ticked (OrderStops::merge)
             if (! empty($pair['multi_'.$side])) {
                 $other = $side === 'pickup' ? 'dropoff' : 'pickup';
                 $pair['multi_'.$other] = false;
-                $pair[$other.'_stops'] = [];
             }
 
             // ticked: the side's first extra address starts with this record's address and DO number
@@ -1521,8 +1582,8 @@ class CreateOrder extends Page
                 }
             }
 
-            // a Customer Drop Off has no store fields (user, 3 Nov 2026): the consignor's own address, From, PIC and
-            // contact are used; the store (the branch's, picked above) is only kept on the record
+            // a Customer Drop Off: the store is picked on the form (user, 10 Nov 2026; the branch's only store to start);
+            // the consignor's own address, From, PIC and contact are used (user, 3 Nov 2026)
             if ($store) {
                 $pair['legacy_store_branch_id'] = '';
             }
@@ -1905,6 +1966,184 @@ class CreateOrder extends Page
     }
 
     /**
+     * More than one PIC (user, 10 Nov 2026): section 1 and each consignor / consignee have a first PIC (the fields
+     * as before) and extra rows; the record keeps them joined, "A / B" for the names and "1 / 2" for the numbers.
+     */
+    public const PIC_SEPARATOR = ' / ';
+
+    /** "+ Add PIC": a blank row under section 1 ('customer') or a block's 'consignor' / 'consignee'. */
+    public function addPic(string $target, int $index = 0): void
+    {
+        if ($target === 'customer') {
+            $this->form['customer_pics_extra'][] = ['name' => '', 'phone' => ''];
+
+            return;
+        }
+
+        $side = $target === 'consignee' ? 'consignee' : 'consignor';
+
+        if (isset($this->pairs[$index]) && ! $this->isPairLocked($index)) {
+            $this->pairs[$index][$side.'_pics_extra'][] = ['name' => '', 'phone' => ''];
+        }
+    }
+
+    /** The ↺ button: section 1's PIC ($row -1) or an extra row back to the customer's saved PICs. */
+    public function usePicList(int $row = -1): void
+    {
+        if ($row < 0) {
+            $this->form['customer_pic_typed'] = false;
+        } elseif (isset($this->form['customer_pics_extra'][$row])) {
+            $this->form['customer_pics_extra'][$row]['typed'] = false;
+        }
+    }
+
+    public function removePic(string $target, int $index, int $row): void
+    {
+        if ($target === 'customer') {
+            unset($this->form['customer_pics_extra'][$row]);
+            $this->form['customer_pics_extra'] = array_values($this->form['customer_pics_extra'] ?? []);
+
+            return;
+        }
+
+        $side = $target === 'consignee' ? 'consignee' : 'consignor';
+
+        if (isset($this->pairs[$index]) && ! $this->isPairLocked($index)) {
+            unset($this->pairs[$index][$side.'_pics_extra'][$row]);
+            $this->pairs[$index][$side.'_pics_extra'] = array_values($this->pairs[$index][$side.'_pics_extra'] ?? []);
+        }
+    }
+
+    /**
+     * The first PIC and the extra rows joined: names "A / B", numbers "1 / 2". A blank part among several becomes
+     * "-" so the names and numbers stay paired.
+     *
+     * @param  list<array{name?: string, phone?: string}>  $extra
+     * @return array{name: string, phone: string}
+     */
+    public static function joinPics(?string $name, ?string $phone, array $extra): array
+    {
+        $rows = collect([['name' => $name, 'phone' => $phone], ...array_values($extra)])
+            ->map(fn ($row) => ['name' => trim((string) ($row['name'] ?? '')), 'phone' => trim((string) ($row['phone'] ?? ''))])
+            ->filter(fn (array $row) => $row['name'] !== '' || $row['phone'] !== '')
+            ->values();
+
+        if ($rows->count() <= 1) {
+            return ['name' => (string) ($rows->first()['name'] ?? ''), 'phone' => (string) ($rows->first()['phone'] ?? '')];
+        }
+
+        $part = fn (string $key) => $rows->map(fn (array $row) => $row[$key] !== '' ? $row[$key] : '-')->implode(self::PIC_SEPARATOR);
+        $phones = $rows->every(fn (array $row) => $row['phone'] === '') ? '' : $part('phone');
+
+        return ['name' => $part('name'), 'phone' => $phones];
+    }
+
+    /**
+     * A saved "A / B" back into rows (the first is the PIC fields, the rest the extra rows).
+     *
+     * @return list<array{name: string, phone: string}>
+     */
+    public static function splitPics(?string $names, ?string $phones): array
+    {
+        $split = fn (?string $value) => trim((string) $value) === '' ? [] : array_map(fn ($part) => ($part = trim($part)) === '-' ? '' : $part, explode(self::PIC_SEPARATOR, (string) $value));
+        [$names, $phones] = [$split($names), $split($phones)];
+        $rows = [];
+
+        for ($i = 0, $n = max(count($names), count($phones), 1); $i < $n; $i++) {
+            $rows[] = ['name' => $names[$i] ?? '', 'phone' => $phones[$i] ?? ''];
+        }
+
+        return $rows;
+    }
+
+    /** @return array{name: string, phone: string} section 1's PICs joined */
+    public static function customerPics(array $form): array
+    {
+        return static::joinPics($form['customer_pic_name'] ?? '', $form['customer_pic_phone'] ?? '', (array) ($form['customer_pics_extra'] ?? []));
+    }
+
+    /** @return array{name: string, phone: string} a block's consignor / consignee PICs joined */
+    public static function pairPics(array $pair, string $side): array
+    {
+        return static::joinPics($pair[$side.'_pic_name'] ?? '', $pair[$side.'_pic_phone'] ?? '', (array) ($pair[$side.'_pics_extra'] ?? []));
+    }
+
+    /** Section 1 loaded from a saved order: "A / B" into the first PIC and the extra rows. */
+    protected function expandFormPics(array $form): array
+    {
+        $rows = static::splitPics($form['customer_pic_name'] ?? '', $form['customer_pic_phone'] ?? '');
+        $form['customer_pic_name'] = $rows[0]['name'];
+        $form['customer_pic_phone'] = $rows[0]['phone'];
+        $form['customer_pics_extra'] = array_slice($rows, 1);
+
+        return $form;
+    }
+
+    /** A block loaded from a saved order: each side's "A / B" into the first PIC and the extra rows. */
+    protected function expandPairPics(array $pair): array
+    {
+        foreach (['consignor', 'consignee'] as $side) {
+            $rows = static::splitPics($pair[$side.'_pic_name'] ?? '', $pair[$side.'_pic_phone'] ?? '');
+            $pair[$side.'_pic_name'] = $rows[0]['name'];
+            $pair[$side.'_pic_phone'] = $rows[0]['phone'];
+            $pair[$side.'_pics_extra'] = array_slice($rows, 1);
+        }
+
+        return $pair;
+    }
+
+    /**
+     * The customer's saved PICs (Master Data → Customers → Contact), the default first, for the PIC name list of
+     * section 1; a customer without any: its attention and phone.
+     *
+     * @return list<array{name: string, phone: string}>
+     */
+    public function customerPicOptions(?string $customerId = null): array
+    {
+        $customerId ??= (string) ($this->form['customer_id'] ?? '');
+
+        if ($customerId === '') {
+            return [];
+        }
+
+        return $this->customerPicCache[$customerId] ??= (function () use ($customerId): array {
+            $customer = Customer::query()->with(['pics' => fn ($q) => $q->orderByDesc('is_default')->orderBy('id')])->find($customerId);
+            $rows = $customer?->pics
+                ->map(fn ($pic) => ['name' => trim((string) $pic->name), 'phone' => trim((string) $pic->phone)])
+                ->filter(fn (array $row) => $row['name'] !== '')
+                ->values()
+                ->all() ?? [];
+
+            if ($rows === [] && $customer && filled($customer->attention)) {
+                $rows = [['name' => trim((string) $customer->attention), 'phone' => trim((string) $customer->phone)]];
+            }
+
+            return $rows;
+        })();
+    }
+
+    /** @var array<string, list<array{name: string, phone: string}>> */
+    protected array $customerPicCache = [];
+
+    /** The contact number of the customer's saved PIC with this name, null when none matches. */
+    protected function savedPicPhone(string $name): ?string
+    {
+        $name = trim($name);
+
+        if ($name === '') {
+            return null;
+        }
+
+        foreach ($this->customerPicOptions() as $pic) {
+            if (strcasecmp($pic['name'], $name) === 0) {
+                return $pic['phone'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Section 1's PIC / contact number into each consignor (Pickup) that is blank or still holds the previous value,
      * so it is not typed twice.
      *
@@ -1960,7 +2199,17 @@ class CreateOrder extends Page
             return null;
         }
 
-        return app(OrderMinimumCharge::class)->forDestination($this->pricingCustomerId(), $location, ($pair['drop_off_type'] ?? '') ?: null, $pair['service_type'] ?? null, $lines);
+        return app(OrderMinimumCharge::class)->forDestination($this->pricingCustomerId(), $location, ($pair['drop_off_type'] ?? '') ?: null, $pair['service_type'] ?? null, $lines, $this->extraConsignees($pair));
+    }
+
+    /** The consignees after the first of a block with Multiple consignees (each pays the route's extra drop-off charge). */
+    public function extraConsignees(array $pair): int
+    {
+        if (empty($pair['multi_dropoff'])) {
+            return 0;
+        }
+
+        return max(0, count(\App\Support\OrderStops::clean((array) ($pair['dropoff_stops'] ?? []))) - 1);
     }
 
     public function addPair(): void
@@ -2468,7 +2717,8 @@ class CreateOrder extends Page
             }
 
             $minimums[$i] = $this->pairMinimum($i, $lines[$i] ?? []);
-            $topUps += (float) ($minimums[$i]['top_up'] ?? 0);
+            // the minimum charge top-up and the extra drop-off charge (user, 10 Nov 2026)
+            $topUps += (float) ($minimums[$i]['top_up'] ?? 0) + (float) ($minimums[$i]['extra_total'] ?? 0);
         }
 
         // SST (user, 3 Nov 2026): on each record's products and top-up, for a customer ticked "Charge SST"
@@ -2477,7 +2727,7 @@ class CreateOrder extends Page
         $tax = 0.0;
 
         foreach ($this->pairs as $i => $pair) {
-            $taxes[$i] = \App\Support\QuotationMatrix::sstFor($customer, array_sum($lines[$i] ?? []) + (float) ($minimums[$i]['top_up'] ?? 0));
+            $taxes[$i] = \App\Support\QuotationMatrix::sstFor($customer, array_sum($lines[$i] ?? []) + (float) ($minimums[$i]['top_up'] ?? 0) + (float) ($minimums[$i]['extra_total'] ?? 0));
             $tax += $taxes[$i];
         }
 
@@ -2515,6 +2765,15 @@ class CreateOrder extends Page
             'form.customer_address' => 'nullable|string|max:2000',
             'form.customer_pic_name' => 'nullable|string|max:255',
             'form.customer_pic_phone' => 'nullable|string|max:50',
+            'form.customer_pics_extra' => 'array',
+            'form.customer_pics_extra.*.name' => 'nullable|string|max:255',
+            'form.customer_pics_extra.*.phone' => 'nullable|string|max:50',
+            'pairs.*.consignor_pics_extra' => 'array',
+            'pairs.*.consignor_pics_extra.*.name' => 'nullable|string|max:255',
+            'pairs.*.consignor_pics_extra.*.phone' => 'nullable|string|max:50',
+            'pairs.*.consignee_pics_extra' => 'array',
+            'pairs.*.consignee_pics_extra.*.name' => 'nullable|string|max:255',
+            'pairs.*.consignee_pics_extra.*.phone' => 'nullable|string|max:50',
             // optional; when picked it must be one of the listed channels
             'form.received_through' => 'nullable|in:'.implode(',', array_keys($this->receivedThroughOptions())),
             'form.salesperson_id' => 'nullable|exists:users,id',
@@ -2523,7 +2782,8 @@ class CreateOrder extends Page
             'pairs.*.consignor_name' => 'nullable|string|max:255',
             'pairs.*.consignee_name' => 'nullable|string|max:255',
             'pairs.*.service_type' => 'required|in:'.implode(',', array_keys($this->serviceTypeOptions())),
-            'pairs.*.store_id' => 'nullable|exists:stores,id',
+            // a Customer Drop Off names its store (user, 10 Nov 2026)
+            'pairs.*.store_id' => $this->isQuote() ? 'nullable|exists:stores,id' : 'nullable|required_if:pairs.*.service_type,'.ServiceType::Store->value.'|exists:stores,id',
             'pairs.*.consignee_store_id' => 'nullable|required_if:pairs.*.consignee_mode,store|exists:stores,id',
             'pairs.*.consignor_pic_name' => 'nullable|string|max:255',
             'pairs.*.consignor_pic_phone' => 'nullable|string|max:50',
@@ -2566,7 +2826,37 @@ class CreateOrder extends Page
             // photos of each product row (same file rule as before: images or PDF, 8 MB)
             'pairs.*.items.*.photos' => 'nullable|array',
             'pairs.*.items.*.photos.*' => self::PHOTO_RULE,
+            ...$this->measurementSizeRules(),
         ];
+    }
+
+    /**
+     * Create order (user, 10 Nov 2026): a Measurement row needs its L, W and H (0 allowed, e.g. a flat item); the
+     * weight stays optional. Not an "Other" product (no sizes asked) and not the quotation (its own min – max ranges).
+     *
+     * @return array<string, string>
+     */
+    protected function measurementSizeRules(): array
+    {
+        if ($this->isQuote()) {
+            return [];
+        }
+
+        $rules = [];
+
+        foreach ($this->pairs as $i => $pair) {
+            foreach ((array) ($pair['items'] ?? []) as $j => $item) {
+                if ($this->itemKind($item) !== Uom::MEASUREMENT || ($item['sub_category'] ?? '') === self::OTHER_PRODUCT || blank($item['sub_category'] ?? null)) {
+                    continue;
+                }
+
+                foreach (['length', 'width', 'height'] as $dim) {
+                    $rules["pairs.{$i}.items.{$j}.{$dim}"] = 'required|numeric|min:0|max:99999';
+                }
+            }
+        }
+
+        return $rules;
     }
 
     /** @return array<string, string> */
@@ -2579,6 +2869,13 @@ class CreateOrder extends Page
             'pairs.*.consignee_store_id.required_if' => 'Select the store the customer collects the goods from.',
             'pairs.*.customer_do_number.required' => 'Enter the DO number for every consignor & consignee block.',
             'pairs.*.items.*.item_name.required' => 'Select a product for every item row.',
+            'pairs.*.store_id.required_if' => 'Select the store the customer drops the goods at.',
+            'pairs.*.items.*.length.required' => 'Enter L (0 if none).',
+            'pairs.*.items.*.width.required' => 'Enter W (0 if none).',
+            'pairs.*.items.*.height.required' => 'Enter H (0 if none).',
+            'pairs.*.items.*.length.numeric' => 'L must be a number.',
+            'pairs.*.items.*.width.numeric' => 'W must be a number.',
+            'pairs.*.items.*.height.numeric' => 'H must be a number.',
         ];
     }
 
@@ -2606,13 +2903,14 @@ class CreateOrder extends Page
             'store_id' => $storeRow?->id,
             'store_branch_id' => $storeRow?->branch_id ?? ($store && filled($pair['legacy_store_branch_id'] ?? null) ? (int) $pair['legacy_store_branch_id'] : null),
             'from_location_id' => filled($pair['from_location_id'] ?? null) ? (int) $pair['from_location_id'] : null,
-            'consignor_pic_name' => $text($pair['consignor_pic_name'] ?? null),
-            'consignor_pic_phone' => $text($pair['consignor_pic_phone'] ?? null),
+            // the PICs of each side joined, "A / B" (user, 10 Nov 2026)
+            'consignor_pic_name' => $text(static::pairPics($pair, 'consignor')['name']),
+            'consignor_pic_phone' => $text(static::pairPics($pair, 'consignor')['phone']),
             'pickup_location' => $pickup,
             'consignee_name' => $text($pair['consignee_name'] ?? null),
             'to_location_id' => $toLocationId,
-            'consignee_pic_name' => $text($pair['consignee_pic_name'] ?? null),
-            'consignee_pic_phone' => $text($pair['consignee_pic_phone'] ?? null),
+            'consignee_pic_name' => $text(static::pairPics($pair, 'consignee')['name']),
+            'consignee_pic_phone' => $text(static::pairPics($pair, 'consignee')['phone']),
             'drop_off_location' => $text($pair['drop_off_location'] ?? null),
             'drop_off_type' => ($pair['drop_off_type'] ?? '') ?: DropOffType::Default->value,
             // the block's own payment term (Cash / COD / Credit / Term)
@@ -2748,6 +3046,15 @@ class CreateOrder extends Page
             ->persistent()
             ->send();
 
+        // "Confirm, pay & print": the new tab opened by the click shows the CSN, ready to check and print
+        if ($this->printAfterSave && count($created) === 1) {
+            $csn = \App\Domains\Consignment\Models\ConsignmentNote::query()
+                ->whereIn('quotation_id', $created[0]['orders']->pluck('id'))
+                ->orderBy('id')
+                ->first();
+            $this->printTabUrl = $csn ? \App\Filament\Resources\ConsignmentNoteResource::pdfUrl($csn) : null;
+        }
+
         // "Confirm, pay & print": the order page opens the Cash Bill and CSN to print
         $this->redirect(match (true) {
             count($created) === 1 && $this->printAfterSave => OrderDetail::urlFor('order', $first->id).'?tab=documents&print=1',
@@ -2818,8 +3125,9 @@ class CreateOrder extends Page
                 'customer_id' => $this->form['customer_id'],
                 // one billing address for the whole order (each record's customer_address)
                 'customer_address' => trim((string) ($this->form['customer_address'] ?? '')) ?: null,
-                'customer_pic_name' => trim((string) ($this->form['customer_pic_name'] ?? '')),
-                'customer_pic_phone' => trim((string) ($this->form['customer_pic_phone'] ?? '')),
+                // the customer's PICs joined, "A / B" (user, 10 Nov 2026)
+                'customer_pic_name' => static::customerPics($this->form)['name'],
+                'customer_pic_phone' => static::customerPics($this->form)['phone'],
                 'received_through' => ($this->form['received_through'] ?? '') ?: null,
                 'salesperson_id' => $this->form['salesperson_id'] ?: null,
                 // each record has its own payment term; the order form keeps the first block's

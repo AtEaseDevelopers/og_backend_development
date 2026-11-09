@@ -12,7 +12,6 @@ use App\Domains\Notification\Models\NotificationLog;
 use App\Domains\Quotation\Models\Quotation;
 use App\Domains\Quotation\Models\QuotationStatusLog;
 use App\Http\Controllers\Admin\ConsignmentNotePdfController;
-use App\Http\Controllers\Admin\DeliveryOrderPdfController;
 use App\Http\Controllers\Admin\ProformaInvoicePdfController;
 use App\Http\Controllers\Admin\QuotationPdfController;
 use App\Models\User;
@@ -61,7 +60,6 @@ class SendOrderDocument
             $options['csn:'.$csn->id] = 'CSN '.$csn->number;
 
             if ($csn->deliveryOrder) {
-                $options['do:'.$csn->deliveryOrder->id] = 'DO '.$csn->deliveryOrder->number.' · CSN '.$csn->number;
             }
         }
 
@@ -77,7 +75,6 @@ class SendOrderDocument
             'proforma' => ['proforma-invoices', 'proformaInvoice'],
             'quotation' => ['quotations', 'quotation'],
             'csn' => ['consignment-notes', 'consignmentNote'],
-            'do' => ['delivery-orders', 'deliveryOrder'],
             default => [null, null],
         };
 
@@ -138,7 +135,6 @@ class SendOrderDocument
                 'proforma' => [ProformaInvoice::query()->findOrFail((int) $id)->number, ProformaInvoicePdfController::class],
                 'quotation' => [Quotation::query()->findOrFail((int) $id)->number, QuotationPdfController::class],
                 'csn' => [ConsignmentNote::query()->findOrFail((int) $id)->number, ConsignmentNotePdfController::class],
-                'do' => [DeliveryOrder::query()->findOrFail((int) $id)->number, DeliveryOrderPdfController::class],
             };
             $default = self::defaultEmail($order, $key);
             // the same PDF the "PDF" links open

@@ -60,6 +60,7 @@ class ClientPriceListImporter
         'pickupminimumchargerm' => 'pickup_min_charge',
         'constructionsitedropoffminimumchargerm' => 'construction_min_charge',
         'dropoffminimumchargerm' => 'drop_off_min_charge',
+        'extradropoffchargerm' => 'extra_drop_charge',
         'effectivedate' => 'effective_from',
         'expirydate' => 'expires_on',
     ];
@@ -242,6 +243,7 @@ class ClientPriceListImporter
                         'pickup_min_charge' => $rate['pickup_min_charge'],
                         'construction_min_charge' => $rate['construction_min_charge'],
                         'drop_off_min_charge' => $rate['drop_off_min_charge'],
+                        'extra_drop_charge' => $rate['extra_drop_charge'],
                     ];
                 }
 
@@ -408,6 +410,7 @@ class ClientPriceListImporter
             'pickup_min_charge' => $this->number($row['pickup_min_charge'] ?? null),
             'construction_min_charge' => $this->number($row['construction_min_charge'] ?? null),
             'drop_off_min_charge' => $this->number($row['drop_off_min_charge'] ?? null),
+            'extra_drop_charge' => $this->number($row['extra_drop_charge'] ?? null),
             'effective_from' => $this->date($row['effective_from'] ?? null),
             'expires_on' => $this->date($row['expires_on'] ?? null),
             'tiers' => $tiers,

@@ -455,7 +455,7 @@ class OrderDetailData
                     $do->number.($do->lorry ? ' · '.$do->lorry->registration_no : '').' · CSN '.$csn->number,
                     $doStatus instanceof \BackedEnum ? (method_exists($doStatus, 'getLabel') ? (string) $doStatus->getLabel() : (string) $doStatus->value) : ucfirst((string) $doStatus),
                     'progress',
-                    $this->pdfUrl('delivery-orders', 'deliveryOrder', $do),
+                    null, // no Delivery Order document (client, 7 Nov 2026)
                 );
             }
         }
