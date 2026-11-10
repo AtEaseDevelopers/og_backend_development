@@ -32,7 +32,8 @@ class SalespersonLinkController extends Controller
                 ->with('status', 'Orders submitted now will be handled by '.$salesperson->name.'.');
         }
 
-        return redirect()->route('portal.login')
-            ->with('status', 'Log in or register to place your order with '.$salesperson->name.'.');
+        // a new customer registers first (user, 11 Nov 2026), with this salesperson selected; a registered one signs in
+        return redirect()->route('portal.register')
+            ->with('status', 'Register to place your orders with '.$salesperson->name.'. Already registered? Sign in below.');
     }
 }

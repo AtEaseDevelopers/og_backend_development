@@ -26,10 +26,17 @@ class InvoiceNumberFormatTest extends TestCase
         $numbering = app(DocumentNumberingService::class);
         $period = now()->format('ym');
 
-        $this->assertMatchesRegularExpression('/^IVKL'.$period.'\d{5}$/', $numbering->next($branch, DocumentType::Invoice));
+        // O&G's formats (client's list, user 11 Nov 2026): an invoice and a receipt carry no location code
+        $this->assertMatchesRegularExpression('/^IV'.$period.'\d{5}$/', $numbering->next($branch, DocumentType::Invoice));
         $this->assertMatchesRegularExpression('/^CBKL'.$period.'\d{5}$/', $numbering->next($branch, DocumentType::CashBill));
-        // the other documents keep their layout
-        $this->assertMatchesRegularExpression('/^OR-KL-'.$period.'\d{5}$/', $numbering->next($branch, DocumentType::Receipt));
+        $this->assertMatchesRegularExpression('/^CODKL'.$period.'\d{5}$/', $numbering->next($branch, DocumentType::CodInvoice));
+        $this->assertMatchesRegularExpression('/^OR'.$period.'\d{5}$/', $numbering->next($branch, DocumentType::Receipt));
+        $this->assertMatchesRegularExpression('/^OFKL'.$period.'\d{5}$/', $numbering->next($branch, DocumentType::Order));
+        $this->assertMatchesRegularExpression('/^KL\d{4,}$/', $numbering->next($branch, DocumentType::JobSheet));
+        $this->assertMatchesRegularExpression('/^KL'.$period.'\d{5}$/', $numbering->nextCsn($branch, 'KL'));
+        // a running number that never restarts: the next one is one higher
+        $first = $numbering->next($branch, DocumentType::RefundNote);
+        $this->assertSame((int) substr($first, 2) + 1, (int) substr($numbering->next($branch, DocumentType::RefundNote), 2));
     }
 
     public function test_the_migration_renumbers_existing_invoices_and_their_copies(): void

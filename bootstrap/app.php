@@ -14,6 +14,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'portal.context' => \App\Http\Middleware\EnsurePortalContext::class,
+            'portal.guard' => \App\Http\Middleware\UsePortalGuard::class,
         ]);
         $middleware->redirectGuestsTo(function ($request) {
             return $request->is('admin') || $request->is('admin/*')

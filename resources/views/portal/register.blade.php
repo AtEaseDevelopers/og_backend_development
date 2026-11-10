@@ -21,13 +21,23 @@
             <div><label>O&amp;G branch you deal with *</label>
                 <select name="branch_id" required>
                     @foreach ($branches as $branch)
-                        <option value="{{ $branch->id }}" @selected(old('branch_id') == $branch->id)>{{ $branch->name }}</option>
+                        <option value="{{ $branch->id }}" @selected((string) old('branch_id', $linkedBranchId ?? '') === (string) $branch->id)>{{ $branch->name }}</option>
                     @endforeach
                 </select>
             </div>
         </div>
         <label>Company address *</label>
         <textarea name="address" rows="2" required>{{ old('address') }}</textarea>
+
+        {{-- optional (user, 11 Nov 2026): the salesperson who looks after this company; selected already from their link --}}
+        <label>Your O&amp;G salesperson (optional)</label>
+        <select name="salesperson_id">
+            <option value="">— I do not have one / not sure —</option>
+            @foreach ($salespersons as $sp)
+                <option value="{{ $sp->id }}" @selected((string) old('salesperson_id', $linkedSalesperson?->id) === (string) $sp->id)>{{ $sp->name }}</option>
+            @endforeach
+        </select>
+        <p class="muted" style="margin-top:-.5rem;font-size:.85rem">Your future orders will be handled by this salesperson.</p>
 
         <h3>Person in charge (your login)</h3>
         <div class="grid-form">

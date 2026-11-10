@@ -38,6 +38,18 @@ class Customer extends Model
     {
         // every customer is also a consignor / consignee (user, 25 Oct 2026)
         static::saved(fn (Customer $customer) => ConsignorConsignee::syncFromCustomer($customer));
+
+        // the special prices are kept by debtor code: a code changed on the customer takes them along (user, 11 Nov
+        // 2026: a customer created by the price list import gets a generated code, corrected later)
+        static::updating(function (Customer $customer): void {
+            $old = trim((string) $customer->getOriginal('code'));
+            $new = trim((string) $customer->code);
+
+            if ($customer->isDirty('code') && $old !== '' && $new !== '' && strcasecmp($old, $new) !== 0) {
+                UomRateTier::query()->where('customer_code', $old)->update(['customer_code' => strtoupper($new)]);
+                CharteredLorryRate::query()->where('customer_code', $old)->update(['customer_code' => strtoupper($new)]);
+            }
+        });
     }
 
     /** Consent letter types (section C). */

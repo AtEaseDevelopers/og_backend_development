@@ -161,15 +161,8 @@ class ConsignmentNoteResource extends Resource
                     ->placeholder('—')
                     ->sortable()
                     ->toggleable(),
-                // the CSN's transfer code, else its subsheets' (user, 3 Nov 2026)
-                Tables\Columns\TextColumn::make('transfer_code_id')
-                    ->label('Transfer code')
-                    ->badge()
-                    ->color('info')
-                    ->getStateUsing(fn (ConsignmentNote $record) => $record->transferCode?->code
-                        ?: ($record->subsheets->pluck('transfer_code')->filter()->unique()->implode(', ') ?: null))
-                    ->placeholder('—')
-                    ->toggleable(),
+                // no Transfer code column (client, 11 Nov 2026: no transfer code shown on the CSN list); the Transfer code
+                // filter under "Filters +" and the Transfer code status tag still find the CSNs by code
                 Tables\Columns\TextColumn::make('claimer.name')
                     ->label('Claimed by')
                     ->description(fn (ConsignmentNote $record) => $record->claimed_at?->format('d/m H:i'))
@@ -709,18 +702,9 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
             $mainLorry ? static::lorryPlate($mainLorry) : null,
         ]);
 
-        $codes = collect([$record->transferCode?->code])
-            ->merge($record->relationLoaded('subsheets') ? $record->subsheets->pluck('transfer_code') : [])
-            ->filter()
-            ->unique()
-            ->values();
-
+        // no transfer code shown on the CSN list (client, 11 Nov 2026): not after the CSN number, not on the subsheet
+        // lines, no column
         $tags = collect();
-
-        if ($codes->isNotEmpty()) {
-            $tags->push('<span class="ow-csn-tag ow-csn-tag-code" title="Transfer code">'.e($codes->implode(', ')).'</span>');
-        }
-
 
         if (($record->break_bulks_count ?? 0) > 0) {
             $tags->push('<span class="ow-csn-tag ow-csn-tag-bb">Break bulk'.($record->break_bulks_count > 1 ? ' ×'.$record->break_bulks_count : '').'</span>');
@@ -756,21 +740,28 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
 
         $selectable = $record->status !== CsnStatus::Cancelled;
 
-        return '<span class="ow-sub-lines">'.$subsheets->sortBy('id')->map(function (Subsheet $subsheet) use ($selectable): string {
+        $position = 0;
+
+        return '<span class="ow-sub-lines">'.$subsheets->sortBy('id')->map(function (Subsheet $subsheet) use ($selectable, $record, &$position): string {
             $lorry = $subsheet->subLorry?->registration_no;
+            $position++;
+            // a subsheet numbered CSN number + transfer code shows as "Subsheet 1", "Subsheet 2" … (client, 11 Nov 2026:
+            // no transfer code on the CSN list); one with its own number (SS-…) shows that number
+            $label = filled($subsheet->transfer_code) && str_starts_with((string) $subsheet->number, (string) $record->number)
+                ? 'Subsheet '.$position
+                : (string) $subsheet->number;
             // tickable with or without a lorry (a subsheet on a lorry can be moved to another one), unless its leg
             // is delivered or cancelled; the tick sits in the table's tick-box column, level with its line
             $legDone = in_array($subsheet->deliveryOrder?->status, [DeliveryOrderStatus::Delivered, DeliveryOrderStatus::Cancelled], true);
             $tick = $selectable && ! $legDone
-                ? '<input type="checkbox" class="ow-sub-tick fi-checkbox-input rounded border-none bg-white shadow-sm ring-1 transition duration-75 checked:ring-0 focus:ring-2 focus:ring-offset-0 dark:bg-white/5 text-primary-600 ring-gray-950/10 focus:ring-primary-600 checked:focus:ring-primary-500/50 dark:text-primary-500 dark:ring-white/20 dark:checked:bg-primary-500 dark:focus:ring-primary-500 dark:checked:focus:ring-primary-400/50" wire:model.live="selectedSubsheets" value="'.$subsheet->id.'" aria-label="Select subsheet '.e($subsheet->number).'">'
+                ? '<input type="checkbox" class="ow-sub-tick fi-checkbox-input rounded border-none bg-white shadow-sm ring-1 transition duration-75 checked:ring-0 focus:ring-2 focus:ring-offset-0 dark:bg-white/5 text-primary-600 ring-gray-950/10 focus:ring-primary-600 checked:focus:ring-primary-500/50 dark:text-primary-500 dark:ring-white/20 dark:checked:bg-primary-500 dark:focus:ring-primary-500 dark:checked:focus:ring-primary-400/50" wire:model.live="selectedSubsheets" value="'.$subsheet->id.'" aria-label="Select '.e($label).'">'
                 : '';
 
-            return '<label class="ow-sub-line" title="Subsheet '.e($subsheet->number).'">'
+            return '<label class="ow-sub-line">'
                 .$tick
                 .'<span class="ow-sub-arrow" aria-hidden="true">↳</span>'
-                .'<span class="ow-sub-no">'.e($subsheet->number).'</span>'
+                .'<span class="ow-sub-no">'.e($label).'</span>'
                 .'<span class="ow-csn-tag ow-sub-type-'.e((string) $subsheet->task_type).'">'.e($subsheet->typeLabel()).'</span>'
-                .($subsheet->transfer_code ? '<span class="ow-csn-tag ow-csn-tag-code">'.e($subsheet->transfer_code).'</span>' : '')
                 .'<span class="ow-sub-lorry">'.($lorry ? static::lorryPlate($lorry) : 'No lorry yet').'</span>'
                 .'</label>';
         })->implode('').'</span>';

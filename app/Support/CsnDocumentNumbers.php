@@ -20,7 +20,8 @@ class CsnDocumentNumbers
         // the client's CSN number format XX-YYMM##### (user, 30 Oct 2026)
         $data['number'] ??= $this->numbering->nextCsn($branch, $csnPrefix, $orderedAt);
         $data['do_number'] ??= $this->numbering->next($branch, DocumentType::Do);
-        $data['job_no'] ??= $this->numbering->next($branch, DocumentType::JobSheet);
+        // no job sheet number of its own (user, 11 Nov 2026): it took a number from the job sheets' running number
+        // (KL0001 …); the CSN shows the number of the job sheet it is put on
 
         if (empty($data['job_date'])) {
             $data['job_date'] = $data['issued_at'] ?? now()->toDateString();

@@ -125,7 +125,7 @@ class PortalEnquiryListingData
             'preferred_delivery_date' => $enquiry->preferred_delivery_date?->format('d/m/Y') ?? '—',
             'pickup_address' => $enquiry->pickup_address ?? '—',
             'pickup_maps_url' => $enquiry->pickup_maps_url,
-            'pickup_datetime' => $this->formatRequestedDatetime($enquiry->preferred_delivery_date, '08:00 AM'),
+            'pickup_datetime' => $enquiry->pickupDate()?->format('d/m/Y') ?? $this->formatRequestedDatetime($enquiry->preferred_delivery_date, '08:00 AM'),
             'pickup_contact' => $this->formatContact(
                 $firstDestination['pickup_pic'] ?? $enquiry->user?->name,
                 $firstDestination['pickup_phone'] ?? $enquiry->customer?->phone,

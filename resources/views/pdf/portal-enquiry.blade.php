@@ -53,7 +53,9 @@
                 <div><strong>{{ $number }}</strong></div>
                 <div>Submitted {{ $enquiry->created_at?->format('d/m/Y H:i') }}</div>
                 <div>Status: {{ $status }}</div>
-                @if ($enquiry->preferred_delivery_date)
+                @if ($enquiry->pickupDate())
+                    <div>Pickup date: {{ $enquiry->pickupDate()->format('d/m/Y') }}</div>
+                @elseif ($enquiry->preferred_delivery_date)
                     <div>Preferred delivery: {{ $enquiry->preferred_delivery_date->format('d/m/Y') }}</div>
                 @endif
             </td>
@@ -91,7 +93,7 @@
                         $item['sub_category'] ?? null,
                         $item['dimensions'] ?? null,
                         filled($item['weight'] ?? null) ? $item['weight'].' kg' : null,
-                        $item['handling'] ?? null,
+                        filled($item['description'] ?? null) && trim((string) $item['description']) !== trim((string) $item['item_name']) ? $item['description'] : ($item['handling'] ?? null),
                     ])->filter()->implode(' · ') ?: '—' }}
                 </td>
             </tr>
@@ -101,13 +103,16 @@
         </tbody>
     </table>
 
-    <h2>Pickup</h2>
+    <h2>{{ ! empty($payload['service_store']['name']) ? 'Drop-off at O&G store' : 'Pickup' }}</h2>
+    @if (! empty($payload['service_store']['name']))
+        <div class="block"><strong>{{ $payload['service_store']['name'] }}</strong> — the customer sends the goods to this store.</div>
+    @endif
     @forelse ($pickups as $i => $pickup)
         <div class="block">
             <div><strong>Pickup {{ $i + 1 }}</strong></div>
             <div>{{ $pickup['address'] }}</div>
             @if (! empty($pickup['maps_url']))<div class="muted">{{ $pickup['maps_url'] }}</div>@endif
-            @if (! empty($pickup['special_requirements']))<div>Special requirements: {{ $pickup['special_requirements'] }}</div>@endif
+            @if (! empty($pickup['special_requirements']) && ($i > 0 || $pickups->count() > 1))<div>Remark: {{ $pickup['special_requirements'] }}</div>@endif
         </div>
     @empty
         <div class="muted">No pickup address.</div>
@@ -119,9 +124,10 @@
         <div class="block">
             <div><strong>Destination {{ $i + 1 }}@if (! empty($destination['consignee_name'])) — {{ $destination['consignee_name'] }}@endif</strong></div>
             @if ($dropLabel)<div class="muted">{{ $dropLabel }}</div>@endif
+            @if (! empty($destination['collect_store']))<div>Own collection at O&amp;G store: {{ $destination['collect_store'] }}</div>@endif
             <div>{{ collect([$destination['address'] ?? null, $destination['postcode'] ?? null, $destination['city'] ?? null, $destination['state'] ?? null])->filter()->implode(', ') }}</div>
             @if (! empty($destination['consignee_phone']))<div>Phone: {{ $destination['consignee_phone'] }}</div>@endif
-            @if (! empty($destination['special_requirements']))<div>Special requirements: {{ $destination['special_requirements'] }}</div>@endif
+            @if (! empty($destination['special_requirements']))<div>Remark: {{ $destination['special_requirements'] }}</div>@endif
         </div>
     @empty
         <div class="muted">No drop-off destination.</div>
@@ -134,6 +140,19 @@
                 {{ collect([$contact['name'] ?? null, $contact['phone'] ?? null, $contact['role'] ?? null])->filter()->implode(' · ') }}
             </div>
         @endforeach
+    @endif
+
+    @if (filled($enquiry->special_requirements))
+        <h2>Remark</h2>
+        <div class="block">{{ $enquiry->special_requirements }}</div>
+    @endif
+
+    @if (! empty($payload['declaration']['text']))
+        <h2>Declaration</h2>
+        <div class="block">
+            <div>{{ $payload['declaration']['text'] }}</div>
+            <div class="muted">{{ $enquiry->declarationLine() }}</div>
+        </div>
     @endif
 </body>
 </html>

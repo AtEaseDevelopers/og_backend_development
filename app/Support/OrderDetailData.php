@@ -265,6 +265,8 @@ class OrderDetailData
                 'received_through' => $this->receivedThrough($enquiry),
                 'do_number' => $enquiry->customer_do_number ?: '—',
                 'requested_delivery' => $enquiry->preferred_delivery_date?->format('Y-m-d') ?? '—',
+                // a portal order asks for the pickup date (client, 11 Nov 2026)
+                'pickup_date' => $enquiry->pickupDate()?->format('Y-m-d'),
                 'order_type' => $enquiry->order_type?->getLabel() ?? '—',
                 'service_type' => $enquiry->service_type?->getLabel(),
                 'payment_method' => PaymentMethod::tryFrom((string) $enquiry->payment_method)?->getLabel(),
@@ -279,12 +281,14 @@ class OrderDetailData
                         QuantityLabel::format($item['quantity'] ?? 1, $item['uom'] ?? null),
                         filled($item['weight'] ?? null) ? rtrim(rtrim(number_format((float) $item['weight'], 2, '.', ''), '0'), '.').' kg' : null,
                         filled($item['dimensions'] ?? null) ? $item['dimensions'].' cm' : null,
-                        $item['handling'] ?? null,
+                        // the customer's description of the item (it was "Special handling"); not repeated when it is the item's name
+                        filled($item['description'] ?? null) && trim((string) $item['description']) !== trim((string) ($item['item_name'] ?? '')) ? $item['description'] : ($item['handling'] ?? null),
                     ])->filter()->implode(' · '),
                 ])->all(),
                 'instructions' => collect([
                     $enquiry->special_requirements,
                     $this->enquiryContacts($payload),
+                    $enquiry->declarationLine(),
                 ])->filter()->implode("\n") ?: null,
                 'attachments' => $this->attachments($enquiry->attachments ?? []),
             ],
@@ -435,7 +439,7 @@ class OrderDetailData
 
         foreach ($order->invoices as $invoice) {
             $linked[] = $item(
-                $invoice->isCashBill() ? 'Cash Bill' : 'Invoice',
+                $invoice->documentLabel(),
                 $invoice->number.' · RM '.number_format((float) $invoice->total_amount, 2).' · '.$sync($invoice),
                 'Issued',
                 'done',
@@ -1110,10 +1114,10 @@ class OrderDetailData
             }
 
             foreach ($order->invoices as $invoice) {
-                $push($invoice->created_at, ($invoice->isCashBill() ? 'Cash bill' : 'Invoice').' issued · '.$invoice->number, 'RM '.number_format((float) $invoice->total_amount, 2), 'doc');
+                $push($invoice->created_at, $invoice->documentLabel().' issued · '.$invoice->number, 'RM '.number_format((float) $invoice->total_amount, 2), 'doc');
 
                 if ($invoice->sent_at) {
-                    $push($invoice->sent_at, ($invoice->isCashBill() ? 'Cash bill' : 'Invoice').' sent to customer · '.$invoice->number, 'Email', 'message');
+                    $push($invoice->sent_at, $invoice->documentLabel().' sent to customer · '.$invoice->number, 'Email', 'message');
                 }
             }
 

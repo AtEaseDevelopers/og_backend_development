@@ -716,7 +716,25 @@ class CreateOrder extends Page
      * Payment block says otherwise), so its Cash Bill is issued and its CSN created on save, then the order page
      * opens both documents to print. "Save order & prepare pricing" stays for orders priced later.
      */
-    public function saveAndPrint(): void
+    public function saveAndPrint(): ?string
+    {
+        // the new tab the click opened always gets an answer (user, 11 Nov 2026: it stayed on "Preparing the CSN…" when
+        // the order was refused, e.g. no Cash record): the CSN PDF's address when one was created, else null and it
+        // closes — returned to the click and sent as an event as well
+        try {
+            $this->confirmPayAndPrint();
+        } finally {
+            if ($this->printTabUrl !== null) {
+                $this->dispatch('og-print-tab', url: $this->printTabUrl);
+            } else {
+                $this->dispatch('og-print-tab-cancel');
+            }
+        }
+
+        return $this->printTabUrl;
+    }
+
+    protected function confirmPayAndPrint(): void
     {
         if ($this->isEditing() || $this->isQuote()) {
             $this->save();
@@ -744,17 +762,7 @@ class CreateOrder extends Page
         $this->payment['method'] = filled($this->payment['method'] ?? null) ? $this->payment['method'] : PaymentMethod::Cash->value;
         $this->payment['payment_date'] = filled($this->payment['payment_date'] ?? null) ? $this->payment['payment_date'] : now()->toDateString();
         $this->printAfterSave = true;
-
-        try {
-            $this->save();
-        } finally {
-            // the new tab opened by the click (user, 10 Nov 2026): the CSN PDF when one was created, else it closes
-            if ($this->printTabUrl !== null) {
-                $this->dispatch('og-print-tab', url: $this->printTabUrl);
-            } else {
-                $this->dispatch('og-print-tab-cancel');
-            }
-        }
+        $this->save();
     }
 
     /** The PDF the click's new tab opens after "Confirm, pay & print" (the first CSN created), null = none. */
@@ -1467,17 +1475,9 @@ class CreateOrder extends Page
                 $pair['multi_'.$other] = false;
             }
 
-            // ticked: the side's first extra address starts with this record's address and DO number
+            // ticked: the side's first extra address starts empty (user, 11 Nov 2026: no address copied in from the record)
             if (! empty($pair['multi_'.$side]) && empty($pair[$side.'_stops'])) {
-                // a pick-up address carries no party of its own: there is one consignor (user, 30 Oct 2026); a drop-off is a consignee
-                $pair[$side.'_stops'] = [array_merge(\App\Support\OrderStops::blank($side === 'pickup' ? \App\Support\OrderStops::PICKUP : \App\Support\OrderStops::DROPOFF), $side === 'pickup' ? [] : [
-                    'name' => (string) ($pair['consignee_name'] ?? ''),
-                    'pic_name' => (string) ($pair['consignee_pic_name'] ?? ''),
-                    'pic_phone' => (string) ($pair['consignee_pic_phone'] ?? ''),
-                ], [
-                    'location' => (string) ($pair[$side === 'pickup' ? 'pickup_location' : 'drop_off_location'] ?? ''),
-                    'do_number' => (string) ($pair['customer_do_number'] ?? ''),
-                ])];
+                $pair[$side.'_stops'] = [\App\Support\OrderStops::blank($side === 'pickup' ? \App\Support\OrderStops::PICKUP : \App\Support\OrderStops::DROPOFF)];
             } elseif (empty($pair['multi_pickup']) && empty($pair['multi_dropoff']) && blank($pair['customer_do_number'] ?? null)) {
                 $pair['customer_do_number'] = (string) (\App\Support\OrderStops::doNumbers([...($pair['pickup_stops'] ?? []), ...($pair['dropoff_stops'] ?? [])])[0] ?? '');
             }
@@ -2942,6 +2942,19 @@ class CreateOrder extends Page
      * and billed (Cash Bill + CSN; a Cash / Pay at Counter payment waits for a second user's approval).
      */
     public function save(): void
+    {
+        // the order's emails (order confirmed, payment approved, Cash Bill issued) go out after the page has its
+        // answer (user, 11 Nov 2026: three SMTP sends in a row held the page on "loading")
+        \App\Domains\Notification\Actions\SendNotification::$afterResponse = true;
+
+        try {
+            $this->saveOrders();
+        } finally {
+            \App\Domains\Notification\Actions\SendNotification::$afterResponse = false;
+        }
+    }
+
+    protected function saveOrders(): void
     {
         $branch = CurrentCompany::branch();
         $company = Filament::getTenant();

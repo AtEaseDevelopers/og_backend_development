@@ -14,13 +14,13 @@
     <p class="muted">O&amp;G reviews each order and contacts you with the quotation.</p>
     <div class="table-scroll">
     <table>
-        <thead><tr><th>Reference</th><th>Submitted</th><th>Preferred delivery</th><th>Status</th></tr></thead>
+        <thead><tr><th>Reference</th><th>Submitted</th><th>Pickup date</th><th>Status</th></tr></thead>
         <tbody>
         @forelse ($enquiries as $enquiry)
             <tr>
                 <td>{{ $enquiry->order_number ?: $enquiry->reference_no }}</td>
                 <td>{{ $enquiry->created_at->format('d/m/Y H:i') }}</td>
-                <td>{{ $enquiry->preferred_delivery_date?->format('d/m/Y') ?? '—' }}</td>
+                <td>{{ ($enquiry->pickupDate() ?? $enquiry->preferred_delivery_date)?->format('d/m/Y') ?? '—' }}</td>
                 <td>{{ $enquiry->status instanceof \App\Enums\PortalEnquiryStatus ? $enquiry->status->label() : ucfirst((string) $enquiry->status) }}</td>
             </tr>
         @empty

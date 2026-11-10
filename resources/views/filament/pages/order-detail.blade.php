@@ -60,10 +60,10 @@
         </div>
 
         {{-- the documents to print after "Confirm, pay & print" (client, 1 Nov 2026): opened in new tabs on arrival, and
-             kept here as buttons in case the browser blocks pop-ups; the CSN goes to the tab the button opened on the
-             click ("og-print-csn", user 10 Nov 2026), which a browser does not block --}}
+             kept here as buttons in case the browser blocks pop-ups; the CSN that "Confirm, pay & print" put in its own
+             tab already is not opened a second time (user, 11 Nov 2026: it loaded twice) --}}
         @if ($this->printDocs !== [])
-            <div class="ow-banner ow-banner-success" x-data x-init="$nextTick(() => { @foreach ($this->printDocs as $doc) window.open(@js($doc['url']), @js(str_starts_with($doc['label'], 'CSN') ? 'og-print-csn' : '_blank')); @endforeach })">
+            <div class="ow-banner ow-banner-success" x-data x-init="$nextTick(() => { let opened = null; try { opened = sessionStorage.getItem('og-print-opened'); sessionStorage.removeItem('og-print-opened') } catch (e) {} @js(array_column($this->printDocs, 'url')).forEach((url) => { if (url !== opened) window.open(url, '_blank') }) })">
                 <div>
                     <div class="ow-banner-title">Ready to print</div>
                     <div class="ow-banner-text">The documents open in new tabs. If the browser blocked them, use the buttons.</div>
@@ -162,7 +162,11 @@
                                 <div><div class="ow-dt">Enquiry</div><div class="ow-dd">{{ $f['enquiry_ref'] }}</div></div>
                                 <div><div class="ow-dt">Received through</div><div class="ow-dd">{{ $f['received_through'] }}</div></div>
                                 <div><div class="ow-dt">DO number</div><div class="ow-dd">{{ $f['do_number'] }}</div></div>
-                                <div><div class="ow-dt">Requested delivery</div><div class="ow-dd">{{ $f['requested_delivery'] }}</div></div>
+                                @if ($f['pickup_date'] ?? null)
+                                    <div><div class="ow-dt">Pickup date</div><div class="ow-dd">{{ $f['pickup_date'] }}</div></div>
+                                @else
+                                    <div><div class="ow-dt">Requested delivery</div><div class="ow-dd">{{ $f['requested_delivery'] }}</div></div>
+                                @endif
                                 <div><div class="ow-dt">Order type</div><div class="ow-dd">{{ $f['order_type'] }}@if ($f['service_type']) · {{ $f['service_type'] }}@endif</div></div>
                             </div>
                             <div class="ow-stop">

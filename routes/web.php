@@ -23,13 +23,14 @@ Route::get('/track/{token}', TrackingController::class)->name('tracking.show');
 Route::get('/einvoice-buyer/{token}', [EinvoiceBuyerController::class, 'show'])->name('einvoice.buyer.show');
 Route::post('/einvoice-buyer/{token}', [EinvoiceBuyerController::class, 'store'])->name('einvoice.buyer.store');
 
-Route::prefix('portal')->name('portal.')->group(function () {
+// the portal's own login guard (portal.guard), so that it and the admin panel do not share one login
+Route::prefix('portal')->name('portal.')->middleware('portal.guard')->group(function () {
     Route::get('order/{token}', SalespersonLinkController::class)->name('salesperson-link');
     Route::get('customer-order/{customer}', [AccountSelectionController::class, 'orderLink'])->name('customer-order-link');
 
     Route::get('verify-email/{id}/{hash}', [AuthController::class, 'verifyEmail'])->name('verify-email');
 
-    Route::middleware('guest')->group(function () {
+    Route::middleware('guest:portal')->group(function () {
         Route::get('login', [AuthController::class, 'showLogin'])->name('login');
         Route::post('login', [AuthController::class, 'login'])->middleware('throttle:10,1');
         Route::get('register', [AuthController::class, 'showRegister'])->name('register');
@@ -41,7 +42,7 @@ Route::prefix('portal')->name('portal.')->group(function () {
         Route::post('reset-password', [PasswordResetController::class, 'reset'])->name('password.update');
     });
 
-    Route::middleware('auth')->group(function () {
+    Route::middleware('auth:portal')->group(function () {
         Route::post('logout', [AuthController::class, 'logout'])->name('logout');
 
         Route::get('select-company', [AccountSelectionController::class, 'show'])->name('select-company');
@@ -54,6 +55,7 @@ Route::prefix('portal')->name('portal.')->group(function () {
             Route::get('/', DashboardController::class)->name('dashboard');
             Route::get('orders', OrderHistoryController::class)->name('orders');
             Route::get('enquiry/create', [EnquiryController::class, 'create'])->name('enquiry.create');
+            Route::get('enquiry/price', [EnquiryController::class, 'price'])->middleware('throttle:120,1')->name('enquiry.price');
             Route::post('enquiry', [EnquiryController::class, 'store'])->name('enquiry.store');
             Route::get('enquiry/{enquiry}/pdf', [EnquiryController::class, 'pdf'])->name('enquiry.pdf');
             Route::get('quotations/{quotation}', [QuotationController::class, 'show'])->name('quotations.show');

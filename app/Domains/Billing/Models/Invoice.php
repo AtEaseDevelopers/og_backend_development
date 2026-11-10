@@ -45,6 +45,30 @@ class Invoice extends Model
         return $this->type === 'cash_bill';
     }
 
+    /**
+     * The document's name by payment type (user, 11 Nov 2026), one layout for all three: Invoice (Credit / Term,
+     * issued once a month), COD Invoice (COD, once the driver collects the payment), Cash Bill (Cash, once the
+     * counter receives the payment).
+     */
+    public function documentLabel(): string
+    {
+        return match ($this->type) {
+            'cash_bill' => 'Cash Bill',
+            'cod' => 'COD Invoice',
+            default => 'Invoice',
+        };
+    }
+
+    /** The payment type printed beside the title: CASH, COD or CREDIT / TERM. */
+    public function paymentLabel(): string
+    {
+        return match ($this->type) {
+            'cash_bill' => 'CASH',
+            'cod' => 'COD',
+            default => 'CREDIT / TERM',
+        };
+    }
+
     protected function casts(): array
     {
         return [

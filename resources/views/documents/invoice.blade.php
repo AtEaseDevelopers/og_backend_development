@@ -33,7 +33,9 @@
     </td><td class="lh-qr">@if($qr)<img src="{{ $qr }}" alt="Barcode {{ $meta['number'] ?? '' }}"><div class="lh-qr-text">{{ $meta['number'] ?? '—' }}</div>@endif</td></tr></table>
     <div class="lh-rule"></div>
     <table class="lh-meta"><tr>
-        <td class="lh-title" style="text-align:left">{{ $isCashBill ? 'CASH BILL' : 'INVOICE' }}</td>
+        {{-- one layout for the three payment types (user, 11 Nov 2026): the title at the left, the payment type at the right --}}
+        <td class="lh-title" style="text-align:left">{{ $meta['title'] ?? ($isCashBill ? 'CASH BILL' : 'INVOICE') }}</td>
+        @if (filled($meta['payment_label'] ?? null))<td class="lh-title">{{ $meta['payment_label'] }}</td>@endif
     </tr></table>
 
     {{-- the billing customer and the invoice details: no invoice number, type or payment term here (client, 6 Nov 2026) --}}

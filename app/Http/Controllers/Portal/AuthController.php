@@ -68,10 +68,17 @@ class AuthController extends Controller
         return redirect()->route('portal.select-company');
     }
 
-    public function showRegister(): View
+    public function showRegister(Request $request): View
     {
+        $linkedSalesperson = \App\Domains\Quotation\Actions\AssignEnquirySalesperson::resolveByToken($request->session()->get(SalespersonLinkController::SESSION_KEY));
+
         return view('portal.register', [
             'branches' => \App\Domains\MasterData\Models\Branch::query()->where('is_active', true)->orderBy('name')->get(),
+            // the customer's salesperson (user, 11 Nov 2026): optional; the one whose registration link was opened is selected
+            'salespersons' => User::query()->role('salesperson')->where('is_active', true)->orderBy('name')->get(['id', 'name']),
+            'linkedSalesperson' => $linkedSalesperson,
+            // the branch of the salesperson whose link was opened is the one selected to start with
+            'linkedBranchId' => $linkedSalesperson?->branches()->where('branches.is_active', true)->orderBy('branches.id')->value('branches.id'),
         ]);
     }
 
@@ -87,10 +94,21 @@ class AuthController extends Controller
             'phone' => ['required', 'string', 'max:50'],
             'address' => ['required', 'string', 'max:1000'],
             'branch_id' => ['required', 'exists:branches,id'],
+            'salesperson_id' => ['nullable', 'integer'],
         ]);
 
-        $user = DB::transaction(function () use ($data) {
+        $salesperson = filled($data['salesperson_id'] ?? null)
+            ? User::query()->role('salesperson')->where('is_active', true)->find($data['salesperson_id'])
+            : null;
+
+        $user = DB::transaction(function () use ($data, $salesperson) {
             $customer = static::findOrCreateCustomer($data, $data['email']);
+
+            // the salesperson chosen at registration becomes the customer's (every later order is theirs); a company
+            // that has one already keeps it — it is changed on the customer page
+            if ($salesperson && ! $customer->salesperson_id) {
+                $customer->update(['salesperson_id' => $salesperson->id]);
+            }
 
             $user = new User([
                 'name' => $data['name'],
@@ -209,10 +227,10 @@ class AuthController extends Controller
 
     public function logout(Request $request): RedirectResponse
     {
+        // the portal's login only: a staff member logged in to the admin panel in this browser stays logged in
         PortalSelection::clear();
-        Auth::logout();
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
+        Auth::guard('portal')->logout();
+        $request->session()->regenerate();
 
         return redirect()->route('portal.login');
     }

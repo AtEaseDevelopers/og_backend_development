@@ -56,7 +56,7 @@ class CustomerResource extends Resource
                         Infolists\Components\TextEntry::make('debtor_type')->label('Debtor type')->placeholder('—')
                             ->formatStateUsing(fn (?string $state) => CustomerForm::debtorTypeOptions()[$state] ?? $state),
                         Infolists\Components\TextEntry::make('control_account')->label('Control account')->placeholder('—'),
-                        Infolists\Components\TextEntry::make('salesperson.name')->label('Agent')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('salesperson.name')->label('Salesperson')->placeholder('—'),
                         Infolists\Components\TextEntry::make('status')->label('Status')->badge()
                             ->formatStateUsing(fn (?string $state) => $state === 'active' ? 'Active' : 'Inactive')
                             ->color(fn (?string $state) => $state === 'active' ? 'success' : 'gray'),
@@ -322,7 +322,7 @@ class CustomerResource extends Resource
             Tables\Columns\TextColumn::make('branch.name')->label('O&G company')->toggleable(isToggledHiddenByDefault: true),
             Tables\Columns\TextColumn::make('area')->toggleable(isToggledHiddenByDefault: true),
             Tables\Columns\TextColumn::make('brn')->label('BRN')->toggleable(isToggledHiddenByDefault: true),
-            Tables\Columns\TextColumn::make('salesperson.name')->label('Agent')->toggleable(isToggledHiddenByDefault: true),
+            Tables\Columns\TextColumn::make('salesperson.name')->label('Salesperson')->toggleable(isToggledHiddenByDefault: true),
             Tables\Columns\IconColumn::make('is_credit')->boolean()->label('Credit'),
             Tables\Columns\TextColumn::make('credit_term_days')
                 ->label('Term')

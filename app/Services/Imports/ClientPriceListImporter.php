@@ -91,9 +91,19 @@ class ClientPriceListImporter
         $result = [
             'file' => $fileName, 'products' => [], 'lorries' => [], 'rates' => [], 'customers' => [],
             'branches' => [], 'locations' => [], 'warnings' => [], 'rows' => 0,
+            // sheets without a Customer Code (user, 11 Nov 2026): matched to a customer by its name, else a customer
+            // to create on import — placeholder code "NEW:NAME" => name, and code => name of the ones matched
+            'new_customers' => [], 'matched_customers' => [],
+            // placeholder => the file's own code for that new customer, when the code is free in the system
+            'new_customer_codes' => [],
         ];
 
         foreach ($sheets as $sheetName => $rows) {
+            // the workbook's own "Template" sheet holds example rows only
+            if (strcasecmp(trim((string) $sheetName), 'Template') === 0) {
+                continue;
+            }
+
             $columns = $this->headerColumns($rows);
 
             if ($columns === null) {
@@ -134,11 +144,16 @@ class ClientPriceListImporter
      *
      * @param  array<string, mixed>  $data  from parse()
      * @param  bool  $replace  true: the file replaces the price list it covers; false: its prices are added / updated only
+     * @param  bool  $addOnly  true (user, 11 Nov 2026): nothing existing is touched — a price the system already has for
+     *                         the same product, destination, drop-off type, company and customer is left as it is and
+     *                         the file's row is ignored; only the missing prices are added
      * @return array{products: int, products_new: int, lorries: int, locations_new: list<string>, default_rates: int, special_rates: array<string, int>, unknown_customers: list<string>, deactivated: int, replaced: bool, warnings: list<string>}
      */
-    public function import(array $data, bool $replace = true): array
+    public function import(array $data, bool $replace = true, bool $addOnly = false): array
     {
-        return DB::transaction(function () use ($data, $replace) {
+        $replace = $replace && ! $addOnly;
+
+        return DB::transaction(function () use ($data, $replace, $addOnly) {
             $warnings = $data['warnings'];
             $branches = $this->resolveBranches($data['branches'], $warnings);
             $branchIds = array_values(array_filter($branches));
@@ -173,6 +188,48 @@ class ClientPriceListImporter
                 $uomIds[$key] = $uom->id;
             }
 
+            // the customers the file names without a code and the system does not have: created with a new debtor code
+            $customersCreated = [];
+
+            foreach ($data['new_customers'] ?? [] as $placeholder => $name) {
+                $branchName = collect($data['rates'])->firstWhere('customer_code', $placeholder)['branch'] ?? null;
+                $branchId = ($branches[$branchName] ?? null) ?? ($branchIds[0] ?? \App\Support\CurrentCompany::branchId() ?? (int) Branch::query()->orderBy('id')->value('id'));
+                $customer = $this->customerByName($name, fresh: true) ?? new Customer([
+                    'company_id' => \App\Domains\MasterData\Models\Company::query()->where('branch_id', $branchId)->where('is_active', true)->orderBy('id')->value('id'),
+                    'branch_id' => $branchId,
+                    'company_name' => $name,
+                    'einvoice_buyer_name' => $name,
+                    'status' => 'active',
+                ]);
+
+                if (blank($customer->code)) {
+                    $code = $data['new_customer_codes'][$placeholder] ?? null;
+
+                    while ($code === null || Customer::query()->where('code', $code)->exists()) {
+                        $code = \App\Filament\Resources\CustomerResource\Schemas\CustomerForm::generateDebtorCode($name);
+                    }
+
+                    $customer->code = $code;
+                }
+
+                $created = ! $customer->exists;
+                $customer->save();
+                $code = strtoupper((string) $customer->code);
+
+                if ($created) {
+                    $customersCreated[] = $code.' '.$name;
+                }
+
+                foreach ($data['rates'] as $index => $rate) {
+                    if ($rate['customer_code'] === $placeholder) {
+                        $data['rates'][$index]['customer_code'] = $code;
+                    }
+                }
+
+                $data['customers'][$code] = $name;
+                unset($data['customers'][$placeholder]);
+            }
+
             // replace the prices this file holds: the default prices of its branches (plus those for every branch,
             // i.e. the old price list) and the special prices of its customers
             $hasDefault = collect($data['rates'])->contains(fn ($rate) => $rate['customer_code'] === null);
@@ -202,6 +259,7 @@ class ClientPriceListImporter
 
             $defaultRates = 0;
             $specialRates = [];
+            $skippedExisting = 0;
             $now = now();
             $tierRows = [];
 
@@ -212,13 +270,23 @@ class ClientPriceListImporter
 
                 // add / update: the price of the same product, destination, drop-off type, company and customer goes
                 if (! $replace) {
-                    UomRateTier::query()
+                    $same = UomRateTier::query()
                         ->where('uom_id', $uomIds[$rate['product']])
                         ->where('location_id', $locations[$rate['location']]['id'])
                         ->where('drop_off_type', $rate['drop_off_type'])
                         ->where(fn ($q) => $rate['customer_code'] === null ? $q->whereNull('customer_code') : $q->where('customer_code', $rate['customer_code']))
-                        ->where(fn ($q) => ($branches[$rate['branch']] ?? null) === null ? $q->whereNull('branch_id') : $q->where('branch_id', $branches[$rate['branch']]))
-                        ->delete();
+                        ->where(fn ($q) => ($branches[$rate['branch']] ?? null) === null ? $q->whereNull('branch_id') : $q->where('branch_id', $branches[$rate['branch']]));
+
+                    // add what is missing only: the price the system already has stays, the file's row is ignored
+                    if ($addOnly) {
+                        if ($same->exists()) {
+                            $skippedExisting++;
+
+                            continue;
+                        }
+                    } else {
+                        $same->delete();
+                    }
                 }
 
                 $common = [
@@ -274,8 +342,12 @@ class ClientPriceListImporter
                 'default_rates' => $defaultRates,
                 'special_rates' => $specialRates,
                 'unknown_customers' => array_map(fn ($code) => $code.' '.($data['customers'][$code] ?? ''), $unknown),
+                'customers_created' => $customersCreated,
+                'customers_matched' => array_map(fn ($name, $code) => $code.' '.$name, $data['matched_customers'] ?? [], array_keys($data['matched_customers'] ?? [])),
                 'deactivated' => $deactivated,
                 'replaced' => $replace,
+                'added_only' => $addOnly,
+                'skipped_existing' => $skippedExisting,
                 'warnings' => $warnings,
             ];
         });
@@ -285,9 +357,9 @@ class ClientPriceListImporter
     public const BUNDLED = ['client-price-list-default.xlsx', 'client-price-list-special.xlsx'];
 
     /** @return array<string, mixed> the import() report */
-    public function importFile(string $path, ?string $fileName = null, bool $replace = true): array
+    public function importFile(string $path, ?string $fileName = null, bool $replace = true, bool $addOnly = false): array
     {
-        return $this->import($this->parse($path, $fileName), $replace);
+        return $this->import($this->parse($path, $fileName), $replace, $addOnly);
     }
 
     /**
@@ -300,7 +372,11 @@ class ClientPriceListImporter
     {
         $special = $report['special_rates'] ?? [];
         $lines = [
-            ($report['replaced'] ?? true) ? 'The price list the file covers was replaced' : 'Prices added / updated only (nothing else deleted)',
+            match (true) {
+                (bool) ($report['added_only'] ?? false) => 'Missing prices added only · '.($report['skipped_existing'] ?? 0).' price(s) the system already has were left as they are',
+                (bool) ($report['replaced'] ?? true) => 'The price list the file covers was replaced',
+                default => 'Prices added / updated only (nothing else deleted)',
+            },
             sprintf('%d product(s) (%d new), %d lorry type(s)', $report['products'], $report['products_new'], $report['lorries']),
             sprintf('%d default price row(s), %d special price row(s) for %d customer(s)', $report['default_rates'], array_sum($special), count($special)),
         ];
@@ -313,6 +389,14 @@ class ClientPriceListImporter
             $lines[] = $report['deactivated'].' old price-list product(s) no longer offered';
         }
 
+        if (($report['customers_created'] ?? []) !== []) {
+            $lines[] = count($report['customers_created']).' customer(s) created (not in the customer list; a debtor code can be corrected on the customer page, the special prices follow): '.implode('; ', $report['customers_created']);
+        }
+
+        if (($report['customers_matched'] ?? []) !== []) {
+            $lines[] = count($report['customers_matched']).' customer(s) matched by company name (no code in the file, or its code is another company\'s): '.implode('; ', $report['customers_matched']);
+        }
+
         if ($report['unknown_customers'] !== []) {
             $lines[] = 'Not a customer yet (their special prices apply once a customer has this code): '.implode('; ', $report['unknown_customers']);
         }
@@ -322,6 +406,118 @@ class ClientPriceListImporter
         }
 
         return $lines;
+    }
+
+    /** company name → [code, name] and code → name of the customers, read once per import */
+    private ?array $customersByName = null;
+
+    private array $customerNames = [];
+
+    private function nameKey(string $name): string
+    {
+        return strtolower(preg_replace('/[^a-z0-9]+/i', '', $name));
+    }
+
+    private function loadCustomers(): void
+    {
+        $this->customersByName = [];
+        $this->customerNames = [];
+
+        foreach (Customer::query()->orderBy('id')->get(['id', 'code', 'company_name']) as $customer) {
+            $this->customersByName[$this->nameKey((string) $customer->company_name)] ??= $customer;
+            $code = strtoupper(trim((string) $customer->code));
+
+            if ($code !== '') {
+                $this->customerNames[$code] = (string) $customer->company_name;
+            }
+        }
+    }
+
+    /** The customer with this company name (upper / lower case and spaces aside), null when none. */
+    private function customerByName(string $name, bool $fresh = false): ?Customer
+    {
+        if ($this->customersByName === null || $fresh) {
+            $this->loadCustomers();
+        }
+
+        return $this->customersByName[$this->nameKey($name)] ?? null;
+    }
+
+    /**
+     * The code of a sheet's customer named without one (user, 11 Nov 2026): the code of the customer with this
+     * name; else a placeholder "NEW:NAME" — import() creates that customer with a new debtor code.
+     *
+     * @param  array<string, mixed>  $result
+     */
+    private function codeForName(string $name, string $sheetName, array &$result): string
+    {
+        $customer = $this->customerByName($name);
+        $code = strtoupper(trim((string) $customer?->code));
+
+        if ($customer && $code !== '') {
+            $result['matched_customers'][$code] = $name;
+            $this->warnOnce($result, "{$sheetName}: no Customer Code · matched by name to customer {$code} {$customer->company_name}");
+
+            return $code;
+        }
+
+        $placeholder = 'NEW:'.strtoupper($this->nameKey($name));
+        $result['new_customers'][$placeholder] = $name;
+        $this->warnOnce($result, "{$sheetName}: no Customer Code and \"{$name}\" is not a customer yet · it is created on import with a new debtor code");
+
+        return $placeholder;
+    }
+
+    /**
+     * The code of a sheet that has one. The company name decides when the two disagree (user, 11 Nov 2026: the
+     * debtor codes of the file and of the customer list differ for some customers), so that no price goes to another
+     * company: the code is used when it is this company's in the system; else the customer with this name; else a
+     * new customer — with the file's code when it is free, with a new debtor code when it is another company's.
+     *
+     * @param  array<string, mixed>  $result
+     */
+    private function codeForCodedRow(string $code, string $name, string $sheetName, array &$result): string
+    {
+        if ($this->customersByName === null) {
+            $this->loadCustomers();
+        }
+
+        $known = $this->customerNames[$code] ?? null;
+
+        if ($name === '' || ($known !== null && $this->nameKey($known) === $this->nameKey($name))) {
+            return $code;
+        }
+
+        $is = $known !== null ? "is \"{$known}\" in the system" : 'is not a customer in the system';
+        $customer = $this->customerByName($name);
+        $own = strtoupper(trim((string) $customer?->code));
+
+        if ($customer && $own !== '') {
+            $result['matched_customers'][$own] = $name;
+            $this->warnOnce($result, "{$sheetName}: code {$code} {$is}; \"{$name}\" is customer {$own} there · the prices go to {$own}");
+
+            return $own;
+        }
+
+        $placeholder = 'NEW:'.strtoupper($this->nameKey($name));
+        $result['new_customers'][$placeholder] = $name;
+
+        if ($known === null) {
+            $result['new_customer_codes'][$placeholder] = $code;
+            $this->warnOnce($result, "{$sheetName}: \"{$name}\" ({$code}) is not a customer yet · it is created on import with this code");
+        } else {
+            $this->warnOnce($result, "{$sheetName}: code {$code} {$is} but \"{$name}\" in the file · \"{$name}\" is created on import with a new debtor code, {$code} stays with \"{$known}\"");
+        }
+
+        return $placeholder;
+    }
+
+    /** @param  array<string, mixed>  $result */
+    private function warnOnce(array &$result, string $warning): void
+    {
+        if (! in_array($warning, $result['warnings'], true)) {
+            $result['warnings'][] = $warning;
+        }
     }
 
     /** @param  array<string, mixed>  $result */
@@ -339,11 +535,22 @@ class ClientPriceListImporter
         // the customer: a code is a special price; "Default Price" / blank is the default price
         $customerCode = strtoupper($this->text($row['customer_code'] ?? null));
         $customerName = $this->text($row['customer_name'] ?? null);
+        // "#N/A" and the like: the workbook could not look the customer's code up — no code
+        $codeError = str_starts_with($customerCode, '#');
+
+        if ($codeError) {
+            $customerCode = '';
+        }
 
         if ($customerCode === '' && $customerName !== '' && strcasecmp($customerName, 'Default Price') !== 0) {
-            $result['warnings'][] = "{$where}: customer \"{$customerName}\" has no Customer Code · skipped";
+            // no Customer Code (user, 11 Nov 2026): the customer with this name, else a new customer on import
+            $customerCode = $this->codeForName($customerName, $sheetName, $result);
+        } elseif ($customerCode === '' && $codeError) {
+            $this->warnOnce($result, "{$sheetName}: no Customer Code and no Customer Name · its rows are skipped");
 
             return;
+        } elseif ($customerCode !== '') {
+            $customerCode = $this->codeForCodedRow($customerCode, $customerName, $sheetName, $result);
         }
 
         if ($customerCode !== '') {

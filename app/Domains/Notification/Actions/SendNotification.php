@@ -23,6 +23,13 @@ use Throwable;
 class SendNotification
 {
     /**
+     * Emails sent after the response (user, 11 Nov 2026): set while an order is created, so the page does not wait
+     * for the mail server; the log shows "sending" until the mail is out. Off everywhere else (an action that tells
+     * the user whether the email went out still sends it at once).
+     */
+    public static bool $afterResponse = false;
+
+    /**
      * @param  array{name?: string|null, email?: string|null, phone?: string|null, type?: string}  $recipient
      * @param  list<string>  $channels
      * @return Collection<int, NotificationLog>
@@ -98,14 +105,29 @@ class SendNotification
             return;
         }
 
-        try {
-            // the SMTP account set up under System Settings (falls back to the .env mailer)
-            MailSettings::apply();
-            Mail::to($email)->send(new SystemNotificationMail($log->subject, $log->message, $attachment));
-            $log->fill(['status' => NotificationLog::STATUS_SENT, 'sent_at' => now()]);
-        } catch (Throwable $e) {
-            $log->fill(['status' => NotificationLog::STATUS_FAILED, 'error' => mb_substr($e->getMessage(), 0, 500)]);
+        $send = function () use ($log, $email, $attachment): void {
+            try {
+                // the SMTP account set up under System Settings (falls back to the .env mailer)
+                MailSettings::apply();
+                Mail::to($email)->send(new SystemNotificationMail($log->subject, $log->message, $attachment));
+                $log->fill(['status' => NotificationLog::STATUS_SENT, 'sent_at' => now(), 'error' => null]);
+            } catch (Throwable $e) {
+                $log->fill(['status' => NotificationLog::STATUS_FAILED, 'error' => mb_substr($e->getMessage(), 0, 500)]);
+            }
+        };
+
+        if (static::$afterResponse && ! app()->runningInConsole()) {
+            // sent once the response is out; the log (saved by deliver) is updated then
+            $log->fill(['status' => NotificationLog::STATUS_SENDING]);
+            \Illuminate\Support\defer(function () use ($send, $log): void {
+                $send();
+                $log->exists ? $log->save() : null;
+            });
+
+            return;
         }
+
+        $send();
     }
 
     /** @param  array{phone?: string|null}  $recipient */

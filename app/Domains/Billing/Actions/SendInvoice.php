@@ -35,7 +35,7 @@ class SendInvoice
         $document = app(InvoiceDocumentData::class)->fromInvoice($invoice);
         $pdf = \App\Support\PdfPageNumbers::stamp(Pdf::loadView('pdf.invoice', ['document' => $document, 'meta' => $document['meta']])->setPaper('a4'))->output();
 
-        $label = $invoice->isCashBill() ? 'Cash Bill' : 'Invoice';
+        $label = $invoice->documentLabel();
 
         $log = $this->notify->execute(
             event: 'invoice_sent',

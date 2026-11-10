@@ -61,12 +61,45 @@ class Quote extends Model
         ];
     }
 
-    /** The next quotation number of the opened company: Q-KL-261000001 (a running number per company and month). */
-    public static function nextNumber(?int $branchId = null): string
+    /**
+     * The quotation number (client's format, user 11 Nov 2026): QXX/DebtorCode/YYMM, e.g. QKL/3000-A001/2612 — Q, the
+     * location code, the customer's debtor code and the quotation's month; no running number (a customer gets one
+     * quotation a month, a correction keeps its number). A lead has "L" + its number, a price list without a customer
+     * "GENERAL". A second quotation of the same customer and month gets "-2" (the number stays unique).
+     */
+    public static function nextNumber(?int $branchId = null, ?string $party = null, ?\DateTimeInterface $date = null, ?int $ignoreId = null): string
     {
         $branchId ??= \App\Support\CurrentCompany::branchId() ?? (int) Branch::query()->orderBy('id')->value('id');
+        $party = strtoupper(trim((string) $party)) ?: 'GENERAL';
+        $base = 'Q'.\App\Services\DocumentNumberingService::locationCode((int) $branchId).'/'.$party.'/'.($date ? \Illuminate\Support\Carbon::instance($date) : now())->format('ym');
+        $number = $base;
+        $n = 1;
 
-        return app(\App\Services\DocumentNumberingService::class)->next($branchId, \App\Enums\DocumentType::Quote);
+        while (static::query()->withoutGlobalScopes()->where('number', $number)->when($ignoreId, fn ($q) => $q->whereKeyNot($ignoreId))->exists()) {
+            $number = $base.'-'.(++$n);
+        }
+
+        return $number;
+    }
+
+    /** The party part of the quotation number: the customer's debtor code, a lead's "L" + id, else blank (GENERAL). */
+    public function numberParty(): ?string
+    {
+        if ($this->customer_id) {
+            return Customer::query()->whereKey($this->customer_id)->value('code') ?: 'C'.$this->customer_id;
+        }
+
+        return $this->lead_id ? 'L'.$this->lead_id : null;
+    }
+
+    protected static function booted(): void
+    {
+        // a new quotation is numbered from its customer and month (QXX/DebtorCode/YYMM); a saved one keeps its number
+        static::creating(function (self $quote): void {
+            if (blank($quote->number)) {
+                $quote->number = static::nextNumber($quote->branch_id, $quote->numberParty(), $quote->quote_date);
+            }
+        });
     }
 
     public function customer(): BelongsTo
@@ -122,7 +155,8 @@ class Quote extends Model
         return DB::transaction(function () use ($userId) {
             $copy = $this->replicate(['number', 'status', 'accepted_by', 'accepted_at', 'order_enquiry_id', 'ordered_at', 'created_by']);
             $copy->fill([
-                'number' => self::nextNumber(),
+                // numbered on save from its customer and month (booted)
+                'number' => null,
                 'status' => self::PENDING,
                 'quote_date' => today()->toDateString(),
                 'created_by' => $userId,

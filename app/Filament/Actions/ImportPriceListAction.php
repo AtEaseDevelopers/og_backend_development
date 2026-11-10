@@ -58,17 +58,25 @@ class ImportPriceListAction
                 Forms\Components\Radio::make('mode')
                     ->label('How to import')
                     ->options([
-                        'replace' => 'Replace the current price list',
+                        'add' => 'Add the missing prices only',
                         'merge' => 'Add or update these prices only',
+                        'replace' => 'Replace the current price list',
                     ])
-                    ->default('replace')
+                    ->descriptions([
+                        'add' => 'Nothing existing is changed or removed. A price the system already has is kept and the row in the file is ignored.',
+                        'merge' => 'A price the system already has is overwritten by the price in the file. Nothing else is removed.',
+                        'replace' => 'The prices of the customers in the file (and the default prices, when the file has default rows) are removed first.',
+                    ])
+                    ->default('add')
                     ->required()
                     ->visible(fn (Get $get) => static::allParsed(static::uploaded($get('files')))),
             ])
             ->action(function (array $data): void {
                 $importer = app(ClientPriceListImporter::class);
                 $disk = Storage::disk('local');
-                $replace = ($data['mode'] ?? 'replace') !== 'merge';
+                $mode = $data['mode'] ?? 'add';
+                $replace = $mode === 'replace';
+                $addOnly = $mode === 'add';
 
                 if (! static::allParsed(static::uploaded($data['files'] ?? []))) {
                     Notification::make()->title('A file cannot be read')->body('Fix or remove it, then import again.')->danger()->send();
@@ -84,10 +92,14 @@ class ImportPriceListAction
                     $name = $data['file_names'][$file] ?? basename($file);
 
                     try {
-                        $lines = ClientPriceListImporter::summaryLines($importer->importFile($disk->path($file), $name, $replace));
+                        $lines = ClientPriceListImporter::summaryLines($importer->importFile($disk->path($file), $name, $replace, $addOnly));
 
                         Notification::make()
-                            ->title($name.($replace ? ' imported · price list replaced' : ' imported · prices added / updated'))
+                            ->title($name.match (true) {
+                                $addOnly => ' imported · missing prices added',
+                                $replace => ' imported · price list replaced',
+                                default => ' imported · prices added / updated',
+                            })
                             ->body(implode("\n", array_slice($lines, 0, 12)).(count($lines) > 12 ? "\n… and ".(count($lines) - 12).' more note(s)' : ''))
                             ->success()
                             ->persistent()
@@ -193,7 +205,7 @@ class ImportPriceListAction
             ];
 
             if ($customers !== []) {
-                $list = collect($customers)->map(fn ($n, $code) => $code.' '.$n)->values();
+                $list = collect($customers)->map(fn ($n, $code) => str_starts_with((string) $code, 'NEW:') ? 'new customer · '.$n : $code.' '.$n)->values();
                 $lines[] = e('Customers: '.$list->take(8)->implode('; ').($list->count() > 8 ? ' … and '.($list->count() - 8).' more' : ''));
             }
 

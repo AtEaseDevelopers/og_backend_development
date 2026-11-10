@@ -108,7 +108,7 @@
 
         function keepSidebarOpenOnDesktop() {
             if (window.Alpine && isDesktop()) {
-                window.Alpine.store('sidebar').open()
+                window.Alpine.store('sidebar')?.open?.()
             }
         }
 
@@ -127,7 +127,7 @@
                 }
 
                 sidebar.classList.add('sidebar-hover-expanded')
-                window.Alpine?.store('sidebar').open()
+                window.Alpine?.store('sidebar')?.open?.()
             })
 
             sidebar.addEventListener('mouseleave', () => {
@@ -168,7 +168,7 @@
                 sidebar.classList.remove('sidebar-hover-expanded')
                 keepSidebarOpenOnDesktop()
             } else {
-                window.Alpine?.store('sidebar').open()
+                window.Alpine?.store('sidebar')?.open?.()
             }
         })
     })()

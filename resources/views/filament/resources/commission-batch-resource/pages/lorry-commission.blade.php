@@ -51,7 +51,7 @@
             <div x-show="open" x-cloak>
                 @foreach ($daySheets as $sheetId => $sheetLines)
                     @php $sheet = $sheetLines->first()->deliveryOrder?->jobSheet; @endphp
-                    <div class="cml-card" x-data="{ openSheet: true }" style="margin-top:.6rem">
+                    <div class="cml-card" x-data="{ openSheet: false }" style="margin-top:.6rem">
                         <div class="cml-head" style="cursor:pointer;margin-bottom:0" x-on:click="openSheet = ! openSheet" title="Show / hide the CSNs of this job sheet">
                             <span>
                                 @if ($sheetId)

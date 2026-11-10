@@ -37,7 +37,7 @@ class GenerateCommissionPurchaseOrders
                 }
 
                 $po = CommissionPurchaseOrder::query()->create([
-                    'po_number' => $this->numbering->next($batch->sourceBranch, DocumentType::CommissionPo),
+                    'po_number' => $this->poNumber($batch, $slip),
                     'pi_number' => $this->numbering->next($batch->sourceBranch, DocumentType::CommissionPi),
                     'commission_slip_id' => $slip->id,
                     'source_branch_id' => $batch->source_branch_id,
@@ -55,5 +55,26 @@ class GenerateCommissionPurchaseOrders
 
             return $created;
         });
+    }
+
+    /**
+     * The purchase order number (client's format, user 11 Nov 2026): YYMM/XX/lorry no, e.g. 2612/KL/JFR7300 — the
+     * batch's month, the location code and the lorry's registration (a driver's own slip: the driver's name); "-2" when
+     * the same one exists already.
+     */
+    private function poNumber(\App\Domains\Commission\Models\CommissionBatch $batch, \App\Domains\Commission\Models\CommissionSlip $slip): string
+    {
+        $month = preg_match('/^(\d{2})(\d{2})-(\d{2})$/', (string) $batch->month, $m) ? $m[2].$m[3] : now()->format('ym');
+        $lorry = strtoupper(preg_replace('/\s+/', '', (string) ($slip->lorry?->registration_no ?? '')))
+            ?: strtoupper((string) \Illuminate\Support\Str::slug((string) ($slip->driver?->name ?? 'DRIVER'), ''));
+        $base = $month.'/'.\App\Services\DocumentNumberingService::locationCode((int) $batch->source_branch_id).'/'.$lorry;
+        $number = $base;
+        $n = 1;
+
+        while (CommissionPurchaseOrder::query()->withoutGlobalScopes()->where('po_number', $number)->exists()) {
+            $number = $base.'-'.(++$n);
+        }
+
+        return $number;
     }
 }

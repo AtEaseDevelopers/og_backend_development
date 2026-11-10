@@ -268,7 +268,9 @@ class CreateOrderFromEnquiry
                 'customer_do_number' => $destination['customer_do_number'] ?? null,
                 'instructions' => $edited ? $stored('instructions') : null,
                 'admin_notes' => $stored('admin_notes'),
-                'stops' => $destination['stops'] ?? null,
+                // a portal order with several pickup addresses (client, 11 Nov 2026): the addresses after the first are
+                // the record's pick-up stops, like the admin order's Multiple address
+                'stops' => $destination['stops'] ?? $this->pickupStops($payload, $destinations->count(), $payloadName ?? $enquiry->customer?->company_name),
                 // photos uploaded for this consignor & consignee block
                 'attachments' => array_values(array_filter($destination['attachments'] ?? [], 'is_array')),
                 'items' => $own->map(function (array $item) use ($enquiry): array {
@@ -288,13 +290,34 @@ class CreateOrderFromEnquiry
                         'weight' => is_numeric($item['weight'] ?? null) ? (float) $item['weight'] : null,
                         'catalog_key' => $band ? 'uom:'.$band->id : null,
                         // the customer's own description of the goods, kept for the driver note
-                        'description' => $band ? trim((string) ($item['item_name'] ?? '')) : null,
+                        'description' => filled($item['description'] ?? null) ? trim((string) $item['description']) : ($band ? trim((string) ($item['item_name'] ?? '')) : null),
                         // photos uploaded for this product on the order form
                         'attachments' => array_values(array_filter($item['attachments'] ?? [], 'is_array')),
                     ];
                 })->filter(fn (array $item) => $item['item_name'] !== '')->values()->all(),
             ];
         })->all();
+    }
+
+    /**
+     * The pick-up stops of a portal order with several pickup addresses and one drop-off: every address after the first.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return list<array<string, mixed>>|null
+     */
+    private function pickupStops(array $payload, int $destinations, ?string $name): ?array
+    {
+        $pickups = collect($payload['pickups'] ?? [])->filter(fn ($pickup) => is_array($pickup) && filled($pickup['address'] ?? null))->values();
+
+        if ($destinations !== 1 || $pickups->count() < 2) {
+            return null;
+        }
+
+        return $pickups->slice(1)->map(fn (array $pickup) => [
+            'type' => \App\Support\OrderStops::PICKUP,
+            'name' => $name,
+            'location' => trim((string) $pickup['address']),
+        ])->values()->all();
     }
 
     /**
@@ -416,6 +439,8 @@ class CreateOrderFromEnquiry
         // an explicit block has its own instructions (the enquiry's special requirements join every block's)
         $notes = collect([
             'Order '.$enquiry->orderNumber().' · enquiry '.$enquiry->reference_no.'.',
+            // the pickup date the customer asked for on the portal
+            empty($pair['explicit']) && $enquiry->pickupDate() ? 'Pickup date: '.$enquiry->pickupDate()->format('d/m/Y') : null,
             filled($pair['instructions'] ?? null) ? 'Customer instructions: '.$pair['instructions'] : null,
             empty($pair['explicit']) && filled($enquiry->special_requirements) && blank($pair['instructions'] ?? null) ? 'Customer request: '.$enquiry->special_requirements : null,
         ])->filter()->implode("\n");
@@ -423,8 +448,12 @@ class CreateOrderFromEnquiry
         return $notes !== '' ? $notes : null;
     }
 
-    /** @param  array<string, mixed>  $destination */
-    private function matchLocation(array $destination): ?Location
+    /**
+     * The price-list location of a destination, from its city, state, address or consignee.
+     *
+     * @param  array<string, mixed>  $destination
+     */
+    public static function matchLocation(array $destination): ?Location
     {
         $candidates = collect([
             $destination['city'] ?? null,

@@ -25,6 +25,12 @@ class User extends Authenticatable implements FilamentUser, HasTenants
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, HasRoles, Notifiable;
 
+    /**
+     * Roles and permissions are those of the "web" guard whichever login is in use (the customer portal has its own
+     * guard, user 11 Nov 2026): without this, a role is looked up for the guard of the page being served.
+     */
+    protected $guard_name = 'web';
+
     protected $fillable = [
         'name',
         'email',

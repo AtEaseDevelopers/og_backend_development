@@ -77,7 +77,7 @@ class CustomerForm
                     ->placeholder('300-D001')
                     ->maxLength(50),
                 Forms\Components\Select::make('salesperson_id')
-                    ->label('Agent')
+                    ->label('Salesperson')
                     ->options(fn () => User::query()
                         ->whereHas('roles', fn ($q) => $q->whereIn('name', [
                             'salesperson', 'branch_manager', 'counter', 'finance', 'super_admin',

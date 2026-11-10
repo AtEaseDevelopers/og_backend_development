@@ -46,7 +46,7 @@ class NotificationLogResource extends Resource
             ->defaultSort('created_at', 'desc')
             ->filters([
                 Tables\Filters\SelectFilter::make('channel')->options(['email' => 'Email', 'whatsapp' => 'WhatsApp', 'system' => 'System']),
-                Tables\Filters\SelectFilter::make('status')->options(['sent' => 'Sent', 'ready' => 'Ready (WhatsApp)', 'skipped' => 'Skipped', 'failed' => 'Failed']),
+                Tables\Filters\SelectFilter::make('status')->options(['sent' => 'Sent', 'sending' => 'Sending', 'ready' => 'Ready (WhatsApp)', 'skipped' => 'Skipped', 'failed' => 'Failed']),
                 Tables\Filters\SelectFilter::make('recipient_type')->options(['customer' => 'Customer', 'driver' => 'Driver', 'user' => 'Staff']),
             ])
             ->actions([

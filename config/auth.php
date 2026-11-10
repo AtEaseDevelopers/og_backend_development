@@ -42,6 +42,13 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+
+        // the customer portal's own login (user, 11 Nov 2026): a customer logged in to the portal and a staff member
+        // logged in to the admin panel in the same browser do not replace or block each other
+        'portal' => [
+            'driver' => 'session',
+            'provider' => 'users',
+        ],
     ],
 
     /*

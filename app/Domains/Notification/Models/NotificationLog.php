@@ -23,6 +23,8 @@ class NotificationLog extends Model
 
     public const STATUS_SENT = 'sent';
 
+    public const STATUS_SENDING = 'sending';  // an order's email, sent right after the page's response
+
     public const STATUS_READY = 'ready';      // WhatsApp link prepared, sent manually by staff
 
     public const STATUS_SKIPPED = 'skipped';  // channel disabled or recipient contact missing

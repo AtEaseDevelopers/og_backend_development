@@ -87,7 +87,10 @@ class RecordOrderCreationPayment
                     'number' => $record->number,
                     'ok' => ($billing['ok'] ?? true) !== false,
                     'message' => 'paid RM '.number_format((float) $submission->amount, 2).($partial ? ' of RM '.number_format($total, 2).' (partial · stays Pending payment)' : '').match (true) {
-                        ($billing['ok'] ?? null) === true => ' · Cash Bill issued, CSN created',
+                        // a Customer Drop Off is billed but its CSN waits for the goods (Pending item)
+                        ($billing['ok'] ?? null) === true => collect($billing['csns'] ?? [])->isEmpty()
+                            ? ' · Cash Bill issued · CSN once the goods arrive (Pending item)'
+                            : ' · Cash Bill issued, CSN created',
                         ($billing['ok'] ?? null) === false => ' · billing failed: '.($billing['error'] ?? 'see the order'),
                         default => '',
                     },

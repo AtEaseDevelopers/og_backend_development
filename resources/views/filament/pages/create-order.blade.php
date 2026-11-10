@@ -1198,15 +1198,36 @@
                     {{-- the CSN opens in a new tab, ready to check and print (user, 10 Nov 2026): the tab is opened on the click
                          itself (a tab opened later is blocked as a pop-up) and moved to the CSN PDF once the order is saved;
                          it closes when nothing was created (a check failed, or the CSN waits for the goods) --}}
+                    {{-- every click ends the tab (user, 11 Nov 2026): the CSN PDF's address comes back from saveAndPrint (and as an
+                         event) and the tab shows it; with no CSN — a check failed, the order was refused, a Customer Drop Off
+                         waits for the goods, the request failed — the tab closes. The order page is told which PDF is open
+                         already (sessionStorage), so it does not load it a second time --}}
                     <button type="button"
-                            x-data
-                            x-on:click="
-                                window.ogPrintTab = window.open('', 'og-print-csn');
-                                if (window.ogPrintTab) { window.ogPrintTab.document.write('<title>Preparing the CSN…</title><p style=&quot;font:16px system-ui,sans-serif;padding:2rem;color:#334155&quot;>Saving the order and preparing the CSN…</p>'); }
-                            "
-                            x-on:og-print-tab.window="if (window.ogPrintTab && ! window.ogPrintTab.closed) { window.ogPrintTab.location.href = $event.detail.url } else { window.open($event.detail.url, '_blank') } window.ogPrintTab = null"
-                            x-on:og-print-tab-cancel.window="if (window.ogPrintTab && ! window.ogPrintTab.closed) { window.ogPrintTab.close() } window.ogPrintTab = null"
-                            wire:click="saveAndPrint" wire:loading.attr="disabled" class="ow-btn ow-btn-primary" title="Save the order with its Cash records confirmed and paid now; the CSN opens in a new tab to print">Confirm, pay &amp; print →</button>
+                            x-data="{
+                                tab: null,
+                                done(url) {
+                                    const tab = this.tab;
+                                    this.tab = null;
+                                    if (! tab || tab.closed) { return }
+                                    if (url) {
+                                        try { sessionStorage.setItem('og-print-opened', url) } catch (e) {}
+                                        tab.location.replace(url);
+                                    } else {
+                                        tab.close();
+                                    }
+                                },
+                                go() {
+                                    if (this.tab && ! this.tab.closed) { return }
+                                    this.tab = window.open('', '_blank');
+                                    if (this.tab) { this.tab.document.write('<title>Preparing the CSN…</title><p style=&quot;font:16px system-ui,sans-serif;padding:2rem;color:#334155&quot;>Saving the order and preparing the CSN…</p>'); }
+                                    $wire.saveAndPrint().then((url) => this.done(url || null)).catch(() => this.done(null));
+                                },
+                            }"
+                            x-init="void Livewire.hook('request', ({ fail }) => fail(() => done(null)))"
+                            x-on:click="go()"
+                            x-on:og-print-tab.window="done($event.detail.url)"
+                            x-on:og-print-tab-cancel.window="done(null)"
+                            wire:loading.attr="disabled" wire:target="saveAndPrint" class="ow-btn ow-btn-primary" title="Save the order with its Cash records confirmed and paid now; the CSN opens in a new tab to print">Confirm, pay &amp; print →</button>
                 @endif
             </div>
         </div>

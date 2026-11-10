@@ -540,8 +540,8 @@ class CreateQuotation extends CreateOrder
                     throw new InvalidArgumentException('Quotation '.$quote->number.' is already an order.');
                 }
 
+                // numbered when first saved, from its customer and month (Quote::booted)
                 $quote ??= new Quote([
-                    'number' => Quote::nextNumber(),
                     'status' => Quote::PENDING,
                     'created_by' => auth()->id(),
                 ]);

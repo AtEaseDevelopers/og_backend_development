@@ -39,6 +39,7 @@ class InvoiceDocumentData
             ? $customer->credit_term_days.' Days'
             : match ($invoice->type) {
                 'cash_bill' => 'Cash',
+                'cod' => 'COD',
                 default => '—',
             };
 
@@ -63,6 +64,10 @@ class InvoiceDocumentData
                 'order_no' => $invoice->quotation?->orderNumber(),
                 'due_date' => $invoice->due_date?->format('d/m/Y'),
                 'type' => $invoice->isCashBill() ? 'Cash Bill' : ucwords(str_replace('_', ' ', (string) $invoice->type)),
+                // the title and the payment type beside it (user, 11 Nov 2026): INVOICE · CREDIT / TERM, COD INVOICE · COD,
+                // CASH BILL · CASH
+                'title' => strtoupper($invoice->documentLabel()),
+                'payment_label' => $invoice->paymentLabel(),
                 'salesperson' => $invoice->quotation?->salesperson?->name,
             ],
             'bill_to' => [

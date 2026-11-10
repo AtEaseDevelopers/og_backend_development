@@ -143,7 +143,7 @@ class OrderDetail extends Page
         if (request()->boolean('print')) {
             $this->printDocs = collect($detail['overview']['linked'] ?? [])
                 ->flatMap(fn (array $link) => match ($link['title']) {
-                    'Cash Bill', 'Invoice' => filled($link['url']) ? [['label' => $link['title'].' '.\Illuminate\Support\Str::before($link['sub'], ' ·'), 'url' => $link['url']]] : [],
+                    'Cash Bill', 'Invoice', 'COD Invoice' => filled($link['url']) ? [['label' => $link['title'].' '.\Illuminate\Support\Str::before($link['sub'], ' ·'), 'url' => $link['url']]] : [],
                     'CSN' => collect($link['links'])->where('label', 'PDF')->map(fn (array $l) => ['label' => 'CSN '.$link['sub'], 'url' => $l['url']])->all(),
                     default => [],
                 })

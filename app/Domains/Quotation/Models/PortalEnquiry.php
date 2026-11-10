@@ -31,6 +31,12 @@ class PortalEnquiry extends Model
 
     public const SOURCE_ADMIN = 'admin';
 
+    /**
+     * The declaration the customer ticks before submitting an order on the portal (client, 11 Nov 2026); the wording
+     * accepted is kept on each order (payload.declaration).
+     */
+    public const DECLARATION = 'I declare that the details of this order are true and correct, and that the goods do not include any dangerous, prohibited or illegal items.';
+
     protected $fillable = [
         'customer_id', 'company_id', 'branch_id', 'user_id', 'reference_no', 'order_number', 'received_through', 'pickup_address',
         'pickup_maps_url', 'preferred_delivery_date', 'special_requirements',
@@ -176,6 +182,31 @@ class PortalEnquiry extends Model
     }
 
     /** Shared order number of every record created from this enquiry (falls back to the enquiry ref). */
+    /** The pickup date the customer asked for on the portal order form (payload, client 11 Nov 2026). */
+    public function pickupDate(): ?\Illuminate\Support\Carbon
+    {
+        $date = is_array($this->payload) ? ($this->payload['pickup_date'] ?? null) : null;
+
+        try {
+            return filled($date) ? \Illuminate\Support\Carbon::parse((string) $date) : null;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /** "Declaration accepted by … on …" of a portal order, null when it has none. */
+    public function declarationLine(): ?string
+    {
+        $declaration = is_array($this->payload) ? ($this->payload['declaration'] ?? null) : null;
+
+        if (! is_array($declaration) || blank($declaration['accepted_at'] ?? null)) {
+            return null;
+        }
+
+        return 'Declaration accepted'.(filled($declaration['accepted_by'] ?? null) ? ' by '.$declaration['accepted_by'] : '')
+            .' on '.\Illuminate\Support\Carbon::parse((string) $declaration['accepted_at'])->format('d/m/Y H:i');
+    }
+
     public function orderNumber(): string
     {
         return $this->order_number ?: ($this->reference_no ?? 'ENQ-'.$this->id);
