@@ -30,6 +30,13 @@ use Throwable;
  *   from RefreshOrderPaidAmount after every payment change).
  * - Term (credit): no invoice up front; Admin generates the invoice whenever they want after the CSN
  *   (e.g. once the CSN is returned) with issueInvoice.
+ *
+ * One invoice per order (client, 11 Nov 2026: 1 Order → 2 CSNs → 1 Invoice): the records of one order (its
+ * consignor–consignee pairs, each with its own CSN) with the same payment term share their billing document —
+ * - Cash: the payments of the order's records taken together (same method and reference, the same day) are one
+ *   Cash Bill; a payment made at another time is its own Cash Bill.
+ * - COD: one COD invoice once every COD record of the order with a CSN is fully paid.
+ * - Term: Admin's invoice covers every Term record of the order that has its CSN and no invoice yet.
  */
 class GenerateOrderBilling
 {
@@ -63,9 +70,15 @@ class GenerateOrderBilling
 
         if ($firstCsn) {
             foreach ($invoices as $invoice) {
+                // an order's invoice bills several records: each line takes the CSN of its own record
+                $ownLines = $invoice->lines()->whereNull('consignment_note_id')
+                    ->where(fn ($q) => $q->whereNull('quotation_id')->orWhere('quotation_id', $quotation->id));
+
                 if (! $invoice->consignment_note_id) {
                     $invoice->update(['consignment_note_id' => $firstCsn->id]);
-                    $invoice->lines()->whereNull('consignment_note_id')->update(['consignment_note_id' => $firstCsn->id]);
+                    $ownLines->update(['consignment_note_id' => $firstCsn->id]);
+                } elseif ($invoice->lines()->where('quotation_id', $quotation->id)->exists()) {
+                    $ownLines->where('quotation_id', $quotation->id)->update(['consignment_note_id' => $firstCsn->id]);
                 }
             }
 
@@ -169,10 +182,21 @@ class GenerateOrderBilling
         $bills = collect();
 
         foreach ($payments as $payment) {
-            $existing = Invoice::query()->where('payment_id', $payment->id)->first();
+            // its own Cash Bill, or the order's Cash Bill this payment was added to
+            $existing = Invoice::query()->where('payment_id', $payment->id)->first()
+                ?? ($payment->invoice_id ? Invoice::query()->whereKey($payment->invoice_id)->where('type', 'cash_bill')->first() : null);
 
             if ($existing) {
                 $bills->push($existing);
+
+                continue;
+            }
+
+            // one Cash Bill for the order: this payment joins the Cash Bill of the same payment on another record
+            if ($shared = $this->orderCashBill($quotation, $payment)) {
+                $bills->push($this->addToInvoice($shared, $quotation, (float) $payment->amount, [
+                    ['description' => sprintf('Cash Bill — %s payment%s for order %s', ucfirst(str_replace('_', ' ', (string) $payment->method)), $payment->reference ? ' ref '.$payment->reference : '', $quotation->number), 'amount' => (float) $payment->amount],
+                ], $payment));
 
                 continue;
             }
@@ -193,7 +217,10 @@ class GenerateOrderBilling
                 throw new InvalidArgumentException('No approved payment found for this cash order.');
             }
 
-            $bills->push($this->createInvoice($quotation, 'cash_bill', (float) $quotation->total_amount, InvoiceStatus::Outstanding, $this->linesFromQuotation($quotation)));
+            // released without a payment: the order's outstanding Cash Bill of today takes this record too
+            $bills->push(($shared = $this->orderCashBill($quotation, null))
+                ? $this->addToInvoice($shared, $quotation, (float) $quotation->total_amount, $this->linesFromQuotation($quotation))
+                : $this->createInvoice($quotation, 'cash_bill', (float) $quotation->total_amount, InvoiceStatus::Outstanding, $this->linesFromQuotation($quotation)));
         }
 
         return $bills;
@@ -237,22 +264,169 @@ class GenerateOrderBilling
             throw new InvalidArgumentException('A COD invoice is issued once the order is fully paid.');
         }
 
-        return DB::transaction(function () use ($quotation, $csn, $actor) {
+        // one invoice for the order: the other records of the order with the same payment term that have their
+        // CSN and no invoice yet are billed on it too
+        $others = $this->billableSiblings($quotation);
+
+        if ($type === OrderType::Cod && $others->contains(fn (Quotation $other) => ! $this->isFullyPaid($other))) {
+            throw new InvalidArgumentException('The COD invoice of order '.$quotation->orderNumber().' is issued once every consignment note of the order is fully paid.');
+        }
+
+        return DB::transaction(function () use ($quotation, $csn, $actor, $others) {
             $invoice = $this->invoice($quotation)->first();
             $invoice->update(['consignment_note_id' => $csn->id]);
             $invoice->lines()->whereNull('consignment_note_id')->update(['consignment_note_id' => $csn->id]);
             Payment::query()->where('quotation_id', $quotation->id)->whereNull('invoice_id')->update(['invoice_id' => $invoice->id]);
 
-            QuotationStatusLog::query()->create([
-                'quotation_id' => $quotation->id,
-                'from_status' => $quotation->status->value,
-                'to_status' => $quotation->status->value,
-                'user_id' => $actor?->id,
-                'remarks' => 'Invoice issued: '.$invoice->number.' · RM '.number_format((float) $invoice->total_amount, 2),
-            ]);
+            foreach ($others as $other) {
+                $otherCsn = $other->consignmentNotes()->where('status', '!=', 'cancelled')->orderBy('id')->first();
+                $this->addToInvoice($invoice, $other, (float) $other->total_amount, $this->linesFromQuotation($other));
+                $invoice->lines()->where('quotation_id', $other->id)->whereNull('consignment_note_id')->update(['consignment_note_id' => $otherCsn?->id]);
+                Payment::query()->where('quotation_id', $other->id)->whereNull('invoice_id')->update(['invoice_id' => $invoice->id]);
+            }
+
+            $invoice = $this->syncStatus($invoice);
+
+            foreach (collect([$quotation])->merge($others) as $record) {
+                QuotationStatusLog::query()->create([
+                    'quotation_id' => $record->id,
+                    'from_status' => $record->status->value,
+                    'to_status' => $record->status->value,
+                    'user_id' => $actor?->id,
+                    'remarks' => 'Invoice issued: '.$invoice->number.' · RM '.number_format((float) $invoice->total_amount, 2)
+                        .($others->isNotEmpty() ? ' · one invoice for order '.$quotation->orderNumber().' ('.collect([$quotation])->merge($others)->pluck('number')->implode(', ').')' : ''),
+                ]);
+            }
 
             return $invoice->fresh('lines');
         });
+    }
+
+    /**
+     * The other live records of the same order with the same payment term and customer (client, 11 Nov 2026: the
+     * records of one order share their invoice).
+     *
+     * @return Collection<int, Quotation>
+     */
+    public function siblings(Quotation $quotation): Collection
+    {
+        if (! $quotation->portal_enquiry_id) {
+            return collect();
+        }
+
+        return Quotation::query()
+            ->where('portal_enquiry_id', $quotation->portal_enquiry_id)
+            ->whereKeyNot($quotation->id)
+            ->where('customer_id', $quotation->customer_id)
+            ->whereNotIn('status', [QuotationStatus::Superseded->value, QuotationStatus::Cancelled->value])
+            ->whereDoesntHave('newerVersion')
+            ->orderBy('id')
+            ->get()
+            ->filter(fn (Quotation $other) => $other->orderType() === $quotation->orderType())
+            ->values();
+    }
+
+    /**
+     * The siblings a COD / Term invoice issued now also bills: those with a live CSN, no invoice of the kind yet and
+     * no CSN invoiced elsewhere (e.g. on a monthly invoice).
+     *
+     * @return Collection<int, Quotation>
+     */
+    private function billableSiblings(Quotation $quotation): Collection
+    {
+        $kind = $quotation->orderType() === OrderType::Cod ? 'cod' : 'term';
+
+        return $this->siblings($quotation)->filter(function (Quotation $other) use ($kind): bool {
+            $csnIds = $other->consignmentNotes()->where('status', '!=', 'cancelled')->pluck('id');
+
+            return $csnIds->isNotEmpty()
+                && ! $other->invoices()->where('type', $kind)->where('status', '!=', 'cancelled')->exists()
+                && ! Invoice::query()->where('status', '!=', 'cancelled')->whereHas('lines', fn ($q) => $q->whereIn('consignment_note_id', $csnIds))->exists();
+        })->values();
+    }
+
+    /**
+     * A COD order gets its one invoice once every COD record of the order that has its CSN is fully paid (and its
+     * driver collections are verified); false while another record of the order is still to be paid.
+     */
+    public function codOrderFullyPaid(Quotation $quotation): bool
+    {
+        return ! $this->billableSiblings($quotation)->contains(fn (Quotation $other) => ! $this->isFullyPaid($other)
+            || Payment::query()->where('quotation_id', $other->id)->where('status', 'completed')->where('method', 'cod')
+                ->where(fn ($q) => $q->whereNull('reconciliation_status')->orWhere('reconciliation_status', 'pending'))->exists());
+    }
+
+    /**
+     * The order's Cash Bill a record joins instead of getting its own: issued today for another record of the order,
+     * for the same payment (method and reference) — or, without a payment, its outstanding Cash Bill of a release.
+     */
+    private function orderCashBill(Quotation $quotation, ?Payment $payment): ?Invoice
+    {
+        $siblingIds = $this->siblings($quotation)->pluck('id');
+
+        if ($siblingIds->isEmpty()) {
+            return null;
+        }
+
+        return Invoice::query()
+            ->where('type', 'cash_bill')
+            ->where('status', '!=', 'cancelled')
+            ->whereDate('invoice_date', now()->toDateString())
+            ->whereHas('quotations', fn ($q) => $q->whereIn('quotations.id', $siblingIds))
+            ->when(
+                $payment,
+                fn ($query) => $query->whereHas('payment', fn ($q) => $q->where('method', $payment->method)
+                    ->where(fn ($r) => filled($payment->reference) ? $r->where('reference', $payment->reference) : $r->whereNull('reference')->orWhere('reference', ''))),
+                fn ($query) => $query->whereNull('payment_id'),
+            )
+            ->orderBy('id')
+            ->first();
+    }
+
+    /**
+     * Bill another record of the order on an invoice: its lines, its amount on the totals, the record on the invoice.
+     *
+     * @param  list<array{description: string, amount: float}>  $lines
+     */
+    private function addToInvoice(Invoice $invoice, Quotation $record, float $amount, array $lines, ?Payment $payment = null): Invoice
+    {
+        foreach ($lines as $line) {
+            $invoice->lines()->create(['quotation_id' => $record->id, 'description' => $line['description'], 'amount' => $line['amount']]);
+        }
+
+        $subtotal = round((float) $invoice->subtotal + collect($lines)->sum('amount'), 2);
+        $total = round((float) $invoice->total_amount + $amount, 2);
+
+        $invoice->update([
+            'subtotal' => $subtotal,
+            'rounding_amount' => round($total - $subtotal, 2),
+            'total_amount' => $total,
+        ]);
+        $invoice->quotations()->syncWithoutDetaching([$record->id]);
+
+        if ($payment && ! $payment->invoice_id) {
+            $payment->update(['invoice_id' => $invoice->id]);
+        }
+
+        $record->unsetRelation('invoices');
+
+        return $this->syncStatus($invoice)->load('lines');
+    }
+
+    /** An order invoice's status from what its records have paid: paid, partially paid or outstanding. */
+    private function syncStatus(Invoice $invoice): Invoice
+    {
+        $paid = $invoice->isCashBill()
+            ? (float) Payment::query()->where('invoice_id', $invoice->id)->where('status', 'completed')->sum('amount')
+            : (float) $invoice->quotations()->get()->sum(fn (Quotation $record) => RefreshOrderPaidAmount::livePaid($record));
+
+        $invoice->update(['status' => match (true) {
+            $paid + 0.005 >= (float) $invoice->total_amount => InvoiceStatus::Paid->value,
+            $paid > 0 => InvoiceStatus::PartiallyPaid->value,
+            default => InvoiceStatus::Outstanding->value,
+        }]);
+
+        return $invoice;
     }
 
     private function isFullyPaid(Quotation $quotation): bool
@@ -268,6 +442,21 @@ class GenerateOrderBilling
 
         if ($existing) {
             return collect([$existing]);
+        }
+
+        // a record billed before its CSN (a COD order paid in full up front): the order's invoice issued today for
+        // another record of the order takes this record too
+        $siblingIds = $quotation->consignmentNotes()->exists() ? collect() : $this->siblings($quotation)->pluck('id');
+        $shared = $siblingIds->isEmpty() ? null : Invoice::query()
+            ->where('type', $type)
+            ->where('status', '!=', 'cancelled')
+            ->whereDate('invoice_date', now()->toDateString())
+            ->whereHas('quotations', fn ($q) => $q->whereIn('quotations.id', $siblingIds))
+            ->orderBy('id')
+            ->first();
+
+        if ($shared) {
+            return collect([$this->addToInvoice($shared, $quotation, (float) $quotation->total_amount, $this->linesFromQuotation($quotation))]);
         }
 
         $paid = RefreshOrderPaidAmount::livePaid($quotation);
@@ -326,7 +515,7 @@ class GenerateOrderBilling
         ]);
 
         foreach ($lines as $line) {
-            $invoice->lines()->create(['description' => $line['description'], 'amount' => $line['amount']]);
+            $invoice->lines()->create(['quotation_id' => $quotation->id, 'description' => $line['description'], 'amount' => $line['amount']]);
         }
 
         if ($payment && ! $payment->invoice_id) {

@@ -960,7 +960,8 @@ class OrderDetailData
             // the payment number of Payments & Receipts (PMT-yymm-0000)
             'Payment '.\App\Support\PaymentListingData::paymentNumber($payment),
             $payment->receipt ? 'Receipt '.$payment->receipt->number : null,
-            $payment->cashBill ? 'Cash Bill '.$payment->cashBill->number : null,
+            // its own Cash Bill, or the order's Cash Bill it was added to (one Cash Bill for the order)
+            ($bill = $payment->cashBill ?? ($payment->invoice?->isCashBill() ? $payment->invoice : null)) ? 'Cash Bill '.$bill->number : null,
         ])->filter();
 
         return $docs->isNotEmpty() ? $docs->implode(' · ') : null;

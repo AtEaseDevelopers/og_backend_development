@@ -10,6 +10,7 @@ use App\Domains\MasterData\Models\Branch;
 use App\Domains\MasterData\Models\Customer;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
@@ -24,9 +25,28 @@ class Invoice extends Model
         'quotation_id', 'proforma_invoice_id', 'payment_id', 'sent_at',
     ];
 
+    /** The record the invoice was issued from; an order's invoice bills every record of quotations(). */
     public function quotation(): BelongsTo
     {
         return $this->belongsTo(\App\Domains\Quotation\Models\Quotation::class);
+    }
+
+    /**
+     * Every order record this invoice bills (client, 11 Nov 2026: 1 Order → 2 CSNs → 1 Invoice): the records of one
+     * order share their invoice. An invoice saved with a quotation_id belongs to that record automatically.
+     */
+    public function quotations(): BelongsToMany
+    {
+        return $this->belongsToMany(\App\Domains\Quotation\Models\Quotation::class, 'invoice_quotation');
+    }
+
+    protected static function booted(): void
+    {
+        static::saved(function (Invoice $invoice): void {
+            if ($invoice->quotation_id && ($invoice->wasRecentlyCreated || $invoice->wasChanged('quotation_id'))) {
+                $invoice->quotations()->syncWithoutDetaching([$invoice->quotation_id]);
+            }
+        });
     }
 
     public function proformaInvoice(): BelongsTo

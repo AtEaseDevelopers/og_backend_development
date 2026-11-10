@@ -29,6 +29,11 @@ return new class extends Migration
             return;
         }
 
+        // reading the workbooks takes about 200 MB; a server's command line often allows 128 MB only
+        if (ini_get('memory_limit') !== '-1') {
+            @ini_set('memory_limit', '1024M');
+        }
+
         foreach (self::FILES as $file => $name) {
             $path = database_path('data/'.$file);
 

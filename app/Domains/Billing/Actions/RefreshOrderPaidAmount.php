@@ -85,7 +85,9 @@ class RefreshOrderPaidAmount
             && ! Payment::query()->where('quotation_id', $quotation->id)->where('status', 'completed')->where('method', 'cod')
                 ->where(fn ($q) => $q->whereNull('reconciliation_status')->orWhere('reconciliation_status', 'pending'))->exists()
             && ! $quotation->invoices()->where('type', 'cod')->where('status', '!=', 'cancelled')->exists()
-            && $quotation->consignmentNotes()->where('status', '!=', CsnStatus::Cancelled->value)->exists()) {
+            && $quotation->consignmentNotes()->where('status', '!=', CsnStatus::Cancelled->value)->exists()
+            // one COD invoice for the order (client, 11 Nov 2026): it waits until its other COD records are paid too
+            && app(GenerateOrderBilling::class)->codOrderFullyPaid($quotation)) {
             app(GenerateOrderBilling::class)->issueInvoice($quotation, auth()->user());
         }
     }

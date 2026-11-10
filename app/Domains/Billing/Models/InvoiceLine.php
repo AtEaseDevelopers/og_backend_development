@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class InvoiceLine extends Model
 {
     protected $fillable = [
-        'invoice_id', 'consignment_note_id', 'delivery_order_id', 'description', 'amount',
+        'invoice_id', 'quotation_id', 'consignment_note_id', 'delivery_order_id', 'description', 'amount',
     ];
 
     protected function casts(): array

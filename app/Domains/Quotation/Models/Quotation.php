@@ -23,6 +23,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
@@ -215,9 +216,13 @@ class Quotation extends Model
         return $this->hasOne(ProformaInvoice::class)->latestOfMany();
     }
 
-    public function invoices(): HasMany
+    /**
+     * The invoices that bill this record. The records of one order share their invoice (client, 11 Nov 2026:
+     * 1 Order → 2 CSNs → 1 Invoice), so an invoice can belong to several records (invoice_quotation).
+     */
+    public function invoices(): BelongsToMany
     {
-        return $this->hasMany(Invoice::class);
+        return $this->belongsToMany(Invoice::class, 'invoice_quotation');
     }
 
     public function payments(): HasMany
