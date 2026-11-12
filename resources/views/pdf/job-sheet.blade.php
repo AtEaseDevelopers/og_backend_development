@@ -7,7 +7,7 @@
     @include('pdf.partials.common')
     <style>
         @page { margin: 30px 30px 40px 30px; }
-        body { font-size: 10px; line-height: 1.3; }
+        body { font-size: 9.5px; line-height: 1.3; }
         .doc { page-break-after: always; }
         .doc:last-child { page-break-after: auto; }
         .top { width: 100%; border-collapse: collapse; }
@@ -28,8 +28,6 @@
         table.rows .consignee { font-weight: bold; font-style: italic; }
         .totals td { padding-top: 6px; font-weight: bold; }
         .totals .num { border-bottom: 3px double #000; }
-        .sign { margin-top: 16px; font-weight: bold; }
-        .sign span { display: inline-block; width: 220px; border-bottom: 1px solid #000; }
     </style>
 </head>
 <body>
@@ -64,15 +62,16 @@
             <table class="rows">
                 <thead>
                     <tr>
+                        {{-- portrait (client, 13 Nov 2026): the columns narrower; "Advance Taken" is "COD (RM)" --}}
                         <th style="width:5%" class="num">No.</th>
-                        <th style="width:15%">CSN No.</th>
+                        <th style="width:13%">CSN No.</th>
                         <th style="width:14%">Bill No.</th>
-                        <th style="width:9%">From</th>
-                        <th style="width:9%">To</th>
-                        <th style="width:16%">Consignor</th>
-                        <th style="width:16%">Consignee</th>
+                        <th style="width:10%">From</th>
+                        <th style="width:10%">To</th>
+                        <th style="width:14%">Consignor</th>
+                        <th style="width:14%">Consignee</th>
                         <th style="width:9%">Qty U/M</th>
-                        <th style="width:8%" class="num">Advance<br>Taken</th>
+                        <th style="width:11%" class="num">COD (RM)</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -95,12 +94,11 @@
                     <tr class="totals">
                         <td colspan="7" style="text-align:right">Total :</td>
                         <td class="num" style="text-align:left">{{ number_format($group['qty_total'], 2) }}</td>
-                        <td class="num">{{ number_format($group['advance_total'], 2) }}</td>
+                        <td class="num">RM {{ number_format($group['advance_total'], 2) }}</td>
                     </tr>
                 </tbody>
             </table>
 
-            <div class="sign">Signature &nbsp;: <span></span></div>
         </div>
     @endforeach
 </body>

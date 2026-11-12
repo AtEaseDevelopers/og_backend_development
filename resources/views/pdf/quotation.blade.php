@@ -31,15 +31,22 @@
         .two-info { width: 100%; border-collapse: collapse; margin: 0 0 10px; page-break-inside: avoid; }
         .two-info > tbody > tr > td { width: 50%; padding: 0; vertical-align: top; }
         .two-info > tbody > tr > td + td { padding-left: 10px; }
+        /* the billing / order blocks and the consignor / consignee blocks on one grid (client, 13 Nov 2026): the same
+           columns, the labels the same width, so the headings and the values line up down the page */
+        .two-info table.bt td.bt-k, .two > tbody > tr > td:first-child table.box td.k { width: 5.6rem !important; }
+        .two-info > tbody > tr > td + td table.box td.k, .two > tbody > tr > td + td table.box td.k { width: 7.2rem !important; }
+        .two table.box td { padding: 1px 6px 1px 0; }
+        table.box.do td.k { width: 5.6rem; }
+        table.box.do td { padding: 1px 6px 1px 0; }
         .two-info table.box { margin: 0; }
         .two-info table.box td { padding: 1px 6px 1px 0; }
         .two-info table.box td.k { width: 28%; }
         .two-info table.box th { padding-bottom: 2px; }
         .nowrap { white-space: nowrap; }
         table.box td.v { font-weight: normal; }
-        .two { width: 100%; border-collapse: separate; border-spacing: 0; margin: 0 0 8px; }
+        .two { width: 100%; border-collapse: collapse; margin: 0 0 8px; }
         .two > tbody > tr > td { width: 50%; padding: 0; vertical-align: top; }
-        .two > tbody > tr > td + td { padding-left: 8px; }
+        .two > tbody > tr > td + td { padding-left: 10px; }
         .two table.box { margin: 0; }
         .two table.box td.k { width: 30%; }
         /* the pick-up / delivery mode as plain text, not a button (client, 6 Nov 2026) */
@@ -232,7 +239,7 @@
         </td>
     </tr></tbody></table>
 
-    <table class="box">
+    <table class="box do">
         <tr>
             <td class="k">DO number</td>
             <td class="v">{{ $doNumbers === [] ? '—' : implode(', ', $doNumbers) }}</td>

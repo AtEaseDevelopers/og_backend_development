@@ -123,23 +123,17 @@
     {{-- 4 locations per table (client, 6 Nov 2026): the 5th starts a table on the next page; the columns narrower,
          RM in the heading --}}
     @php
-        // 4 location columns a page (client, 7 Nov 2026): a last page with fewer locations is filled up with the
-        // previous page's last locations, so no column is ever blank
-        $pageColumns = function (array $columns): array {
-            $chunks = array_chunk($columns, 4) ?: [[]];
-            if (count($chunks) > 1 && count(end($chunks)) < 4) {
-                $chunks[count($chunks) - 1] = array_slice($columns, -4);
-            }
-
-            return $chunks;
-        };
+        // 4 location columns a table, each the same width and counted from the right (client, 13 Nov 2026): with fewer
+        // locations the item column takes the room, so there is no empty boxed column and every table's prices line
+        // up — the chartered lorries too; a 5th location is on its own table, the earlier ones are not shown again
+        $pageColumns = fn (array $columns): array => array_chunk($columns, 4) ?: [[]];
+        $colWidth = 12;
+        $labelWidth = fn (array $chunk): int => 100 - $colWidth * count($chunk);
     @endphp
     @foreach ($pageColumns($tables['columns']) as $chunk)
-        @php $colWidth = 12; $blanks = 0; @endphp
             <table class="tw rates" @unless ($loop->first) style="page-break-before: always" @endunless>
                 <tr class="head">
-                    <td class="label" style="width:52%">ITEM<span class="under">----</span></td>
-                    @for ($b = 0; $b < $blanks; $b++)<td class="num" style="width:{{ $colWidth }}%">&nbsp;</td>@endfor
+                    <td class="label" style="width:{{ $labelWidth($chunk) }}%">ITEM<span class="under">----</span></td>
                     @foreach ($chunk as $c)
                         <td class="num" style="width:{{ $colWidth }}%">{{ $c }} (RM)<span class="under">{{ $dash($c, '-') }}</span></td>
                     @endforeach
@@ -147,9 +141,8 @@
                 @foreach ($tables['groups'] as $group)
                     @php $singleLine = ($group['rows'][0]['label'] ?? null) === ''; @endphp
                     <tr class="group">
-                        <td class="label" colspan="{{ $singleLine ? 1 : count($chunk) + $blanks + 1 }}">{{ $group['name'] }}@unless ($singleLine)<span class="under">{{ $dash($group['name'], '=') }}</span>@endunless</td>
+                        <td class="label" colspan="{{ $singleLine ? 1 : count($chunk) + 1 }}">{{ $group['name'] }}@unless ($singleLine)<span class="under">{{ $dash($group['name'], '=') }}</span>@endunless</td>
                         @if ($singleLine)
-                            @for ($b = 0; $b < $blanks; $b++)<td class="num"></td>@endfor
                             @foreach ($chunk as $c)
                                 <td class="num">{!! nl2br(e($cell($group['rows'][0]['prices'][$c] ?? '-'))) !!}</td>
                             @endforeach
@@ -159,7 +152,6 @@
                     @foreach (array_slice($group['rows'], $singleLine ? 1 : 0) as $row)
                         <tr @class(['row', 'minimum' => $row['minimum'] ?? false])>
                             <td class="label qty">{{ $row['label'] }}</td>
-                            @for ($b = 0; $b < $blanks; $b++)<td class="num"></td>@endfor
                             @foreach ($chunk as $c)
                                 <td class="num">{!! nl2br(e($cell($row['prices'][$c] ?? '-'))) !!}</td>
                             @endforeach
@@ -176,10 +168,9 @@
     {{-- chartered lorries: their own block, as the client's CHARTED LORRY, with its own destination columns --}}
     @if ($tables['lorry'])
     @foreach ($pageColumns($tables['lorry']['columns']) as $chunk)
-        @php $colWidth = count($chunk) ? round(48 / count($chunk), 2) : 48; @endphp
             <table class="tw" @unless ($loop->first) style="page-break-before: always" @endunless>
                 <tr class="head">
-                    <td class="label" style="width:52%">CHARTERED LORRY<span class="under">---------------</span></td>
+                    <td class="label" style="width:{{ $labelWidth($chunk) }}%">CHARTERED LORRY<span class="under">---------------</span></td>
                     @foreach ($chunk as $c)
                         <td class="num" style="width:{{ $colWidth }}%">{{ $c }} (RM)<span class="under">{{ $dash($c, '-') }}</span></td>
                     @endforeach
