@@ -14,7 +14,8 @@
     // consignor in a tall box to chop and sign
     $layout = ($layout ?? 'stack') === 'side' ? 'side' : 'stack';
 
-    $nl = fn (?string $value): string => filled($value) ? nl2br(e($value)) : '—';
+    // every address in exactly three lines (client, 13 Nov 2026)
+    $nl = fn (?string $value): string => \App\Support\AddressLines::threeHtml($value, 44);
     // the barcode of the document number (user, 30 Oct 2026) — scanned into the system's search fields
     $qr = \App\Support\BarcodeImage::code128DataUri($meta['qr_value'] ?? ($meta['number'] ?? null));
     $consigneeList = $consignees ?: [['name' => '—', 'address' => null, 'contact' => null, 'do_number' => null]];
@@ -126,9 +127,9 @@
         </table>
 
         <div class="csn-doc-route">
-            <span class="csn-doc-route-label">From:</span> {{ $route['from'] ?? '—' }}
+            <span class="csn-doc-route-label">From Area:</span> {{ $route['from'] ?? '—' }}
             <span class="csn-doc-route-arrow">&rarr;</span>
-            <span class="csn-doc-route-label">To:</span> {{ $route['to'] ?? '—' }}
+            <span class="csn-doc-route-label">To Area:</span> {{ $route['to'] ?? '—' }}
         </div>
 
         <table class="csn-doc-consignees">
@@ -143,9 +144,9 @@
     @else
         {{-- the route, then the consignor(s) at the left and the consignee(s) beside, tall enough to chop and sign --}}
         <div class="csn-doc-route">
-            <span class="csn-doc-route-label">From:</span> {{ $route['from'] ?? '—' }}
+            <span class="csn-doc-route-label">From Area:</span> {{ $route['from'] ?? '—' }}
             <span class="csn-doc-route-arrow">&rarr;</span>
-            <span class="csn-doc-route-label">To:</span> {{ $route['to'] ?? '—' }}
+            <span class="csn-doc-route-label">To Area:</span> {{ $route['to'] ?? '—' }}
         </div>
 
         {{-- one row per consignee (client, 7 Nov 2026): the consignor in the first row's left cell, the left cell of the

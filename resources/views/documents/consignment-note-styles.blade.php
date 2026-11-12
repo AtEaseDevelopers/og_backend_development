@@ -35,12 +35,13 @@
     .csn-doc-parties { margin-top: 8px; }
 
     /* easier to read when printed (client, 6 Nov 2026): the items, the route and the consignee larger */
-    .csn-doc-items td { font-size: 11.5px; }
+    /* the items in the order quotation's font and cells, as every document (client, 13 Nov 2026) */
+    .csn-doc-items td { font-size: 10.5px; }
     .csn-doc-consignee-name { font-size: 13px; font-weight: bold; }
     .csn-doc-consignee-box .csn-doc-party-address { font-size: 11.5px; }
 
     /* the chop & sign fields: Name, IC No. and Date on their own lines with room to write */
-    .csn-doc-sign-field { text-align: left; font-size: 10.5px; margin-top: 9px; padding-left: 10px; }
+    .csn-doc-sign-field { text-align: left; font-size: 10.5px; margin-top: 7px; padding-left: 10px; }
     .csn-doc-sign-blank { display: inline-block; width: 62%; border-bottom: 1px solid #000; height: 11px; vertical-align: bottom; }
 
     /* the "side" layout: the consignor at the left, the consignee beside in a tall box */
@@ -129,6 +130,8 @@
     /* labels bold, values in normal text (user, 6 Nov 2026) */
     .csn-doc-meta-label {
         font-weight: bold;
+        font-size: 9.5px;
+        text-transform: uppercase;
         padding-right: 8px;
         white-space: nowrap;
     }
@@ -155,8 +158,8 @@
 
     /* the route in large type (client, 30 Oct 2026: "From KL to Johor" was hard to see) */
     .csn-doc-route {
-        margin: 8px 0;
-        padding: 6px 8px;
+        margin: 6px 0;
+        padding: 4px 8px;
         font-size: 15px;
         font-weight: bold;
         border-top: 2px solid #000;
@@ -169,7 +172,7 @@
     .csn-doc-items th,
     .csn-doc-items td {
         border: 1px solid #000;
-        padding: 5px 6px;
+        padding: 4px 6px;
         vertical-align: top;
     }
 
@@ -182,6 +185,9 @@
     }
     .csn-doc-no { width: 5%; text-align: center; }
     .csn-doc-uom { width: 12%; text-align: center; }
+    /* the headings over their columns as the order quotation's: No. and UOM centred, Qty at the right */
+    .csn-doc-items th.csn-doc-no, .csn-doc-items th.csn-doc-uom { text-align: center; }
+    .csn-doc-items th.csn-doc-qty { text-align: right; }
 
     .csn-doc-qty {
         width: 9%;
@@ -350,30 +356,31 @@
         height: 56px;
         display: inline-block;
     }
+    /* tighter boxes (13 Nov 2026): every address takes three lines now, and a CSN with five items still fits a page */
     .csn-doc-remark {
-        margin-top: 8px;
+        margin-top: 6px;
     }
     .csn-doc-remark td {
         border: 1px solid #000;
-        padding: 8px;
+        padding: 5px 8px;
         min-height: 40px;
         vertical-align: top;
     }
     .csn-doc-consignees {
-        margin-top: 8px;
+        margin-top: 6px;
     }
     .csn-doc-consignee-box {
         width: 50%;
         border: 1px solid #000;
-        padding: 8px;
+        padding: 6px 8px;
         vertical-align: top;
     }
     .csn-doc-sign-area {
-        margin-top: 10px;
+        margin-top: 4px;
         text-align: center;
     }
     .csn-doc-sign-area .csn-doc-sign-line {
-        height: 30px;
+        height: 22px;
         margin: 0 10px 4px;
     }
     .csn-doc-sign-area .csn-doc-sign-date {

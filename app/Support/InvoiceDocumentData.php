@@ -68,6 +68,9 @@ class InvoiceDocumentData
                 // CASH BILL · CASH
                 'title' => strtoupper($invoice->documentLabel()),
                 'payment_label' => $invoice->paymentLabel(),
+                // PAID above the barcode of a paid COD Invoice only, nothing otherwise — not on a Cash Bill or an
+                // Invoice (client, 13 Nov 2026)
+                'paid' => $invoice->type === 'cod' && $invoice->status === \App\Enums\InvoiceStatus::Paid->value,
                 'salesperson' => $invoice->quotation?->salesperson?->name,
             ],
             'bill_to' => [
@@ -81,7 +84,8 @@ class InvoiceDocumentData
             'lines' => $this->lines($invoice),
             'totals' => [
                 'subtotal_excl_tax' => $this->formatAmount($subtotal),
-                'tax_label' => $taxRate ? "Add SST@{$taxRate}%" : 'Add SST',
+                // always "SST 6%" (client, 13 Nov 2026): the rate charged, else the system's rate
+                'tax_label' => 'SST '.($taxRate ?: rtrim(rtrim(number_format(QuotationMatrix::sstRate(), 2, '.', ''), '0'), '.')).'%',
                 'tax_amount' => $this->formatAmount($taxAmount),
                 'total' => $this->formatAmount($totalAmount),
             ],

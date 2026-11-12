@@ -24,25 +24,28 @@
         .party td { vertical-align: top; padding: 0; font-weight: normal; font-size: 10.5px; }
         .party td.who { padding-right: 12px; }
         .party .gap { height: 10px; }
-        .re { margin: 10px 0 12px; font-size: 12px; font-weight: bold; text-decoration: underline; }
+        .re { margin: 4px 0 8px; font-size: 12px; font-weight: bold; text-decoration: underline; }
 
-        /* the rates: bold Courier, as the original (text kept to Courier's characters: < instead of ≤) */
-        .tw, .tw td { font-family: Courier, monospace; font-weight: bold; font-size: 10.5px; }
-        .tw-line { font-family: Courier, monospace; font-weight: bold; font-size: 10.5px; margin: 0 0 10px; white-space: pre-wrap; }
+        /* the rates in the order quotation's items table style: the same font, size and cells on every document
+           (client, 13 Nov 2026; the typewriter font is gone) */
+        .tw, .tw td { font-size: 10.5px; font-weight: normal; }
+        .tw-line { font-size: 10.5px; margin: 0 0 6px; white-space: pre-wrap; }
         table.tw { width: 100%; border-collapse: collapse; margin: 0 0 14px; page-break-inside: avoid; table-layout: fixed; }
+        table.tw.rates { page-break-inside: auto; }
+        table.tw.rates tr { page-break-inside: avoid; }
         /* a bordered grid (user, 29 Oct 2026: easier to read); the typewriter underlines are hidden */
-        table.tw td { border: 1px solid #000; padding: 3px 5px; vertical-align: top; white-space: nowrap; overflow: hidden; }
+        table.tw td { border: 1px solid #000; padding: 2px 6px; line-height: 1.15; vertical-align: top; white-space: nowrap; overflow: hidden; }
         table.tw td.label { white-space: normal; }
         /* a darker header bar (client, 6 Nov 2026), the product rows a step lighter */
-        table.tw tr.head td { background: #c9c9c9; white-space: normal; } /* a long location name wraps, never clips (7 Nov 2026) */
+        table.tw tr.head td { background: #f0f0f0; font-size: 10px; font-weight: bold; text-transform: uppercase; white-space: normal; } /* a long location name wraps, never clips (7 Nov 2026) */
         table.tw .under { display: none; }
         table.tw td.num { text-align: right; }
         table.tw.items tr.first td { padding-top: 7px; }
         table.tw.items td { padding-top: 1px; padding-bottom: 1px; }
-        table.tw tr.group td { background: #e6e6e6; }
+        table.tw tr.group td { background: #f7f7f7; font-weight: bold; }
         table.tw td.qty { padding-left: 14px; }
         table.tw tr.minimum td { font-style: italic; font-weight: normal; }
-        .notes { font-family: Courier, monospace; font-weight: bold; font-size: 10.5px; margin-top: 8px; }
+        .notes { font-size: 10.5px; margin-top: 8px; }
         .keep { page-break-inside: avoid; }
         .notes div { margin-bottom: 2px; }
     </style>
@@ -97,14 +100,14 @@
         <tr class="bt-body">
             <td style="width:62%" class="who">
                 {{-- the standard billing block (client, 7 Nov 2026) --}}
-                @include('pdf.partials.bill-to', ['heading' => false, 'code' => $party['code'] ?? null, 'name' => strtoupper($party['name']), 'reg_no' => $party['reg_no'] ?? null, 'address' => $party['address'] ? strtoupper(\App\Support\AddressLines::wrap($party['address'])) : null, 'pic' => strtoupper((string) $party['attention']) ?: null, 'phone' => $party['phone'], 'email' => $party['email']])
+                @include('pdf.partials.bill-to', ['heading' => false, 'addressWidth' => 34, 'code' => $party['code'] ?? null, 'name' => strtoupper($party['name']), 'reg_no' => $party['reg_no'] ?? null, 'address' => $party['address'] ? strtoupper(\App\Support\AddressLines::wrap($party['address'])) : null, 'pic' => strtoupper((string) $party['attention']) ?: null, 'phone' => $party['phone'], 'email' => $party['email']])
             </td>
             <td>
                 <table style="border-collapse:collapse">
                     {{-- "Issued by" replaced by who created it and the contact person (client, 6 Nov 2026) --}}
-                    <tr><td style="width:6.5rem;font-weight:bold">Date</td><td>{{ $date?->format('d/m/Y') }}</td></tr>
-                    <tr><td style="font-weight:bold">Created by</td><td>{{ $quote->creator?->name ?? '—' }}</td></tr>
-                    <tr><td style="font-weight:bold">Contact person</td><td>{{ $issuedBy ?: '—' }}@if ($contactPhone) ( {{ $contactPhone }} )@endif</td></tr>
+                    <tr><td class="dk">Date</td><td class="dv">{{ $date?->format('d/m/Y') }}</td></tr>
+                    <tr><td class="dk">Created by</td><td class="dv">{{ $quote->creator?->name ?? '—' }}</td></tr>
+                    <tr><td class="dk">Contact person</td><td class="dv">{{ $issuedBy ?: '—' }}@if ($contactPhone) ( {{ $contactPhone }} )@endif</td></tr>
                 </table>
             </td>
         </tr>

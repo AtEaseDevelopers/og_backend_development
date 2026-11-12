@@ -351,11 +351,12 @@ class CsnDocumentData
 
     private function dropOffContact(?string $pic, ?string $phone): ?string
     {
+        // Tel / PIC on one line, the phone first (client, 13 Nov 2026)
         $parts = array_filter([
-            filled($pic) ? $pic : null,
             filled($phone) ? $phone : null,
+            filled($pic) ? $pic : null,
         ]);
 
-        return $parts === [] ? null : implode(' — ', $parts);
+        return $parts === [] ? null : implode(' / ', $parts);
     }
 }

@@ -41,17 +41,17 @@
     .inv-parties td.inv-meta-col { width: 42%; padding-left: 10px; }
     .inv-meta-table { width: auto; }
     .inv-meta-table td { padding: 1px 0; vertical-align: top; }
-    .inv-meta-k { width: 7rem; font-weight: bold; }
+    .inv-meta-k { width: 7rem; font-weight: bold; font-size: 9.5px; text-transform: uppercase; white-space: nowrap; }
     .inv-meta-v { font-weight: normal; }
 
-    /* the consignment notes: at most five on an invoice, so the rows are large (client, 6 Nov 2026) */
-    .inv-items-boxed th, .inv-items-boxed td { border: 1px solid #000; padding: 7px 6px; vertical-align: top; font-size: 11px; }
-    .inv-items-boxed th { background: #f0f0f0; text-align: left; font-size: 10px; text-transform: uppercase; }
+    /* the consignment notes: the order quotation's items table (pdf.partials.common), the same font and cells on
+       every document (client, 13 Nov 2026) */
+    .inv-items { margin: 0 0 8px; }
     .inv-col-no { width: 4%; text-align: center; }
     .inv-col-date { width: 10%; white-space: nowrap; }
     .inv-col-csn { width: 13%; white-space: nowrap; }
-    .inv-col-ref { width: 11%; }
-    .inv-col-area { width: 9%; }
+    .inv-col-ref { width: 10%; }
+    .inv-col-area { width: 10%; }
     .inv-col-consignee { width: 14%; }
     .inv-col-goods { width: auto; }
     .inv-col-amt { width: 12%; text-align: right; white-space: nowrap; }

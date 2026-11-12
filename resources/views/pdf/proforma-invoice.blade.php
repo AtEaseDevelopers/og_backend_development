@@ -6,7 +6,7 @@
     @include('pdf.partials.common')
     <style>
         @page { margin: 26px 28px 40px; }
-        body { font-size: 11px; }
+        body { font-size: 10.5px; line-height: 1.35; }
         /* the top as the order quotation's (client, 6 Nov 2026) */
         .lh-name { font-size: 17px; font-weight: bold; }
         .lh-small { font-size: 10px; line-height: 1.35; }
@@ -66,24 +66,26 @@
     <table class="meta">
         <tr><th colspan="2" class="bt-heading">Billing Information</th></tr>
         <tr class="bt-body">
-            <td style="width:55%">
-                <table>
+            <td style="width:58%;padding-right:12px">
                     @php $customer = $proforma->customer; @endphp
                     {{-- the standard billing block (client, 7 Nov 2026) --}}
-                    <tr><td colspan="2" style="padding-bottom:4px">@include('pdf.partials.bill-to', ['heading' => false, 'code' => $customer?->code, 'name' => $customer?->company_name, 'reg_no' => $customer?->brn, 'address' => $quotation?->customer_address ?: $customer?->address, 'pic' => $quotation?->attention ?: $customer?->attention, 'phone' => $quotation?->customer_pic_phone ?: $customer?->phone, 'email' => $customer?->email])</td></tr>
-                    @if ($quotation?->customer_do_number)<tr><td class="label">Customer DO</td><td>{{ $quotation->customer_do_number }}</td></tr>@endif
-                    @if ($quotation?->consignor_name)<tr><td class="label">Consignor</td><td>{{ $quotation->consignor_name }}@if ($quotation->fromLocation?->name) <span class="muted">· {{ $quotation->fromLocation->name }}</span>@endif</td></tr>@endif
-                    @if ($quotation?->consignee_name || $quotation?->toLocation?->name)<tr><td class="label">Consignee</td><td>{{ $quotation?->consignee_name ?: '—' }}@if ($quotation?->toLocation?->name) <span class="muted">· {{ $quotation->toLocation->name }}</span>@endif</td></tr>@endif
+                    @include('pdf.partials.bill-to', ['heading' => false, 'code' => $customer?->code, 'name' => $customer?->company_name, 'reg_no' => $customer?->brn, 'address' => $quotation?->customer_address ?: $customer?->address, 'pic' => $quotation?->attention ?: $customer?->attention, 'phone' => $quotation?->customer_pic_phone ?: $customer?->phone, 'email' => $customer?->email])
+                @if ($quotation?->customer_do_number || $quotation?->consignor_name || $quotation?->consignee_name || $quotation?->toLocation?->name)
+                <table class="bt">
+                    @if ($quotation?->customer_do_number)<tr><td class="bt-k">Customer DO</td><td class="bt-v">{{ $quotation->customer_do_number }}</td></tr>@endif
+                    @if ($quotation?->consignor_name)<tr><td class="bt-k">Consignor</td><td class="bt-v">{{ $quotation->consignor_name }}@if ($quotation->fromLocation?->name) <span class="muted">· {{ $quotation->fromLocation->name }}</span>@endif</td></tr>@endif
+                    @if ($quotation?->consignee_name || $quotation?->toLocation?->name)<tr><td class="bt-k">Consignee</td><td class="bt-v">{{ $quotation?->consignee_name ?: '—' }}@if ($quotation?->toLocation?->name) <span class="muted">· {{ $quotation->toLocation->name }}</span>@endif</td></tr>@endif
                 </table>
+                @endif
             </td>
             <td>
                 <table>
-                    <tr><td class="label">Date</td><td>{{ ($proforma->issued_at ?? $proforma->created_at)?->format('d/m/Y') }}</td></tr>
+                    <tr><td class="dk">Date</td><td class="dv">{{ ($proforma->issued_at ?? $proforma->created_at)?->format('d/m/Y') }}</td></tr>
                     @if ($quotation)
-                        <tr><td class="label">Order no.</td><td>{{ $quotation->orderNumber() }}</td></tr>
+                        <tr><td class="dk">Order no.</td><td class="dv">{{ $quotation->orderNumber() }}</td></tr>
                         {{-- no Record no., Payment term or CSN rows (client, 6 Nov 2026) --}}
-                        <tr><td class="label">Salesperson</td><td>{{ $quotation->salesperson?->name ?? '—' }}@if ($quotation->salesperson?->phone) <span class="muted">· {{ $quotation->salesperson->phone }}</span>@endif</td></tr>
-                        @if ($quotation->expected_delivery_date)<tr><td class="label">Expected delivery</td><td>{{ $quotation->expected_delivery_date }}</td></tr>@endif
+                        <tr><td class="dk">Salesperson</td><td class="dv">{{ $quotation->salesperson?->name ?? '—' }}@if ($quotation->salesperson?->phone) <span class="muted">· {{ $quotation->salesperson->phone }}</span>@endif</td></tr>
+                        @if ($quotation->expected_delivery_date)<tr><td class="dk">Expected delivery</td><td class="dv">{{ $quotation->expected_delivery_date }}</td></tr>@endif
                     @endif
                 </table>
             </td>
@@ -117,9 +119,9 @@
                 <tr><td class="c">1</td><td>Transport charges</td><td class="num">—</td><td class="c">—</td><td class="num">—</td><td class="num">{{ number_format((float) $proforma->total_amount - $sst, 2) }}</td></tr>
             @endforelse
             {{-- Subtotal, SST, then Total (client, 6 Nov 2026): no Paid / Balance due lines --}}
-            <tr class="tot"><td colspan="3" class="blank"></td><td colspan="2" class="num lbl">Subtotal</td><td class="num amt">{{ number_format((float) $proforma->total_amount - $sst, 2) }}</td></tr>
-            <tr class="tot"><td colspan="3" class="blank"></td><td colspan="2" class="num lbl">SST {{ $sst > 0 ? $sstRate.'%' : '' }}</td><td class="num amt">{{ number_format($sst, 2) }}</td></tr>
-            <tr class="tot total"><td colspan="3" class="blank"></td><td colspan="2" class="num lbl">TOTAL</td><td class="num amt">RM {{ number_format((float) $proforma->total_amount, 2) }}</td></tr>
+            <tr class="tot"><td colspan="3" class="blank"></td><td colspan="2" class="num lbl">Sub Total (Excluding Tax)</td><td class="num amt">{{ number_format((float) $proforma->total_amount - $sst, 2) }}</td></tr>
+            <tr class="tot"><td colspan="3" class="blank"></td><td colspan="2" class="num lbl">SST {{ $sstRate }}%</td><td class="num amt">{{ number_format($sst, 2) }}</td></tr>
+            <tr class="tot total"><td colspan="3" class="blank"></td><td colspan="2" class="num lbl">Total</td><td class="num amt">RM {{ number_format((float) $proforma->total_amount, 2) }}</td></tr>
         </tbody>
     </table>
 

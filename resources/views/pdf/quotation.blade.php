@@ -45,10 +45,12 @@
         /* the pick-up / delivery mode as plain text, not a button (client, 6 Nov 2026) */
         .tag { font-size: 9.5px; font-weight: normal; text-transform: none; margin-left: 4px; }
         .tag:before { content: '· '; }
-        .terms { margin-top: 12px; page-break-inside: avoid; }
-        .terms .h { font-weight: bold; font-size: 10.5px; text-transform: uppercase; border-bottom: 1px solid #000; padding-bottom: 3px; margin-bottom: 4px; }
+        /* small print under the totals, as the invoice's (user, 13 Nov 2026): it stays on the page of the items instead of
+           taking a page of its own */
+        .terms { margin-top: 8px; page-break-inside: avoid; font-size: 8px; line-height: 1.3; }
+        .terms .h { font-weight: bold; font-size: 9px; text-transform: uppercase; border-bottom: 1px solid #000; padding-bottom: 2px; margin-bottom: 3px; }
         .terms ol { margin: 0; padding-left: 16px; }
-        .terms li { margin-bottom: 2px; }
+        .terms li { margin-bottom: 0; }
 
         /* table.items: pdf.partials.common (the order form's items table, used by every document) */
 
@@ -86,7 +88,10 @@
         $issuedBy = $quotation->issued_by_name ?: ($salesperson?->name ?? '');
         $rm = fn ($amount) => 'RM '.number_format((float) $amount, 2, '.', ',');
         $qty = fn ($value) => rtrim(rtrim(number_format((float) $value, 3, '.', ','), '0'), '.');
-        $contact = fn (?string $name, ?string $phone) => trim(implode(' · ', array_filter([$name, $phone]))) ?: '—';
+        // Tel / PIC on one line, the phone first (client, 13 Nov 2026)
+        $contact = fn (?string $name, ?string $phone) => \App\Support\AddressLines::telPic($phone, $name);
+        // every address in exactly three lines (client, 13 Nov 2026)
+        $address3 = fn (?string $value) => \App\Support\AddressLines::threeHtml($value, 34);
 
         $orderType = $quotation->orderType();
         $paymentTerm = trim(($orderType?->getLabel() ?? ($quotation->terms_of_payment ?: '—'))
@@ -111,10 +116,10 @@
         $dropOffLabel = $dropOffType && $dropOffType !== 'default' ? (\App\Enums\DropOffType::tryFrom((string) $dropOffType)?->getLabel() ?? ucfirst((string) $dropOffType)) : null;
         $stops = \App\Support\OrderStops::split($quotation->stops);
         // a pick-up / drop-off point's lines: party (PIC · tel), address, DO
-        $stopLines = function (array $stop, ?string $fallbackName): string {
-            $pic = trim(implode(' · ', array_filter([$stop['pic_name'] ?? null, $stop['pic_phone'] ?? null])));
+        $stopLines = function (array $stop, ?string $fallbackName) use ($address3): string {
+            $pic = trim(implode(' / ', array_filter([$stop['pic_phone'] ?? null, $stop['pic_name'] ?? null])));
             $lines = ['<b>'.e(($stop['name'] ?? null) ?: ($fallbackName ?: '—')).'</b>'.($pic !== '' ? ' <span class="muted">('.e($pic).')</span>' : '')];
-            $lines[] = nl2br(e($stop['location'] ?: '—'));
+            $lines[] = $address3($stop['location'] ?? null);
             if ($stop['do_number'] ?? null) {
                 $lines[] = '<span class="muted">DO '.e($stop['do_number']).'</span>';
             }
@@ -178,7 +183,7 @@
          Tel, Email) and the order details at the right, each its own compact table --}}
     <table class="two-info"><tbody><tr>
         <td>
-            @include('pdf.partials.bill-to', ['code' => $customer?->code, 'name' => $customer?->company_name, 'reg_no' => $customer?->brn, 'address' => $quotation->customer_address ?: $customer?->address, 'pic' => $quotation->attention ?: $customer?->attention, 'phone' => $quotation->customer_pic_phone ?: $customer?->phone, 'email' => $customer?->email])
+            @include('pdf.partials.bill-to', ['addressWidth' => 34, 'code' => $customer?->code, 'name' => $customer?->company_name, 'reg_no' => $customer?->brn, 'address' => $quotation->customer_address ?: $customer?->address, 'pic' => $quotation->attention ?: $customer?->attention, 'phone' => $quotation->customer_pic_phone ?: $customer?->phone, 'email' => $customer?->email])
         </td>
         <td>
             <table class="box">
@@ -197,17 +202,17 @@
             <table class="box">
                 <tr><th colspan="2">Consignor [{{ $consignorMode }}]@if ($stops['multi_pickup'] && $stops['pickup_stops'] !== []) <span class="tag">{{ count($stops['pickup_stops']) }} pick-up addresses</span>@endif</th></tr>
                 <tr><td class="k">Name</td><td class="v">{{ $quotation->consignor_name ?: ($quotation->portal_enquiry_id ? '—' : ($customer?->company_name ?? '—')) }}</td></tr>
-                <tr><td class="k">PIC / Tel</td><td class="v">{{ $contact($quotation->consignor_pic_name, $quotation->consignor_pic_phone) }}</td></tr>
+                <tr><td class="k">Tel / PIC</td><td class="v">{{ $contact($quotation->consignor_pic_name, $quotation->consignor_pic_phone) }}</td></tr>
                 @if ($stops['multi_pickup'] && $stops['pickup_stops'] !== [])
                     {{-- one consignor with several pick-up addresses (user, 30 Oct 2026): one numbered row each, address and DO --}}
                     @foreach ($stops['pickup_stops'] as $stop)
-                        <tr><td class="k">Pick-up {{ $loop->iteration }}</td><td class="v">{!! nl2br(e($stop['location'] ?: '—')) !!}@if ($stop['do_number'])<br><span class="muted">DO {{ $stop['do_number'] }}</span>@endif</td></tr>
+                        <tr><td class="k">Pick-up {{ $loop->iteration }}</td><td class="v">{!! $address3($stop['location'] ?? null) !!}@if ($stop['do_number'])<br><span class="muted">DO {{ $stop['do_number'] }}</span>@endif</td></tr>
                     @endforeach
                 @else
-                <tr><td class="k">Address</td><td class="v">{!! nl2br(e($consignorAddress ?: '—')) !!}</td></tr>
+                <tr><td class="k">Address</td><td class="v">{!! $address3($consignorAddress) !!}</td></tr>
                 @endif
                 @if ($dropOffStore !== '')<tr><td class="k">Drop off at</td><td class="v">{{ $dropOffStore }}</td></tr>@endif
-                @if ($quotation->fromLocation?->name)<tr><td class="k">Area</td><td class="v">{{ $quotation->fromLocation->name }}</td></tr>@endif
+                @if ($quotation->fromLocation?->name)<tr><td class="k">From Area</td><td class="v">{{ $quotation->fromLocation->name }}</td></tr>@endif
             </table>
         </td>
         <td>
@@ -219,10 +224,10 @@
                     @endforeach
                 @else
                 <tr><td class="k">Name</td><td class="v">{{ $quotation->consignee_name ?: ($quotation->destinations->sortBy('sequence')->first()?->consignee_name ?? '—') }}</td></tr>
-                <tr><td class="k">PIC / Tel</td><td class="v">{{ $contact($quotation->consignee_pic_name, $quotation->consignee_pic_phone) }}</td></tr>
-                <tr><td class="k">{{ $consigneeStore ? 'Store' : 'Address' }}</td><td class="v">{!! nl2br(e($consigneeAddress ?: '—')) !!}</td></tr>
+                <tr><td class="k">Tel / PIC</td><td class="v">{{ $contact($quotation->consignee_pic_name, $quotation->consignee_pic_phone) }}</td></tr>
+                <tr><td class="k">{{ $consigneeStore ? 'Store' : 'Address' }}</td><td class="v">{!! $address3($consigneeAddress) !!}</td></tr>
                 @endif
-                <tr><td class="k">Destination</td><td class="v">{{ $destination ?? '—' }}@if ($dropOffLabel) <span class="muted">· {{ $dropOffLabel }}</span>@endif</td></tr>
+                <tr><td class="k">To Area</td><td class="v">{{ $destination ?? '—' }}@if ($dropOffLabel) <span class="muted">· {{ $dropOffLabel }}</span>@endif</td></tr>
             </table>
         </td>
     </tr></tbody></table>
@@ -262,14 +267,14 @@
             @empty
                 <tr><td colspan="{{ $showAmounts ? 6 : 4 }}" class="c muted">No items</td></tr>
             @endforelse
-            {{-- Subtotal, SST, then Total, always (client, 6 Nov 2026) --}}
+            {{-- Sub Total (Excluding Tax), SST 6%, Total — the same words on every document (client, 13 Nov 2026) --}}
             @if ($showAmounts)
-                <tr class="tot"><td colspan="3" class="blank"></td><td colspan="2" class="num lbl">Subtotal</td><td class="num amt">{{ number_format($subtotal, 2) }}</td></tr>
+                <tr class="tot"><td colspan="3" class="blank"></td><td colspan="2" class="num lbl">Sub Total (Excluding Tax)</td><td class="num amt">{{ number_format($subtotal, 2) }}</td></tr>
                 @if ($minimumTopUp > 0)<tr class="tot"><td colspan="3" class="blank"></td><td colspan="2" class="num lbl">Minimum charge top-up</td><td class="num amt">{{ number_format($minimumTopUp, 2) }}</td></tr>@endif
-                <tr class="tot"><td colspan="3" class="blank"></td><td colspan="2" class="num lbl">SST {{ $sst > 0 ? $sstRate.'%' : '' }}</td><td class="num amt">{{ number_format($sst, 2) }}</td></tr>
+                <tr class="tot"><td colspan="3" class="blank"></td><td colspan="2" class="num lbl">SST {{ $sstRate }}%</td><td class="num amt">{{ number_format($sst, 2) }}</td></tr>
             @endif
             @if ($showAmounts)
-                <tr class="tot total"><td colspan="3" class="blank"></td><td colspan="2" class="num lbl">TOTAL</td><td class="num amt">{{ $rm($total) }}</td></tr>
+                <tr class="tot total"><td colspan="3" class="blank"></td><td colspan="2" class="num lbl">Total</td><td class="num amt">{{ $rm($total) }}</td></tr>
             @endif
         </tbody>
     </table>
@@ -284,7 +289,7 @@
             <li>Additional charges apply for waiting time, non-standard locations, construction sites and outskirt areas.</li>
             <li>Payment is due as per the payment term above; cash orders are payable before delivery.</li>
         </ol>
-        <div class="muted" style="margin-top:3px;font-size:9px">(Sample terms — the client's actual terms and conditions to follow.)</div>
+        <div class="muted" style="margin-top:2px;font-size:7.5px">(Sample terms — the client's actual terms and conditions to follow.)</div>
     </div>
 </body>
 </html>

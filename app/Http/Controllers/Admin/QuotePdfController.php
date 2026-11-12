@@ -58,7 +58,8 @@ class QuotePdfController
         ])->setPaper('a4');
 
         \App\Support\PdfPageNumbers::stamp($pdf); // Page X of Y bottom right (client, 5 Nov 2026)
-        return $pdf->stream($record->number.'.pdf');
+        // a number with slashes (QKL/3000-A001/2611) is not a file name: the download failed with an error page
+        return $pdf->stream(str_replace('/', '-', (string) $record->number).'.pdf');
     }
 
     /**

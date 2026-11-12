@@ -6,14 +6,14 @@
     @include('pdf.partials.common')
     <style>
         @page { margin: 30px 30px 40px; }
-        body { font-size: 11px; line-height: 1.4; }
+        body { font-size: 10.5px; line-height: 1.35; }
         h1 { font-size: 16px; margin: 0 0 4px; }
         h2 { font-size: 12px; margin: 14px 0 6px; border-bottom: 1px solid #000; padding-bottom: 3px; }
         .muted { color: #444; }
         .meta { width: 100%; margin-bottom: 10px; }
         .meta td { vertical-align: top; padding: 0 0 4px; }
         table.grid { width: 100%; border-collapse: collapse; margin-top: 4px; }
-        table.grid th, table.grid td { border: 1px solid #000; padding: 5px 6px; vertical-align: top; }
+        table.grid th, table.grid td { border: 1px solid #000; padding: 4px 6px; vertical-align: top; font-size: 10.5px; }
         table.grid th { text-align: left; font-weight: bold; background: #f0f0f0; text-transform: uppercase; font-size: 10px; }
         table.grid td.c, table.grid th.c { text-align: center; white-space: nowrap; }
         table.grid td.num, table.grid th.num { text-align: right; white-space: nowrap; }

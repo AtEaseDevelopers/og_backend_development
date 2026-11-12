@@ -30,7 +30,7 @@
                 <td class="lh-small">@if(filled($letterhead['sst_no'] ?? null))SST No. : {{ $letterhead['sst_no'] }}@endif</td>
             </tr></table>
         </div>
-    </td><td class="lh-qr">@if($qr)<img src="{{ $qr }}" alt="Barcode {{ $meta['number'] ?? '' }}"><div class="lh-qr-text">{{ $meta['number'] ?? '—' }}</div>@endif</td></tr></table>
+    </td><td class="lh-qr">@if(! empty($meta['paid']))<div class="lh-paid">PAID</div>@endif @if($qr)<img src="{{ $qr }}" alt="Barcode {{ $meta['number'] ?? '' }}"><div class="lh-qr-text">{{ $meta['number'] ?? '—' }}</div>@endif</td></tr></table>
     <div class="lh-rule"></div>
     <table class="lh-meta"><tr>
         {{-- one layout for the three payment types (user, 11 Nov 2026): the title at the left, the payment type at the right --}}
@@ -58,15 +58,15 @@
         </tr>
     </table>
 
-    <table class="inv-items inv-items-boxed">
+    <table class="items inv-items">
         <thead>
             <tr>
                 <th class="inv-col-no">No.</th>
                 <th class="inv-col-date">Date</th>
                 <th class="inv-col-csn">CSN</th>
                 <th class="inv-col-ref">Customer D/O</th>
-                <th class="inv-col-area">From</th>
-                <th class="inv-col-area">To</th>
+                <th class="inv-col-area">From Area</th>
+                <th class="inv-col-area">To Area</th>
                 <th class="inv-col-consignee">Consignee</th>
                 <th class="inv-col-goods">Item</th>
                 <th class="inv-col-amt">Amount (RM)</th>
@@ -112,11 +112,11 @@
             <td class="inv-totals-cell">
                 <table class="inv-totals inv-totals-boxed">
                     <tr>
-                        <td class="inv-totals-label">Sub total (excluding SST)</td>
+                        <td class="inv-totals-label">Sub Total (Excluding Tax)</td>
                         <td class="inv-totals-value">{{ $totals['subtotal_excl_tax'] ?? '' }}</td>
                     </tr>
                     <tr>
-                        <td class="inv-totals-label">{{ $totals['tax_label'] ?? 'SST' }}</td>
+                        <td class="inv-totals-label">{{ $totals['tax_label'] ?? 'SST 6%' }}</td>
                         <td class="inv-totals-value">{{ filled($totals['tax_amount'] ?? null) ? $totals['tax_amount'] : '0.00' }}</td>
                     </tr>
                     <tr class="inv-totals-grand">
