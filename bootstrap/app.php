@@ -12,6 +12,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->api(append: [\App\Http\Middleware\LogApiCall::class]);
         $middleware->alias([
             'portal.context' => \App\Http\Middleware\EnsurePortalContext::class,
             'portal.guard' => \App\Http\Middleware\UsePortalGuard::class,
