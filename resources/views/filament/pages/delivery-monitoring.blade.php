@@ -139,7 +139,7 @@
                         <th>Company</th>
                         <th>Driver</th>
                         <th>Lorry</th>
-                        <th>Destination</th>
+                        <th>Area</th>
                         <th>Delivery Date</th>
                         <th>Status</th>
                     </tr>
@@ -207,7 +207,7 @@
                             <th>Company</th>
                             <th>Driver</th>
                             <th>Lorry</th>
-                            <th>Destination</th>
+                            <th>Area</th>
                             <th>Current Status</th>
                         </tr>
                     </thead>

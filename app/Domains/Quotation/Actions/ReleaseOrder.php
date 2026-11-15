@@ -134,7 +134,7 @@ class ReleaseOrder
 
     private function assertAuthorised(User $actor): void
     {
-        if ($actor->is_hq || $actor->hasAnyRole(['super_admin', 'branch_admin', 'branch_manager', 'finance'])) {
+        if (\App\Support\Permissions::allows('orders.release', $actor)) {
             return;
         }
 

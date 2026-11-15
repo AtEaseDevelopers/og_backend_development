@@ -68,7 +68,7 @@ class QuotationPdfController
                 $destination->consignee_name,
             ])->filter()->first();
 
-            return $label ?: Str::limit($destination->address ?? 'Destination', 28);
+            return $label ?: Str::limit($destination->address ?? 'Area', 28);
         })->all();
 
         $rows = [];

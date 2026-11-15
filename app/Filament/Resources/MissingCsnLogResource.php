@@ -13,6 +13,14 @@ use Filament\Tables\Table;
 
 class MissingCsnLogResource extends Resource
 {
+    use \App\Filament\Concerns\HasModulePermissions;
+
+    /** Open to the roles ticked for "csn.view" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canViewAny(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     protected static ?string $model = MissingCsnLog::class;
 
     protected static ?string $tenantOwnershipRelationshipName = 'company';

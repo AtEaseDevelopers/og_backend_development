@@ -40,7 +40,7 @@
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="3" class="py-3 text-gray-500">No master prices for current destinations.</td></tr>
+                            <tr><td colspan="3" class="py-3 text-gray-500">No master prices for current areas.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
@@ -102,7 +102,7 @@
                 <thead>
                     <tr class="border-b border-amber-200 dark:border-amber-800">
                         <th class="py-1.5 pr-2 font-medium">Measurement</th>
-                        <th class="py-1.5 pr-2 font-medium">Destination</th>
+                        <th class="py-1.5 pr-2 font-medium">Area</th>
                         <th class="py-1.5 pr-2 font-medium">UOM</th>
                         <th class="py-1.5 pr-2 font-medium">Route</th>
                         <th class="py-1.5 pr-2 font-medium text-right">Price</th>

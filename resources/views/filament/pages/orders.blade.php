@@ -27,7 +27,10 @@
             @if (\App\Filament\Pages\CashBillCalculator::canAccess())
                 <a href="{{ \App\Filament\Pages\CashBillCalculator::getUrl() }}" class="ow-btn">Cash Bill Payment (Counter Use)</a>
             @endif
-            <a href="{{ $this->createUrl() }}" class="ow-btn ow-btn-primary">+ Create order for customer</a>
+            {{-- only with the Orders · Create tick (Roles & Permission, 16 Nov 2026) --}}
+            @if (\App\Support\Permissions::allows('orders.create'))
+                <a href="{{ $this->createUrl() }}" class="ow-btn ow-btn-primary">+ Create order for customer</a>
+            @endif
         </div>
     </div>
 
@@ -369,7 +372,7 @@
                                         <svg x-show="! ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                                         <svg x-show="ok" x-cloak viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
                                     </button>
-                                    @if (($row['kind'] ?? '') === 'order')
+                                    @if (($row['kind'] ?? '') === 'order' && \App\Support\Permissions::allows('orders.create'))
                                         {{-- a new order prefilled from this one (user, 27 Oct 2026) --}}
                                         <a href="{{ \App\Filament\Pages\CreateOrder::getUrl().'?duplicate='.$row['id'] }}" class="ow-dup" title="A new order with the same details">Duplicate</a>
                                     @endif

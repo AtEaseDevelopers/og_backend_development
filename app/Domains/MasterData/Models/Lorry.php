@@ -13,7 +13,7 @@ class Lorry extends Model
 
     protected $fillable = [
         'company_id', 'branch_id', 'registration_no', 'type', 'capacity',
-        'default_driver_id', 'status', 'is_active',
+        'default_driver_id', 'status', 'is_active', 'lorry_company_id',
     ];
 
     protected function casts(): array
@@ -33,6 +33,12 @@ class Lorry extends Model
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    /** The company the lorry belongs to (Master Data → Lorry Companies; client, 16 Nov 2026). */
+    public function lorryCompany(): BelongsTo
+    {
+        return $this->belongsTo(LorryCompany::class);
     }
 
     public function defaultDriver(): BelongsTo

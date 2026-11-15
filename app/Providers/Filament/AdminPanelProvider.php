@@ -94,6 +94,9 @@ class AdminPanelProvider extends PanelProvider
                     ->name('consignment-notes.pdf');
                 Route::get('/invoices/{invoice}/pdf', InvoicePdfController::class)
                     ->name('invoices.pdf');
+                // Other Invoice (16 Nov 2026)
+                Route::get('/other-invoices/{otherInvoice}/pdf', \App\Http\Controllers\Admin\OtherInvoicePdfController::class)
+                    ->name('other-invoices.pdf');
                 Route::get('/proforma-invoices/{proformaInvoice}/pdf', \App\Http\Controllers\Admin\ProformaInvoicePdfController::class)
                     ->name('proforma-invoices.pdf');
                 Route::get('/ocr-uploads/{ocrUpload}/document', OcrUploadDocumentController::class)

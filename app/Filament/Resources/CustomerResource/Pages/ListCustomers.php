@@ -20,9 +20,16 @@ class ListCustomers extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
+            // every customer's special prices in one workbook, in the layout the import reads (client, 16 Nov 2026):
+            // export, amend the prices in Excel in bulk, then import the amended file
+            Actions\Action::make('exportSpecialPrice')
+                ->label('Export special price')
+                ->icon('heroicon-o-arrow-down-tray')
+                ->color('gray')
+                ->action(fn () => \App\Support\SpecialPriceExport::downloadAll()),
             // the customers' Special Price workbook (user, 4 Nov 2026): checked on upload, then replace or add
             \App\Filament\Actions\ImportPriceListAction::make('importSpecialPrice')
-                ->label('Import special price')
+                ->label('Import amended special price')
                 ->modalHeading('Import special price')
                 ->modalDescription('Upload the O&G Customer Pricing Setup — Special Price workbook (one sheet per customer, named by its debtor code). The file is checked first; then choose whether it replaces the current special prices of the customers in the file or only adds to them. A price agreed in an accepted quotation always stays.')
                 ->visible(fn () => \App\Filament\Resources\UomResource::canCreate()),

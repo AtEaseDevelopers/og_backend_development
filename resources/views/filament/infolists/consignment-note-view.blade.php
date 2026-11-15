@@ -19,7 +19,7 @@
         <div class="csn-card-title">CSN Overview</div>
         <div class="csn-grid-4">
             <div class="csn-field"><div class="csn-label">Quotation</div><div class="csn-value">{{ $display($overview['quotation'] ?? null) }}</div></div>
-            <div class="csn-field"><div class="csn-label">Destination</div><div class="csn-value">{{ $display($overview['destination'] ?? null) }}</div></div>
+            <div class="csn-field"><div class="csn-label">Area</div><div class="csn-value">{{ $display($overview['destination'] ?? null) }}</div></div>
             <div class="csn-field"><div class="csn-label">CSN No.</div><div class="csn-value font-semibold">{{ $display($overview['number'] ?? null) }}</div></div>
             <div class="csn-field"><div class="csn-label">CSN Date</div><div class="csn-value">{{ $display($overview['issued_at'] ?? null) }}</div></div>
             <div class="csn-field"><div class="csn-label">Customer Reference DO Number</div><div class="csn-value">{{ $display($overview['customer_do_number'] ?? null) }}</div></div>
@@ -103,8 +103,8 @@
                 <div class="csn-field"><div class="csn-label">Marking</div><div class="csn-value">{{ $display($charges['marking'] ?? null) }}</div></div>
                 <div class="csn-divider"></div>
                 <div class="csn-subsection-title">Transport Charges</div>
-                <div class="csn-field"><div class="csn-label">Destinations</div><div class="csn-value">{{ ($charges['destinations'] ?? []) !== [] ? implode(', ', $charges['destinations']) : '—' }}</div></div>
-                <div class="csn-field"><div class="csn-label">Bill to destination</div><div class="csn-value">{{ $display($charges['charge_column'] ?? null) }}</div></div>
+                <div class="csn-field"><div class="csn-label">Areas</div><div class="csn-value">{{ ($charges['destinations'] ?? []) !== [] ? implode(', ', $charges['destinations']) : '—' }}</div></div>
+                <div class="csn-field"><div class="csn-label">Bill to area</div><div class="csn-value">{{ $display($charges['charge_column'] ?? null) }}</div></div>
                 <div class="csn-field"><div class="csn-label">Additional pickup task</div><div class="csn-value">{{ ($charges['has_additional_task'] ?? false) ? 'Yes' : 'No' }}</div></div>
             </div>
         </div>

@@ -13,7 +13,7 @@ use Symfony\Component\HttpFoundation\Response;
 
 /**
  * The PDF of a Purchase Order (PO) in the client's layout (user, 27 Oct 2026): the company name on top, the supplier
- * (the lorry company of the lorry's driver) on the left with P/O No, Date, Lorry Group, Supplier code, GST ID No. and
+ * (the lorry company of the lorry's driver) on the left with P/O No, Date, Supplier code and
  * Page No. on the right, then a section per lorry — Job No. | Job Date | Description | Amount, Sub Total RM — and
  * the Total RM. A PO covers every slip of the batch with the same lorry company (one supplier, several lorries).
  */
@@ -57,7 +57,6 @@ class CommissionPoPdfController
             'po' => [
                 'number' => $record->purchaseOrder?->po_number ?? $record->number,
                 'date' => ($record->batch?->cutoff_date ?? $record->created_at)?->format('d/m/Y'),
-                'lorry_group' => (string) ($driver?->lorry_group ?: ''),
                 'supplier_code' => $supplierCode,
                 'supplier_name' => strtoupper((string) ($driver?->lorry_company ?: $driver?->name ?: '')),
                 'gst' => '',

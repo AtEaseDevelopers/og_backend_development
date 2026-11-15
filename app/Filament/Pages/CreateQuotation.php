@@ -31,6 +31,12 @@ use Throwable;
  */
 class CreateQuotation extends CreateOrder
 {
+    /** Open to the roles ticked for "quotations.view" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canAccess(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     protected static ?string $slug = 'quotations/new';
 
     /** Editing a quotation (?quote=id): its id. */
@@ -171,7 +177,7 @@ class CreateQuotation extends CreateOrder
         $companyId = CurrentCompany::id();
         $customers = Customer::query()->when($companyId, fn ($q, $id) => $q->where('company_id', $id))->where('status', 'active')->orderBy('company_name')->get(['id', 'code', 'company_name'])
             ->mapWithKeys(fn (Customer $c) => ['customer:'.$c->id => ['label' => trim(($c->code ? $c->code.' — ' : '').$c->company_name), 'lead' => false]]);
-        $leads = Lead::query()->when($companyId, fn ($q, $id) => $q->where('company_id', $id))->whereNull('customer_id')->orderBy('name')->get(['id', 'name'])
+        $leads = Lead::query()->when($companyId, fn ($q, $id) => $q->where('company_id', $id))->whereNull('customer_id')->where('is_active', true)->orderBy('name')->get(['id', 'name'])
             ->mapWithKeys(fn (Lead $lead) => ['lead:'.$lead->id => ['label' => $lead->name, 'lead' => true]]);
 
         return $leads->all() + $customers->all();
@@ -241,6 +247,24 @@ class CreateQuotation extends CreateOrder
             $this->form['customer_pic_phone'] = (string) $lead->contact;
             $this->syncConsignorPic($previousPic);
         }
+    }
+
+    /**
+     * "History" at the top of the Edit quotation page (user, 16 Nov 2026): every save that changed something — when,
+     * who, and each field from which value to which value.
+     */
+    public function historyAction(): Action
+    {
+        return Action::make('history')
+            ->label('History')
+            ->modalHeading(fn () => 'History of '.($this->quoteNumber() ?? 'the quotation'))
+            ->modalDescription('The changes saved on this quotation, the latest first.')
+            ->modalContent(fn () => view('filament.pages.partials.quote-history', [
+                'history' => $this->quoteId ? \App\Support\QuoteChangeLog::history($this->quoteId) : collect(),
+            ]))
+            ->modalWidth(MaxWidth::FourExtraLarge)
+            ->modalSubmitAction(false)
+            ->modalCancelActionLabel('Close');
     }
 
     /** "+ New lead": added to Master Data → Leads and picked for this quotation. */
@@ -540,7 +564,11 @@ class CreateQuotation extends CreateOrder
                     throw new InvalidArgumentException('Quotation '.$quote->number.' is already an order.');
                 }
 
-                // numbered when first saved, from its customer and month (Quote::booted)
+                // what was saved before, to record what this save changes (the History window)
+                $before = $quote ? \App\Support\QuoteChangeLog::snapshot($quote) : null;
+
+                // numbered when first saved, from its customer and month (Quote::booted); an edited quotation always
+                // keeps its number, whatever is changed on it (user, 16 Nov 2026)
                 $quote ??= new Quote([
                     'status' => Quote::PENDING,
                     'created_by' => auth()->id(),
@@ -566,6 +594,10 @@ class CreateQuotation extends CreateOrder
                     'pairs' => $this->quotePairs(),
                     'total_amount' => $this->pairTotals()['total'],
                 ])->save();
+
+                if ($before !== null) {
+                    \App\Support\QuoteChangeLog::record($quote->fresh(), $before, auth()->id());
+                }
 
                 return $quote;
             });

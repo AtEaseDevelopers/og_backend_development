@@ -27,7 +27,7 @@ class AssignEnquirySalesperson
         }
 
         if ($enquiry->salesperson_locked && $enquiry->salesperson_id && (int) $enquiry->salesperson_id !== (int) $salesperson->id) {
-            if (! ($actor?->isSuperadmin())) {
+            if (! \App\Support\Permissions::allows('orders.reassign_salesperson', $actor)) {
                 throw new InvalidArgumentException('This enquiry is locked to '.$enquiry->salesperson?->name.' and cannot be reassigned.');
             }
         }

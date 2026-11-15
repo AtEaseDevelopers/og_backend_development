@@ -11,8 +11,16 @@ use Illuminate\Support\Str;
 class CustomerForm
 {
     /**
-     * One page, no tabs (user, 25 Oct 2026): a section per part, with every column of the client's Customer
-     * Information workbook (debtor code to MSIC 3) as a field. The special prices are a tab on the view page only.
+     * The customer form in the client's "Customer Master Data V2" (user, 16 Nov 2026): three groups — ACCOUNT (debtor
+     * account code, debtor type Cash / Credit / COD, company name and registration no., billing address and postcode,
+     * attention and phones, email, GST / SST / tax code / TIN / MSIC), CREDIT TERM (credit term, credit limit, aging on,
+     * statement type) and NOTES (account opening date, mailing address, mailing statement remarks, internal office
+     * note) — laid out several fields a row so the page needs little scrolling. The few things the system itself needs
+     * and the document does not list (status, salesperson, charge SST, the portal switches) sit in the same rows;
+     * pricing consent, the customer's own locations and the portal login are closed sections at the end. Fields the
+     * document dropped (area code, control account, group company, delivery address, fax, website, display term,
+     * currency, credit control, discount, e-invoice buyer details …) are no longer on the form; their stored values
+     * stay, and the e-invoice falls back to the company name, TIN, registration no. and billing address.
      */
     public static function configure(Form $form): Form
     {
@@ -24,19 +32,37 @@ class CustomerForm
                 ->default(fn () => \App\Support\CurrentCompany::branchId())
                 ->required(),
 
-            static::section('Account', 'heroicon-o-identification', static::accountFields()),
-            static::section('Address', 'heroicon-o-map-pin', static::addressFields()),
-            static::section('Contact', 'heroicon-o-phone', static::contactFields()),
-            static::section('Credit & statement', 'heroicon-o-banknotes', static::creditFields()),
-            static::section('Tax & e-invoice', 'heroicon-o-receipt-percent', static::taxFields()),
-            static::section('Notes', 'heroicon-o-chat-bubble-bottom-center-text', static::noteFields()),
-            static::section('Order type & pricing consent', 'heroicon-o-document-check', static::consentFields())
-                ->description('Credit-term customers may hold a consent letter so approved special prices proceed without another customer confirmation.'),
+            // one panel as the client's AutoCount screen (16 Nov 2026), not a card per part: the account on top, the
+            // address at the left and the contact at the right, then tax, credit term and notes under thin rules —
+            // the same fields, only laid out differently
+            static::section('Customer', 'heroicon-o-identification', [
+                ...static::accountFields(),
+                static::rule(),
+                ...static::contactFields(),
+                static::rule('Tax'),
+                ...static::taxFields(),
+                static::rule('Credit term'),
+                ...static::creditFields(),
+                static::rule('Notes'),
+                ...static::noteFields(),
+            ]),
+            // not in the document, but used by the e-invoice sent to LHDN and by the customer's own portal profile
+            // (user, 16 Nov 2026: a field used elsewhere stays): a closed section; blank = the account's own details
+            static::section('E-invoice buyer (MyInvois)', 'heroicon-o-receipt-percent', static::einvoiceFields())
+                ->description('Leave blank to use the company name, TIN no., registration no. and billing address above.')
+                ->collapsible()
+                ->collapsed(),
+            static::section('Pricing consent', 'heroicon-o-document-check', static::consentFields())
+                ->description('A credit customer may hold a consent letter so approved special prices proceed without another customer confirmation.')
+                ->collapsible()
+                ->collapsed(),
             static::section('Customer branch / delivery locations', 'heroicon-o-users', static::listFields())
                 ->collapsible()
-                ->collapsed(fn (string $operation) => $operation === 'edit'),
+                ->collapsed(),
             static::section('Customer portal access', 'heroicon-o-key', static::portalLoginFields())
                 ->description('Creates a login for the customer portal (/portal).')
+                ->collapsible()
+                ->collapsed()
                 ->visibleOn('create'),
         ]);
     }
@@ -44,38 +70,68 @@ class CustomerForm
     /** @param  list<Forms\Components\Component>  $schema */
     private static function section(string $heading, string $icon, array $schema): Forms\Components\Section
     {
-        return Forms\Components\Section::make($heading)->icon($icon)->schema($schema)->columnSpanFull();
+        return Forms\Components\Section::make($heading)->icon($icon)->schema($schema)->compact()->columnSpanFull();
     }
 
-    /** @return list<Forms\Components\Component> */
+    /** A thin rule between the parts of the one panel, with the part's name when it has one. */
+    private static function rule(?string $title = null): Forms\Components\Placeholder
+    {
+        return Forms\Components\Placeholder::make('rule_'.md5((string) $title))
+            ->hiddenLabel()
+            ->content(new \Illuminate\Support\HtmlString(
+                '<div style="border-top:1px solid rgb(229 231 235);margin:.1rem 0 -.35rem;padding-top:.45rem;font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:rgb(100 116 139)">'.e((string) $title).'</div>'
+            ))
+            ->columnSpanFull();
+    }
+
+    /** Debtor type (the document's Cash / Credit / COD): the customer's order type; Credit makes it a credit customer. */
+    public static function debtorTypes(): array
+    {
+        return ['cash' => 'Cash', 'term' => 'Credit', 'cod' => 'COD'];
+    }
+
+    /**
+     * The identity of the account and the settings the system needs beside it.
+     *
+     * @return list<Forms\Components\Component>
+     */
     public static function accountFields(): array
     {
         return [
-            Forms\Components\Grid::make(3)->schema([
+            Forms\Components\Grid::make(12)->schema([
                 Forms\Components\TextInput::make('code')
-                    ->label('Debtor code')
+                    ->label('Debtor account code')
+                    ->placeholder('Blank = auto')
                     ->maxLength(50)
                     ->unique(ignoreRecord: true)
-                    ->helperText('Leave blank to auto-generate.'),
+                    ->columnSpan(2),
                 Forms\Components\TextInput::make('company_name')
                     ->label('Company name')
                     ->required()
                     ->maxLength(255)
-                    ->columnSpan(2),
+                    ->columnSpan(5),
                 Forms\Components\TextInput::make('brn')
-                    ->label('Company registration no. (BRN)')
-                    ->maxLength(50),
-                Forms\Components\TextInput::make('area')
-                    ->label('Area code')
-                    ->maxLength(100),
-                Forms\Components\TextInput::make('debtor_type')
-                    ->label('Debtor type')
+                    ->label('Company registration no.')
                     ->maxLength(50)
-                    ->helperText('As in AutoCount, e.g. TD.'),
-                Forms\Components\TextInput::make('control_account')
-                    ->label('Control account')
-                    ->placeholder('300-D001')
-                    ->maxLength(50),
+                    ->columnSpan(3),
+                // Cash / Credit / COD (the document): kept as the customer's order type; Credit = a credit customer
+                // (Customer::booted keeps is_credit in step)
+                Forms\Components\Select::make('default_order_type')
+                    ->label('Debtor type')
+                    ->options(static::debtorTypes())
+                    ->default('cash')
+                    ->selectablePlaceholder(false)
+                    ->native(true)
+                    ->required()
+                    ->columnSpan(2),
+                Forms\Components\Select::make('status')
+                    ->label('Status')
+                    ->options(['active' => 'Active', 'inactive' => 'Inactive'])
+                    ->default('active')
+                    ->selectablePlaceholder(false)
+                    ->native(true)
+                    ->required()
+                    ->columnSpan(2),
                 Forms\Components\Select::make('salesperson_id')
                     ->label('Salesperson')
                     ->options(fn () => User::query()
@@ -85,61 +141,31 @@ class CustomerForm
                         ->orderBy('name')
                         ->pluck('name', 'id'))
                     ->searchable()
-                    ->preload(),
+                    ->preload()
+                    ->columnSpan(3),
                 Forms\Components\Placeholder::make('branch_label')
                     ->label('O&G company')
-                    ->content(fn () => \App\Support\CurrentCompany::get()?->getFilamentName() ?? '—'),
-                Forms\Components\Select::make('status')
-                    ->label('Status')
-                    ->options(['active' => 'Active', 'inactive' => 'Inactive'])
-                    ->default('active')
-                    ->selectablePlaceholder(false)
-                    ->required(),
-                Forms\Components\Toggle::make('is_group_company')
-                    ->label('Group company')
+                    ->content(fn () => \App\Support\CurrentCompany::get()?->getFilamentName() ?? '—')
+                    ->columnSpan(3),
+                Forms\Components\Toggle::make('email_notifications')
+                    ->label('Email notifications')
+                    ->default(true)
+                    ->inline(false)
+                    ->columnSpan(2),
+                Forms\Components\Toggle::make('portal_approved')
+                    ->label('Portal approved')
                     ->default(false)
-                    ->inline(false),
+                    ->inline(false)
+                    ->visibleOn('edit')
+                    ->columnSpan(2),
             ]),
         ];
     }
 
-    /** @return list<Forms\Components\Component> */
-    private static function addressFields(): array
-    {
-        return [
-            Forms\Components\Grid::make(2)->schema([
-                Forms\Components\Group::make([
-                    Forms\Components\Textarea::make('address')
-                        ->label('Address (address 1 – 4)')
-                        ->rows(4),
-                    Forms\Components\TextInput::make('postcode')->label('Postcode')->maxLength(20),
-                ]),
-                Forms\Components\Group::make([
-                    Forms\Components\Textarea::make('delivery_address_text')
-                        ->label('Delivery address (deliver address 1 – 4)')
-                        ->rows(4)
-                        ->dehydrated(false),
-                    Forms\Components\Grid::make(3)->schema([
-                        Forms\Components\TextInput::make('delivery_postcode')
-                            ->label('Deliver postcode')
-                            ->dehydrated(false),
-                        Forms\Components\TextInput::make('delivery_state')
-                            ->label('State')
-                            ->dehydrated(false),
-                        Forms\Components\TextInput::make('delivery_city')
-                            ->label('City')
-                            ->dehydrated(false),
-                    ]),
-                ]),
-            ]),
-        ];
-    }
-
-    /** @return list<Forms\Components\Component> */
     /**
-     * The customer's contact (user, 10 Nov 2026): a list of PICs, each a PIC name and a contact number as on the
-     * Create order page (one row to start, "+ Add PIC" for more; the first is the default), then the other contact
-     * details. $relationship false: a plain list the caller saves (the Contact card's Edit window).
+     * Billing address and contact: the billing address and postcode, mobile and email, and the list of attention
+     * names with their phones (the first row is the Attention and Phone 1 of the document, the second Phone 2; the
+     * first is the default on new orders). $relationship false: a plain list the caller saves (the view page's card).
      *
      * @return list<Forms\Components\Component>
      */
@@ -148,7 +174,7 @@ class CustomerForm
         // shown as a table (user, 10 Nov 2026): a header row, one line per PIC with its remove button, and only the
         // rows scroll when the list grows, so the window does not get longer
         $head = Forms\Components\Placeholder::make('pic_table_head')
-            ->label('PIC name & contact number')
+            ->label('Attention & phone')
             ->content(new \Illuminate\Support\HtmlString(<<<'HTML'
                 <style>
                     .og-pic-head { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; padding: .45rem 2.75rem .45rem .75rem; margin-bottom: -1.5rem;
@@ -166,7 +192,7 @@ class CustomerForm
                     .dark .og-pic-table > ul { border-color: rgb(55 65 81); }
                     .dark .og-pic-table li.fi-fo-repeater-item { border-top-color: rgb(55 65 81); }
                 </style>
-                <div class="og-pic-head"><span>PIC name</span><span>Contact number</span></div>
+                <div class="og-pic-head"><span>Attention</span><span>Phone</span></div>
                 HTML))
             ->columnSpanFull();
 
@@ -174,14 +200,14 @@ class CustomerForm
             ->hiddenLabel()
             ->schema([
                 ...($relationship ? [] : [Forms\Components\Hidden::make('id')]),
-                Forms\Components\TextInput::make('name')->label('PIC name')->placeholder('PIC name')->maxLength(255),
-                Forms\Components\TextInput::make('phone')->label('Contact number')->placeholder('Contact number')->tel()->maxLength(50),
+                Forms\Components\TextInput::make('name')->label('Attention')->placeholder('Attention')->maxLength(255),
+                Forms\Components\TextInput::make('phone')->label('Phone')->placeholder('Phone')->tel()->maxLength(50),
             ])
             ->columns(2)
             ->defaultItems(1)
             ->reorderable(false)
-            ->addActionLabel('+ Add PIC')
-            ->helperText('The first PIC is the default one on new orders.')
+            ->addActionLabel('+ Add phone')
+            ->helperText('Row 1 = Attention and Phone 1, row 2 = Phone 2. The first is the default on new orders.')
             ->extraAttributes(['class' => 'og-pic-table'])
             ->columnSpanFull();
 
@@ -190,98 +216,22 @@ class CustomerForm
         }
 
         return [
-            $head,
-            $pics,
-            Forms\Components\Grid::make(4)->schema([
-                Forms\Components\TextInput::make('business_nature')->label('Business nature')->maxLength(255),
-                Forms\Components\TextInput::make('fax')->label('Fax')->tel()->maxLength(50),
-                Forms\Components\TextInput::make('email')->label('Email address')->email()->maxLength(255),
-                Forms\Components\TextInput::make('website')->label('Website')->url()->maxLength(255),
-                Forms\Components\Toggle::make('email_notifications')
-                    ->label('Email notifications')
-                    ->default(true)
-                    ->inline(false),
-                Forms\Components\Toggle::make('portal_approved')
-                    ->label('Portal approved')
-                    ->default(false)
-                    ->inline(false)
-                    ->visibleOn('edit'),
-            ]),
-        ];
-    }
-
-    /** @return list<Forms\Components\Component> */
-    public static function creditFields(): array
-    {
-        return [
-            Forms\Components\Grid::make(4)->schema([
-                Forms\Components\TextInput::make('display_term')
-                    ->label('Display term')
-                    ->placeholder('30 DAYS')
-                    ->maxLength(50),
-                Forms\Components\Select::make('credit_term_days')
-                    ->label('Credit term')
-                    ->options(static::creditTermOptions())
-                    ->default(0)
-                    ->required(),
-                Forms\Components\Select::make('aging_on')
-                    ->label('Aging on')
-                    ->options([
-                        'invoice_date' => 'Invoice date (I)',
-                        'due_date' => 'Due date (D)',
-                    ])
-                    ->default('due_date')
-                    ->required(),
-                Forms\Components\Select::make('statement_type')
-                    ->label('Statement type')
-                    ->options([
-                        'open_item' => 'Open item (O)',
-                        'balance_forward' => 'Balance forward (B)',
-                        'no_statement' => 'No statement (N)',
-                    ])
-                    ->default('open_item')
-                    ->required(),
-                Forms\Components\Select::make('currency')
-                    ->options(static::currencyOptions())
-                    ->default('MYR')
-                    ->required(),
-                Forms\Components\Toggle::make('is_credit')
-                    ->label('Credit customer')
-                    ->default(false)
-                    ->inline(false)
-                    ->live(),
-                Forms\Components\TextInput::make('credit_limit')
-                    ->numeric()
-                    ->prefix('RM')
-                    ->default(0)
-                    ->visible(fn (Get $get): bool => (bool) $get('is_credit')),
-                Forms\Components\TextInput::make('credit_overdue_limit')
-                    ->label('Credit term overdue limit')
-                    ->numeric()
-                    ->prefix('RM')
-                    ->visible(fn (Get $get): bool => (bool) $get('is_credit')),
-                Forms\Components\Select::make('credit_control')
-                    ->options(static::creditControlOptions())
-                    ->default('controlled_by_credit_term')
-                    ->visible(fn (Get $get): bool => (bool) $get('is_credit')),
-                Forms\Components\Select::make('credit_control_scope')
-                    ->label('Apply credit control on')
-                    ->options([
-                        'all_documents' => 'All documents',
-                        'per_document' => 'Different per document',
-                    ])
-                    ->default('all_documents')
-                    ->visible(fn (Get $get): bool => (bool) $get('is_credit')),
-                Forms\Components\TextInput::make('discount_percent')
-                    ->label('Discount %')
-                    ->numeric()
-                    ->suffix('%'),
-                Forms\Components\TextInput::make('price_category')
-                    ->label('Price category')
-                    ->maxLength(50),
-                Forms\Components\TextInput::make('account_group')
-                    ->label('Account group')
-                    ->maxLength(50),
+            // two columns as the client's AutoCount screen (16 Nov 2026): the address at the left, the people and
+            // numbers to reach at the right
+            Forms\Components\Grid::make(2)->schema([
+                Forms\Components\Group::make([
+                    Forms\Components\Textarea::make('address')->label('Billing address')->rows(5),
+                    Forms\Components\Grid::make(2)->schema([
+                        Forms\Components\TextInput::make('postcode')->label('Postcode')->maxLength(20),
+                    ]),
+                ]),
+                Forms\Components\Group::make([
+                    Forms\Components\Group::make([$head, $pics]),
+                    Forms\Components\Grid::make(2)->schema([
+                        Forms\Components\TextInput::make('mobile')->label('Mobile no.')->tel()->maxLength(50),
+                        Forms\Components\TextInput::make('email')->label('Email address')->email()->maxLength(255),
+                    ]),
+                ]),
             ]),
         ];
     }
@@ -292,67 +242,82 @@ class CustomerForm
         return [
             Forms\Components\Grid::make(4)->schema([
                 Forms\Components\TextInput::make('gst_no')->label('GST no.')->maxLength(50),
-                Forms\Components\TextInput::make('sst_registration_no')
-                    ->label('SST no.')
-                    ->maxLength(50),
+                Forms\Components\TextInput::make('sst_registration_no')->label('SST no.')->maxLength(50),
                 Forms\Components\TextInput::make('tax_type')
-                    ->label('Tax code')
+                    ->label('SST tax code')
                     ->placeholder('SV-6')
                     ->maxLength(50),
-                // the customer's orders carry SST (user, 3 Nov 2026): Order Quotation, Proforma, Cash Bill / Invoice
-                Forms\Components\Toggle::make('charges_sst')
-                    ->label('Charge SST')
-                    ->helperText(fn () => 'SST at '.rtrim(rtrim(number_format((float) config('og.sst_rate', 6), 2, '.', ''), '0'), '.').'% on this customer\'s orders.')
-                    ->default(false)
-                    ->inline(false),
-                Forms\Components\TextInput::make('tin')
-                    ->label('TIN no.')
-                    ->maxLength(50)
-                    ->live(onBlur: true)
-                    ->afterStateUpdated(fn (Forms\Set $set, ?string $state) => $set('einvoice_tin', $state)),
+                Forms\Components\TextInput::make('tin')->label('TIN no.')->maxLength(50),
                 Forms\Components\TextInput::make('msic_code')->label('MSIC 1')->maxLength(20),
                 Forms\Components\TextInput::make('msic_code_2')->label('MSIC 2')->maxLength(20),
                 Forms\Components\TextInput::make('msic_code_3')->label('MSIC 3')->maxLength(20),
-                Forms\Components\TextInput::make('einvoice_tin')
-                    ->label('E-invoice TIN')
-                    ->maxLength(50),
-                Forms\Components\Select::make('business_type')
-                    ->options([
-                        'company' => 'Company',
-                        'individual' => 'Individual',
-                        'government' => 'Government',
-                        'foreign' => 'Foreign buyer',
-                    ])
-                    ->searchable(),
+                // the customer's orders carry SST (user, 3 Nov 2026): Order Quotation, Proforma, Cash Bill / Invoice
+                Forms\Components\Toggle::make('charges_sst')
+                    ->label(fn () => 'Charge SST '.rtrim(rtrim(number_format((float) config('og.sst_rate', 6), 2, '.', ''), '0'), '.').'% on orders')
+                    ->default(false)
+                    ->inline(false),
+            ]),
+        ];
+    }
+
+    /**
+     * The buyer details of the e-invoice (MyInvois): used by the submission to LHDN and edited by the customer in the
+     * portal profile. Blank ones fall back to the account's own details.
+     *
+     * @return list<Forms\Components\Component>
+     */
+    public static function einvoiceFields(): array
+    {
+        return [
+            Forms\Components\Grid::make(12)->schema([
+                Forms\Components\TextInput::make('einvoice_buyer_name')->label('Buyer name')->maxLength(255)->columnSpan(4),
+                Forms\Components\TextInput::make('einvoice_tin')->label('Buyer TIN')->maxLength(50)->columnSpan(2),
                 Forms\Components\Select::make('einvoice_id_type')
                     ->label('ID type')
-                    ->options([
-                        'BRN' => 'BRN',
-                        'NRIC' => 'NRIC',
-                        'PASSPORT' => 'Passport',
-                        'ARMY' => 'Army ID',
-                    ]),
-                Forms\Components\TextInput::make('einvoice_id_value')
-                    ->label('ID value')
-                    ->maxLength(50)
-                    ->live(onBlur: true)
-                    ->afterStateUpdated(function (Forms\Set $set, ?string $state, Get $get) {
-                        if (($get('einvoice_id_type') ?? 'BRN') === 'BRN') {
-                            $set('brn', $state);
-                        }
-                    }),
-                Forms\Components\TextInput::make('einvoice_buyer_name')
-                    ->label('Buyer name')
-                    ->maxLength(255),
-                Forms\Components\TextInput::make('sales_tax_exemption_no')
-                    ->label('Sales tax exemption no.')
-                    ->maxLength(100),
-                Forms\Components\DatePicker::make('sales_tax_exemption_expiry')
-                    ->label('Exemption expiry'),
-                Forms\Components\Textarea::make('einvoice_address')
-                    ->label('E-invoice address')
-                    ->rows(2)
+                    ->options(['BRN' => 'BRN', 'NRIC' => 'NRIC', 'PASSPORT' => 'Passport', 'ARMY' => 'Army ID'])
+                    ->native(true)
                     ->columnSpan(2),
+                Forms\Components\TextInput::make('einvoice_id_value')->label('ID value')->maxLength(50)->columnSpan(2),
+                Forms\Components\Textarea::make('einvoice_address')->label('E-invoice address')->rows(2)->columnSpan(12),
+            ]),
+        ];
+    }
+
+    /** @return list<Forms\Components\Component> */
+    public static function creditFields(): array
+    {
+        return [
+            Forms\Components\Grid::make(4)->schema([
+                Forms\Components\Select::make('credit_term_days')
+                    ->label('Credit term')
+                    ->options(static::creditTermOptions())
+                    ->default(0)
+                    ->native(true)
+                    ->required(),
+                Forms\Components\TextInput::make('credit_limit')
+                    ->label('Credit limit')
+                    ->numeric()
+                    ->prefix('RM')
+                    ->default(0),
+                Forms\Components\Select::make('aging_on')
+                    ->label('Aging on')
+                    ->options([
+                        'invoice_date' => 'Invoice date (I)',
+                        'due_date' => 'Due date (D)',
+                    ])
+                    ->default('due_date')
+                    ->native(true)
+                    ->required(),
+                Forms\Components\Select::make('statement_type')
+                    ->label('Statement type')
+                    ->options([
+                        'open_item' => 'Open item (O)',
+                        'balance_forward' => 'Balance forward (B)',
+                        'no_statement' => 'No statement (N)',
+                    ])
+                    ->default('balance_forward')
+                    ->native(true)
+                    ->required(),
             ]),
         ];
     }
@@ -361,21 +326,23 @@ class CustomerForm
     public static function noteFields(): array
     {
         return [
-            Forms\Components\Grid::make(3)->schema([
-                Forms\Components\Textarea::make('own_note')
-                    ->label('Own note: other email, statement remark')
-                    ->rows(2),
+            Forms\Components\Grid::make(12)->schema([
+                Forms\Components\DatePicker::make('account_opening_date')
+                    ->label('Account opening date')
+                    ->columnSpan(2),
+                Forms\Components\Textarea::make('mailing_address')
+                    ->label('Mailing address')
+                    ->rows(2)
+                    ->columnSpan(4),
                 Forms\Components\Textarea::make('mailing_statement_remark')
-                    ->label('Mailing statement remark')
-                    ->rows(2),
-                Forms\Components\Textarea::make('payment_note')
-                    ->label('Own note (payment)')
-                    ->rows(2),
+                    ->label('Mailing statement remarks')
+                    ->rows(2)
+                    ->columnSpan(3),
+                Forms\Components\Textarea::make('own_note')
+                    ->label('Internal office note')
+                    ->rows(2)
+                    ->columnSpan(3),
             ]),
-            Forms\Components\Textarea::make('notes')
-                ->label('Note for documents')
-                ->rows(2)
-                ->helperText('Can be copied to quotation / invoice documents involving this customer.'),
         ];
     }
 
@@ -383,11 +350,7 @@ class CustomerForm
     private static function consentFields(): array
     {
         return [
-            Forms\Components\Grid::make(3)->schema([
-                Forms\Components\Select::make('default_order_type')
-                    ->label('Default order type')
-                    ->options(\App\Enums\OrderType::options())
-                    ->helperText('Term → Term / Cash / COD · COD → Cash only · Cash cannot change'),
+            Forms\Components\Grid::make(4)->schema([
                 Forms\Components\Select::make('consent_letter_type')
                     ->label('Consent letter')
                     ->options(\App\Domains\MasterData\Models\Customer::consentOptions())
@@ -403,7 +366,7 @@ class CustomerForm
                     ->inline(false)
                     ->helperText('Off = quotation at the agreed special price is accepted automatically.'),
             ]),
-            Forms\Components\Grid::make(3)->schema([
+            Forms\Components\Grid::make(4)->schema([
                 Forms\Components\DatePicker::make('consent_valid_from')->label('Consent valid from'),
                 Forms\Components\DatePicker::make('consent_valid_until')->label('Consent valid until'),
                 Forms\Components\FileUpload::make('consent_document_path')
@@ -412,7 +375,8 @@ class CustomerForm
                     ->directory('consent-letters')
                     ->acceptedFileTypes(['application/pdf', 'image/*'])
                     ->downloadable()
-                    ->openable(),
+                    ->openable()
+                    ->columnSpan(2),
             ])->visible(fn (Get $get): bool => $get('consent_letter_type') !== \App\Domains\MasterData\Models\Customer::CONSENT_NONE && filled($get('consent_letter_type'))),
         ];
     }

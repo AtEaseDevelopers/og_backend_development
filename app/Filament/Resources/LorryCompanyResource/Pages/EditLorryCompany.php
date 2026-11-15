@@ -8,12 +8,14 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditLorryCompany extends EditRecord
 {
+    use \App\Filament\Concerns\FormActionsInHeader;
+
     use \App\Filament\Concerns\MasterDataBreadcrumbs;
 
     protected static string $resource = LorryCompanyResource::class;
 
     protected function getHeaderActions(): array
     {
-        return [Actions\DeleteAction::make()];
+        return [Actions\DeleteAction::make()->visible(fn ($record) => ! \App\Support\RecordUsage::isUsed($record))];
     }
 }

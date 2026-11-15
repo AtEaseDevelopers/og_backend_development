@@ -9,6 +9,8 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditUom extends EditRecord
 {
+    use \App\Filament\Concerns\FormActionsInHeader;
+
     use \App\Filament\Concerns\MasterDataBreadcrumbs;
 
     protected static string $resource = UomResource::class;
@@ -20,7 +22,7 @@ class EditUom extends EditRecord
     {
         return [
             Actions\ViewAction::make(),
-            Actions\DeleteAction::make(),
+            Actions\DeleteAction::make()->visible(fn ($record) => ! \App\Support\RecordUsage::isUsed($record)),
         ];
     }
 

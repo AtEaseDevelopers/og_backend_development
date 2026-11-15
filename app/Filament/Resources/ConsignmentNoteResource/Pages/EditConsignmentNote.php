@@ -13,6 +13,8 @@ use Throwable;
 
 class EditConsignmentNote extends EditRecord
 {
+    use \App\Filament\Concerns\FormActionsInHeader;
+
     protected static string $resource = ConsignmentNoteResource::class;
 
     /** @var list<array<string, mixed>> */

@@ -58,7 +58,7 @@
 @endif
 
 <div class="card">
-    <h3 style="margin-top:0">Route &amp; destinations</h3>
+    <h3 style="margin-top:0">Route &amp; areas</h3>
     @if ($quotation->pickup_location)<p><strong>Pickup:</strong> {{ $quotation->pickup_location }}</p>@endif
     @foreach ($quotation->destinations as $destination)
         <p><strong>{{ $destination->consignee_name }}</strong>

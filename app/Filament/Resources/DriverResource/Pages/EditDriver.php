@@ -8,6 +8,8 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditDriver extends EditRecord
 {
+    use \App\Filament\Concerns\FormActionsInHeader;
+
     use \App\Filament\Concerns\MasterDataBreadcrumbs;
 
     protected static string $resource = DriverResource::class;
@@ -28,6 +30,6 @@ class EditDriver extends EditRecord
 
     protected function getHeaderActions(): array
     {
-        return [Actions\DeleteAction::make()];
+        return [Actions\DeleteAction::make()->visible(fn ($record) => ! \App\Support\RecordUsage::isUsed($record))];
     }
 }

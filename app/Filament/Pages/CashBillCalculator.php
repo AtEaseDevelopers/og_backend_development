@@ -34,6 +34,12 @@ use Livewire\WithFileUploads;
  */
 class CashBillCalculator extends Page
 {
+    /** Open to the roles ticked for "billing.view" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canAccess(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     use WithFileUploads;
 
     protected static ?string $navigationIcon = 'heroicon-o-calculator';

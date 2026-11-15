@@ -487,7 +487,7 @@ class PortalEnquiryListingData
             return (string) $destination['state'];
         }
 
-        return 'Destination '.($index + 1);
+        return 'Area '.($index + 1);
     }
 
     /** @param  array<string, mixed>  $destination */

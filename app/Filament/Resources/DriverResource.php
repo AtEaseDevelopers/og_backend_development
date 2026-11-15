@@ -15,6 +15,14 @@ use Illuminate\Support\Facades\Hash;
 
 class DriverResource extends Resource
 {
+    use \App\Filament\Concerns\HasModulePermissions;
+
+    /** Open to the roles ticked for "masterdata.fleet" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canViewAny(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     protected static ?string $model = Driver::class;
 
     protected static ?string $tenantOwnershipRelationshipName = 'company';
@@ -51,31 +59,14 @@ class DriverResource extends Resource
             Forms\Components\Section::make('Lorry')
                 ->description('The lorry number, type and tonne also fill the lorry in Master Data → Fleet Vehicles (created if new) with this driver as its default driver.')
                 ->schema([
-                    // picked from Master Data → Lorry Companies / Lorry Groups (user, 28 Oct 2026)
+                    // picked from Master Data → Lorry Companies (user, 28 Oct 2026); lorry groups are no longer used (13 Nov 2026)
                     Forms\Components\Select::make('lorry_company_id')
                         ->label('Lorry Company')
                         ->options(fn () => \App\Domains\MasterData\Models\LorryCompany::query()->where('is_active', true)
                             ->when(\App\Support\CurrentCompany::id(), fn ($q, $id) => $q->where('company_id', $id))
                             ->orderBy('name')->get()->mapWithKeys(fn ($c) => [$c->id => $c->label()]))
                         ->searchable()
-                        ->live()
-                        // the company's group fills in (user, 3 Nov 2026); it can still be changed or cleared
-                        ->afterStateUpdated(function ($state, Forms\Set $set): void {
-                            $group = $state ? \App\Domains\MasterData\Models\LorryCompany::query()->whereKey($state)->value('lorry_group_id') : null;
-
-                            if ($group) {
-                                $set('lorry_group_id', $group);
-                            }
-                        })
                         ->helperText('Add one in Master Data → Lorry Companies.'),
-                    Forms\Components\Select::make('lorry_group_id')
-                        ->label('Lorry Group')
-                        ->options(fn () => \App\Domains\MasterData\Models\LorryGroup::query()->where('is_active', true)
-                            ->when(\App\Support\CurrentCompany::id(), fn ($q, $id) => $q->where('company_id', $id))
-                            ->orderBy('name')->pluck('name', 'id'))
-                        ->searchable()
-                        ->nullable()
-                        ->helperText('Optional · filled from the lorry company\'s group. Add one in Master Data → Lorry Groups.'),
                     Forms\Components\TextInput::make('lorry_number')->label('Lorry Number')->maxLength(30)->placeholder('e.g. JCM 6456'),
                     Forms\Components\TextInput::make('lorry_type')->label('Lorry Type')->maxLength(50)->placeholder('e.g. 24FT'),
                     Forms\Components\TextInput::make('tonnage')->label('Tonne')->numeric()->minValue(0),
@@ -176,6 +167,7 @@ class DriverResource extends Resource
         $fields = array_filter([
             'type' => filled($driver->lorry_type) ? (string) $driver->lorry_type : null,
             'capacity' => $driver->tonnage !== null ? round((float) $driver->tonnage * 1000, 2) : null,
+            'lorry_company_id' => $driver->lorry_company_id ?: null,
         ], fn ($value) => $value !== null) + ['default_driver_id' => $driver->id];
 
         if ($lorry) {
@@ -196,19 +188,23 @@ class DriverResource extends Resource
     public static function table(Table $table): Table
     {
         return $table->columns([
-            Tables\Columns\TextColumn::make('code'),
+            // one search box finds a driver by any of these (client, 16 Nov 2026): code, name, phone, IC, lorry no.,
+            // lorry company (name or code), attendant name or phone
+            Tables\Columns\TextColumn::make('code')->searchable(),
             Tables\Columns\TextColumn::make('name')->searchable()->sortable(),
-            Tables\Columns\TextColumn::make('branch.name')->label('Company'),
-            Tables\Columns\TextColumn::make('phone'),
-            Tables\Columns\TextColumn::make('ic_number')->label('IC')->toggleable(isToggledHiddenByDefault: true),
-            Tables\Columns\TextColumn::make('lorry_number')->label('Lorry')->description(fn ($record) => collect([$record->lorry_type, $record->tonnage !== null ? rtrim(rtrim(number_format((float) $record->tonnage, 2), '0'), '.').' t' : null])->filter()->implode(' · ') ?: null)->placeholder('—')->searchable(),
-            Tables\Columns\TextColumn::make('lorry_company')->label('Lorry company')->description(fn ($record) => $record->lorry_company_code)->placeholder('—')->toggleable(),
-            Tables\Columns\TextColumn::make('lorry_group')->label('Lorry group')->placeholder('—')->toggleable(),
-            Tables\Columns\TextColumn::make('attendant_name')->label('Attendant')->placeholder('—')->toggleable(),
+            Tables\Columns\TextColumn::make('phone')->searchable(),
+            Tables\Columns\TextColumn::make('ic_number')->label('IC')->searchable()->toggleable(isToggledHiddenByDefault: true),
+            Tables\Columns\TextColumn::make('lorry_number')->label('Lorry')->searchable()->description(fn ($record) => collect([$record->lorry_type, $record->tonnage !== null ? rtrim(rtrim(number_format((float) $record->tonnage, 2), '0'), '.').' t' : null])->filter()->implode(' · ') ?: null)->placeholder('—')->searchable(),
+            Tables\Columns\TextColumn::make('lorry_company')->label('Lorry company')->searchable(['lorry_company', 'lorry_company_code'])->description(fn ($record) => $record->lorry_company_code)->placeholder('—')->toggleable(),
+            Tables\Columns\TextColumn::make('attendant_name')->label('Attendant')->searchable(['attendant_name', 'attendant_phone'])->description(fn ($record) => $record->attendant_phone)->placeholder('—')->toggleable(),
             Tables\Columns\TextColumn::make('type')->badge(),
             Tables\Columns\IconColumn::make('is_active')->boolean(),
         ])->actions([
+            // View beside Edit on every Master Data list (user, 16 Nov 2026): the record in a window, read-only
+            Tables\Actions\ViewAction::make(),
             Tables\Actions\EditAction::make(),
+            // Delete only for a record without history (client, 16 Nov 2026); a used one is set Inactive instead
+            \App\Support\RecordUsage::deleteAction(),
         ]);
     }
 

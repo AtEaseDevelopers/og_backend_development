@@ -50,23 +50,24 @@
     .inv-col-no { width: 4%; text-align: center; }
     .inv-col-date { width: 10%; white-space: nowrap; }
     .inv-col-csn { width: 13%; white-space: nowrap; }
-    .inv-col-ref { width: 10%; }
+    .inv-col-ref { width: 11%; }
     .inv-col-area { width: 10%; }
-    .inv-col-consignee { width: 14%; }
+    .inv-col-consignee { width: 16%; }
     .inv-col-goods { width: auto; }
     .inv-col-amt { width: 12%; text-align: right; white-space: nowrap; }
     .inv-ref-line { margin-bottom: 2px; }
 
     /* the amount in words beside the totals */
-    .inv-foot { margin-top: 8px; }
+    .inv-foot { margin-top: 8px; width: 100%; border-collapse: collapse; }
+    .inv-totals { width: 100%; }
     .inv-foot td { vertical-align: top; padding: 0; }
-    .inv-words-cell { width: 55%; padding-right: 12px; }
+    .inv-words-cell { width: 48%; padding-right: 12px; }
     .inv-words { font-weight: bold; font-size: 10.5px; text-transform: uppercase; padding-top: 4px; }
-    .inv-totals-cell { width: 45%; }
+    .inv-totals-cell { width: 52%; }
     /* as the sample (user, 6 Nov 2026): only the amount has a border, the labels plain at its left */
     .inv-totals-boxed { border-collapse: separate; border-spacing: 0 4px; }
     .inv-totals-boxed td { padding: 3px 6px; font-size: 10.5px; }
-    .inv-totals-label { text-align: right; font-weight: bold; border: 0; }
+    .inv-totals-label { text-align: right; font-weight: bold; border: 0; white-space: nowrap; }
     .inv-totals-value { text-align: right; white-space: nowrap; width: 34%; border: 1px solid #000; font-weight: bold; }
     .inv-totals-boxed .inv-totals-grand td.inv-totals-value { font-size: 11.5px; border-width: 2px; }
 

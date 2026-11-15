@@ -83,7 +83,7 @@
                                 <th>CSN / DO Ref</th>
                                 <th>Task type</th>
                                 <th>Customer</th>
-                                <th>Destination</th>
+                                <th>Area</th>
                                 <th>Transfer Allocation</th>
                                 <th>Driver / Lorry</th>
                                 <th>Actions</th>

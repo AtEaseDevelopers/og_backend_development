@@ -41,6 +41,14 @@ use Throwable;
 
 class ConsignmentNoteResource extends Resource
 {
+    use \App\Filament\Concerns\HasModulePermissions;
+
+    /** Open to the roles ticked for "csn.view" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canViewAny(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     protected static ?string $model = ConsignmentNote::class;
 
     protected static ?string $tenantOwnershipRelationshipName = 'company';
@@ -107,7 +115,7 @@ class ConsignmentNoteResource extends Resource
     /** A CSN moved here from another company is only assigned to a lorry here. */
     public static function canEdit(\Illuminate\Database\Eloquent\Model $record): bool
     {
-        return ! $record->isMovedIn() && parent::canEdit($record);
+        return ! $record->isMovedIn() && \App\Support\Permissions::can(static::class, 'edit') && parent::canEdit($record);
     }
 
     public static function table(Table $table): Table
@@ -294,7 +302,7 @@ class ConsignmentNoteResource extends Resource
                         .(($livewire->selectedSubsheets ?? []) !== [] ? ' The '.count($livewire->selectedSubsheets).' subsheet(s) ticked under the CSNs go on the same lorry.' : ''))
                     ->modalSubmitActionLabel('Assign')
                     // the ticked CSNs listed above the lorry (user, 10 Nov 2026)
-                    ->form(fn (Collection $records, $livewire) => [static::selectedCsnsPlaceholder($records), ...static::assignLorryFormSchema($livewire->selectedSubsheetRecords()), static::csnTransferCodeField()])
+                    ->form(fn (Collection $records, $livewire) => [static::selectedCsnsPlaceholder($records), ...static::assignLorryFormSchema($livewire->selectedSubsheetRecords(), $records), static::csnTransferCodeField()])
                     ->action(function (Collection $records, array $data, $livewire): void {
                         // a transfer code picked: each CSN gets a subsheet with that code and the subsheet goes on the lorry
                         [$csns, $subsheets] = static::withTransferCode($records, $data['csn_transfer_code'] ?? null);
@@ -502,7 +510,7 @@ class ConsignmentNoteResource extends Resource
                     ->modalHeading('Assign to Lorry')
                     ->modalSubmitActionLabel('Submit')
                     ->modalCancelActionLabel('Cancel')
-                    ->form(fn () => static::assignLorryFormSchema())
+                    ->form(fn (ConsignmentNote $record) => static::assignLorryFormSchema(null, collect([$record])))
                     ->action(function (ConsignmentNote $record, array $data) {
                         try {
                             static::runAssignAndSubsheets($record, $data);
@@ -915,13 +923,18 @@ Driver remarks: ".$main->failedDelivery->remarks : ''))
         return [collect(), $subsheets];
     }
 
-    public static function assignLorryFormSchema(?Collection $subsheets = null): array
+    public static function assignLorryFormSchema(?Collection $subsheets = null, ?Collection $csns = null): array
     {
         $subsheets ??= collect();
         $types = $subsheets->pluck('task_type')->filter()->unique();
         $codes = $subsheets->pluck('transfer_code')->filter()->unique();
 
+        // an order with a chartered lorry (user, 13 Nov 2026): a note of the size chartered and the fleet vehicles of
+        // that size, over the lorry field — for the CSNs being assigned and those of the subsheets
+        $fit = \App\Support\CharteredLorryFit::banner(($csns ?? collect())->concat($subsheets->map(fn ($subsheet) => $subsheet->consignmentNote)));
+
         $fields = [
+            ...($fit ? [Forms\Components\Placeholder::make('chartered_lorry_fit')->hiddenLabel()->content($fit)->columnSpanFull()] : []),
             Forms\Components\Select::make('lorry_id')
                 ->label('Lorry')
                 ->placeholder('Select lorry')

@@ -31,8 +31,9 @@ class MasterDataHub extends Page
     public const ITEMS = [
         'Customers' => [
             ['class' => Resources\CustomerResource::class, 'label' => 'Customers', 'icon' => 'heroicon-o-building-storefront'],
-            ['class' => Resources\LeadResource::class, 'label' => 'Leads', 'icon' => 'heroicon-o-user-plus'],
+            // Consignor / Consignee second, Leads third (user, 13 Nov 2026)
             ['class' => Resources\ConsignorConsigneeResource::class, 'label' => 'Consignor / Consignee', 'icon' => 'heroicon-o-arrows-right-left'],
+            ['class' => Resources\LeadResource::class, 'label' => 'Leads', 'icon' => 'heroicon-o-user-plus'],
         ],
         // the three product types (user, 25 Oct 2026)
         'Products & pricing' => [
@@ -40,22 +41,30 @@ class MasterDataHub extends Page
             ['class' => Resources\ItemProductResource::class, 'label' => 'Items', 'icon' => 'heroicon-o-cube'],
             ['class' => Resources\LorryProductResource::class, 'label' => 'Chartered Lorry', 'icon' => 'heroicon-o-truck'],
             ['class' => Resources\DropOffMinChargeResource::class, 'label' => 'Drop-off Min Charges', 'icon' => 'heroicon-o-banknotes'],
-            ['class' => Resources\LocationResource::class, 'label' => 'Destinations', 'icon' => 'heroicon-o-map'],
+            ['class' => Resources\LocationResource::class, 'label' => 'Area', 'icon' => 'heroicon-o-map'],
+            // the items of an Other Invoice (user, 16 Nov 2026)
+            ['class' => Resources\OtherItemResource::class, 'label' => 'Other Items', 'icon' => 'heroicon-o-rectangle-stack'],
         ],
+        // the sections as the user set them (13 Nov 2026): drivers, vehicles and lorry companies here
         'Fleet & dispatch' => [
             ['class' => Resources\DriverResource::class, 'label' => 'Drivers', 'icon' => 'heroicon-o-user'],
             ['class' => Resources\FleetVehicleResource::class, 'label' => 'Fleet Vehicles', 'icon' => 'heroicon-o-truck'],
-            ['class' => Resources\TransferCodeResource::class, 'label' => 'Transfer Codes', 'icon' => 'heroicon-o-qr-code'],
-            ['class' => Resources\StoreResource::class, 'label' => 'Stores', 'icon' => 'heroicon-o-home-modern'],
             ['class' => Resources\LorryCompanyResource::class, 'label' => 'Lorry Companies', 'icon' => 'heroicon-o-building-office'],
-            ['class' => Resources\LorryGroupResource::class, 'label' => 'Lorry Groups', 'icon' => 'heroicon-o-rectangle-group'],
         ],
-        // user, 25 Oct 2026: the switcher's KL, JB, … are companies; a company's sales areas are its branches
+        // user, 25 Oct 2026: the switcher's KL, JB, … are companies; a company's sales areas are its branches;
+        // transfer codes and stores are the company's too (13 Nov 2026)
         'Company' => [
             ['class' => Resources\BranchResource::class, 'label' => 'Company', 'icon' => 'heroicon-o-building-office-2'],
             ['class' => Resources\SaLocationResource::class, 'label' => 'Branches', 'icon' => 'heroicon-o-map-pin'],
-            ['class' => Resources\UserResource::class, 'label' => 'Staff accounts', 'icon' => 'heroicon-o-users'],
-            ['class' => SystemSettingsPage::class, 'label' => 'System Settings', 'icon' => 'heroicon-o-adjustments-horizontal'],
+            ['class' => Resources\TransferCodeResource::class, 'label' => 'Transfer Codes', 'icon' => 'heroicon-o-qr-code'],
+            ['class' => Resources\StoreResource::class, 'label' => 'Stores', 'icon' => 'heroicon-o-home-modern'],
+        ],
+        // users, roles, the organisation chart and the order notification settings (13 Nov 2026)
+        'System settings' => [
+            ['class' => Resources\UserResource::class, 'label' => 'Users', 'icon' => 'heroicon-o-users'],
+            ['class' => RolesPermissionsPage::class, 'label' => 'Roles & Permission', 'icon' => 'heroicon-o-shield-check'],
+            ['class' => OrganisationChartPage::class, 'label' => 'Organisation Chart', 'icon' => 'heroicon-o-share'],
+            ['class' => SystemSettingsPage::class, 'label' => 'Order Notification Settings', 'icon' => 'heroicon-o-bell-alert'],
         ],
     ];
 

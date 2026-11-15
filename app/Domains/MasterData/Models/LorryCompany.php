@@ -11,11 +11,17 @@ class LorryCompany extends Model
 {
     use BelongsToCompany;
 
-    protected $fillable = ['company_id', 'lorry_group_id', 'code', 'name', 'contact', 'email', 'address', 'is_active'];
+    protected $fillable = ['company_id', 'lorry_group_id', 'code', 'name', 'company_no', 'pic', 'contact', 'email', 'address', 'is_active'];
 
     protected function casts(): array
     {
         return ['is_active' => 'boolean'];
+    }
+
+    /** The lorries of the company (Master Data → Fleet Vehicles). */
+    public function lorries(): HasMany
+    {
+        return $this->hasMany(Lorry::class);
     }
 
     public function drivers(): HasMany

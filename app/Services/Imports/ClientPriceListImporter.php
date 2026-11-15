@@ -382,7 +382,7 @@ class ClientPriceListImporter
         ];
 
         if ($report['locations_new'] !== []) {
-            $lines[] = count($report['locations_new']).' new destination(s): '.implode(', ', array_slice($report['locations_new'], 0, 12)).(count($report['locations_new']) > 12 ? '…' : '');
+            $lines[] = count($report['locations_new']).' new area(s): '.implode(', ', array_slice($report['locations_new'], 0, 12)).(count($report['locations_new']) > 12 ? '…' : '');
         }
 
         if ($report['deactivated'] > 0) {
@@ -837,13 +837,18 @@ class ClientPriceListImporter
      */
     private function resolveLocations(array $names): array
     {
-        $existing = Location::query()->get(['id', 'name', 'code']);
+        // deleted areas too: the price list brings one back when it lists it again
+        $existing = Location::withTrashed()->get(['id', 'name', 'code', 'deleted_at']);
         $codes = $existing->pluck('code')->filter()->map(fn ($code) => strtoupper((string) $code))->flip()->all();
         $resolved = [];
 
         foreach ($names as $name) {
             $location = $existing->first(fn (Location $l) => strcasecmp(trim($l->name), $name) === 0);
             $new = false;
+
+            if ($location?->trashed()) {
+                $location->restore();
+            }
 
             if (! $location) {
                 $code = $this->uniqueCode($name, $codes, 20);

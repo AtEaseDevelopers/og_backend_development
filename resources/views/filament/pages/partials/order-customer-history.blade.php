@@ -107,7 +107,7 @@
     @else
         <div class="oh-wrap">
             <table>
-                <thead><tr><th>Date</th><th>Order</th><th>Product</th><th>Destination</th><th class="oh-num">Qty</th><th class="oh-num">Unit price</th><th class="oh-num">Line total</th></tr></thead>
+                <thead><tr><th>Date</th><th>Order</th><th>Product</th><th>Area</th><th class="oh-num">Qty</th><th class="oh-num">Unit price</th><th class="oh-num">Line total</th></tr></thead>
                 <tbody>
                     @foreach ($rows as $row)
                         <tr>

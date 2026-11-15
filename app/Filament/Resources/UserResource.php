@@ -15,6 +15,8 @@ use Illuminate\Support\Facades\Hash;
 
 class UserResource extends Resource
 {
+    use \App\Filament\Concerns\HasModulePermissions;
+
     protected static ?string $model = User::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-users';
@@ -26,13 +28,14 @@ class UserResource extends Resource
 
     protected static ?int $navigationSort = 1;
 
-    protected static ?string $navigationLabel = 'Staff accounts';
+    protected static ?string $navigationLabel = 'Users';
 
     protected static bool $isScopedToTenant = false;
 
+    /** Open to the roles ticked for "settings.users" on Master Data → Roles & Permission (13 Nov 2026). */
     public static function canViewAny(): bool
     {
-        return auth()->user()?->canManageStaff() ?? false;
+        return \App\Support\Permissions::screen(static::class);
     }
 
     public static function getEloquentQuery(): Builder
@@ -49,9 +52,45 @@ class UserResource extends Resource
     {
         return $form->schema([
             Forms\Components\TextInput::make('name')->required()->maxLength(255),
+            // what the user types to sign in to the admin panel (user, 16 Nov 2026: the Staff ID, not the email)
+            Forms\Components\TextInput::make('login_id')
+                ->label('Staff ID')
+                ->helperText('Used to sign in. Letters, numbers, dot, dash and underscore; not case-sensitive.')
+                ->required()
+                ->maxLength(60)
+                ->regex('/^[A-Za-z0-9._-]+$/')
+                ->validationMessages(['regex' => 'Use letters, numbers, dot, dash or underscore only (no spaces).'])
+                ->dehydrateStateUsing(fn (?string $state) => User::normaliseLoginId((string) $state))
+                ->unique(ignoreRecord: true)
+                ->autocomplete('off'),
             Forms\Components\TextInput::make('email')->email()->required()->maxLength(255)->unique(ignoreRecord: true),
+            // Edit (user, 16 Nov 2026): the current password is shown as text with a "Change password" tick box; ticked,
+            // the box to type a new one opens (shown as typed, not dots). The password is stored hashed; what is shown
+            // is the encrypted copy kept when it was set on this page (password_readable) — none for an older one.
+            Forms\Components\Group::make([
+                // the current password in a read-only box, in the form's normal text (user, 16 Nov 2026)
+                Forms\Components\TextInput::make('current_password')
+                    ->label('Password')
+                    ->readOnly()
+                    ->dehydrated(false)
+                    ->formatStateUsing(fn (?User $record) => $record?->password_readable)
+                    ->placeholder('Not recorded · tick "Change password" to set a new one')
+                    ->visible(fn (Forms\Get $get) => ! $get('change_password')),
+                Forms\Components\TextInput::make('password')
+                    ->label('New password')
+                    ->autocomplete('off')
+                    ->required()
+                    ->dehydrated(fn (?string $state) => filled($state))
+                    ->dehydrateStateUsing(fn (?string $state) => filled($state) ? Hash::make($state) : null)
+                    ->visible(fn (Forms\Get $get) => (bool) $get('change_password')),
+                Forms\Components\Checkbox::make('change_password')
+                    ->label('Change password')
+                    ->live()
+                    ->dehydrated(false),
+            ])->visible(fn (string $operation) => $operation === 'edit'),
             Forms\Components\TextInput::make('password')
-                ->password()
+                ->autocomplete('off')
+                ->visible(fn (string $operation) => $operation === 'create')
                 ->required(fn (string $operation) => $operation === 'create')
                 ->dehydrated(fn (?string $state) => filled($state))
                 ->dehydrateStateUsing(fn (?string $state) => filled($state) ? Hash::make($state) : null),
@@ -65,19 +104,15 @@ class UserResource extends Resource
                 ->required()
                 ->dehydrated(false)
                 ->visible(fn (string $operation) => $operation === 'create'),
-            Forms\Components\Select::make('roles')
-                // Filter inside the relationship so options, search results, the loaded state and
-                // the pivot sync are all keyed by role id. A separate name-keyed ->options() list
-                // disagreed with the id-keyed search results and synced names as role_id 0.
-                ->relationship('roles', 'name', fn (Builder $query) => $query
-                    ->whereNotIn($query->qualifyColumn('name'), ['customer', 'driver'])
-                    // only a super admin gives the super_admin role
-                    ->when(! auth()->user()?->isSuperadmin(), fn (Builder $q) => $q->where($q->qualifyColumn('name'), '!=', 'super_admin')))
-                ->multiple()
-                ->preload()
-                // The filter also applies to the loaded state, so a driver-only account loads with no
-                // roles. Its hidden role is never detached on save, so it keeps one: only accounts
-                // without a hidden role have to pick one here.
+            // one role a user (user, 16 Nov 2026: no more several roles). The field is not the relationship itself:
+            // the pages load and save it (UserResource::staffRoleId / syncStaffRole), keeping a hidden role (driver,
+            // customer) the account also has. Only a super admin gives the super admin role.
+            Forms\Components\Select::make('role_id')
+                ->label('Role')
+                ->options(fn () => static::staffRoleOptions())
+                ->native(false)
+                ->dehydrated(false)
+                // an account that is only a driver or a portal customer has no staff role to pick
                 ->required(fn (?User $record): bool => ! $record?->hasAnyRole(['customer', 'driver'])),
             Forms\Components\Toggle::make('is_active')->default(true),
             Forms\Components\Section::make('Sales ownership (section A)')
@@ -95,27 +130,102 @@ class UserResource extends Resource
                             : 'Save the account, then use "Generate ordering link" on the edit page.')
                         ->visible(fn (string $operation) => $operation === 'edit'),
                 ])->columns(2),
+            static::permissionsSection(),
         ]);
+    }
+
+    /**
+     * "Permissions (this user only)" on the edit page (user, 13 Nov 2026): every action of Roles & Permission in a row,
+     * as that page's grid, with a tick box — ticked = this user may do it. A box starts at what the user's roles give;
+     * one that is changed is this user's own exception (allowed although the role is not, or removed although the role
+     * is). Shown to those who may change roles and permissions; a super admin can always do everything, so there is
+     * nothing to set. Loaded and saved by the EditUser page (the boxes are not columns of the user).
+     */
+    public static function permissionsSection(): Forms\Components\Section
+    {
+        return Forms\Components\Section::make('Permissions (this user only)')
+            ->description(fn (?User $record) => $record?->isSuperadmin()
+                ? 'A Super Admin can always do everything.'
+                : 'Ticked = this user can do it. Each box starts at what the user\'s role gives; change a box to allow or remove the action for this user only. '
+                    .(($count = $record ? count(\App\Support\Permissions::overridesFor($record)) : 0) > 0 ? $count.' changed for this user.' : 'None changed for this user.'))
+            ->schema(fn (?User $record) => $record?->isSuperadmin() ? [] : [
+                Forms\Components\ViewField::make('permission_effective')
+                    ->hiddenLabel()
+                    ->view('filament.forms.components.user-permissions')
+                    ->viewData(['roleGrants' => $record ? \App\Support\Permissions::fromRoles($record) : []])
+                    ->dehydrated(false),
+            ])
+            ->collapsible()
+            ->collapsed(fn (?User $record) => ! $record || count(\App\Support\Permissions::overridesFor($record)) === 0)
+            ->visible(fn (string $operation, ?User $record) => $operation === 'edit' && $record && \App\Support\Permissions::allows('settings.roles')
+                && ! $record->hasAnyRole(['customer', 'driver']));
+    }
+
+    /** The roles of the Role field: id => name as shown; never the hidden ones, the super admin only for a super admin. @return array<int, string> */
+    public static function staffRoleOptions(): array
+    {
+        return \Spatie\Permission\Models\Role::query()
+            ->whereNotIn('name', ['customer', 'driver'])
+            ->when(! auth()->user()?->isSuperadmin(), fn ($q) => $q->where('name', '!=', 'super_admin'))
+            ->orderBy('name')
+            ->pluck('name', 'id')
+            ->map(fn (string $name) => \Illuminate\Support\Str::headline($name))
+            ->all();
+    }
+
+    /** The user's staff role (the first, for an older account that has several). */
+    public static function staffRoleId(User $user): ?int
+    {
+        $id = $user->roles()->whereNotIn('name', ['customer', 'driver'])->orderBy('roles.id')->value('roles.id');
+
+        return $id ? (int) $id : null;
+    }
+
+    /** Gives the user the one staff role picked; their hidden roles (driver, customer) stay; no pick leaves the roles alone. */
+    public static function syncStaffRole(User $user, mixed $roleId): void
+    {
+        if (blank($roleId) || ! array_key_exists((int) $roleId, static::staffRoleOptions())) {
+            return;
+        }
+
+        $hidden = $user->roles()->whereIn('name', ['customer', 'driver'])->pluck('roles.id')->all();
+        $user->roles()->sync(array_values(array_unique([...$hidden, (int) $roleId])));
+        $user->unsetRelation('roles');
+        \App\Support\Permissions::flush();
     }
 
     public static function table(Table $table): Table
     {
         return $table->columns([
             Tables\Columns\TextColumn::make('name')->searchable()->sortable(),
+            Tables\Columns\TextColumn::make('login_id')->label('Staff ID')->searchable()->sortable()->copyable()->weight('semibold')->placeholder('—'),
+            // the password an admin set on this page, beside the Staff ID (user, 16 Nov 2026); "—" for one with no copy
+            // (set before 16 Nov, or changed elsewhere). Only for those who may edit users, as on the edit form.
+            Tables\Columns\TextColumn::make('password_readable')
+                ->label('Password')
+                ->getStateUsing(fn (User $record) => $record->password_readable)
+                ->copyable()
+                ->placeholder('—')
+                ->visible(fn () => \App\Support\Permissions::allows('users.edit')),
             Tables\Columns\TextColumn::make('email')->searchable(),
             Tables\Columns\TextColumn::make('branches.code')
                 ->label('Companies')
                 ->badge()
                 ->separator(','),
             Tables\Columns\TextColumn::make('roles.name')
-                ->label('Roles')
+                ->label('Role')
+                ->formatStateUsing(fn (?string $state) => \Illuminate\Support\Str::headline((string) $state))
                 ->badge()
                 ->separator(','),
             Tables\Columns\TextColumn::make('saLocation.code')
                 ->label('Branch')
                 ->placeholder('—'),
             Tables\Columns\IconColumn::make('is_active')->boolean(),
-        ])->actions([
+        ])
+            // the Role filter is a dropdown beside the search box (ListUsers), not a filter card
+            ->actions([
+            // View beside Edit on every Master Data list (user, 16 Nov 2026): the record in a window, read-only
+            Tables\Actions\ViewAction::make(),
             Tables\Actions\EditAction::make(),
             Tables\Actions\Action::make('orderingLink')
                 ->label(fn (User $record) => $record->ordering_token ? 'Copy ordering link' : 'Generate ordering link')

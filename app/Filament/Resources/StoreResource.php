@@ -17,6 +17,14 @@ use Illuminate\Database\Eloquent\Builder;
 /** Stores of each branch (Create order → Consignor → Store). */
 class StoreResource extends Resource
 {
+    use \App\Filament\Concerns\HasModulePermissions;
+
+    /** Open to the roles ticked for "masterdata.transfer_stores" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canViewAny(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     protected static ?string $model = Store::class;
 
     protected static bool $isScopedToTenant = false;
@@ -86,7 +94,7 @@ class StoreResource extends Resource
                 Tables\Columns\IconColumn::make('is_active')->label('Active')->boolean(),
             ])
             ->defaultSort('name')
-            ->actions([Tables\Actions\EditAction::make()]);
+            ->actions([Tables\Actions\ViewAction::make(), Tables\Actions\EditAction::make(), \App\Support\RecordUsage::deleteAction()]);
     }
 
     public static function getPages(): array

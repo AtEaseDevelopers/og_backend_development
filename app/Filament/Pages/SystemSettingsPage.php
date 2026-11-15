@@ -21,16 +21,17 @@ class SystemSettingsPage extends Page
     // opened from its card on the Master Data page (user, 21 Oct 2026), not the menu
     protected static bool $shouldRegisterNavigation = false;
 
-    protected static ?string $navigationLabel = 'System Settings';
+    protected static ?string $navigationLabel = 'Order Notification Settings';
 
     protected static ?int $navigationSort = 99;
 
     protected static ?string $slug = 'system-settings';
 
     // a Master Data → Company page (user, 28 Oct 2026): super_admin and branch_admin (the settings are system-wide)
+    /** Open to the roles ticked for "settings.notifications" on Master Data → Roles & Permission (13 Nov 2026). */
     public static function canAccess(): bool
     {
-        return auth()->user()?->canManageStaff() ?? false;
+        return \App\Support\Permissions::screen(static::class);
     }
 
     protected static string $view = 'filament.pages.system-settings';
@@ -46,7 +47,8 @@ class SystemSettingsPage extends Page
 
     public function getTitle(): string
     {
-        return 'System Settings';
+        // "System Settings" is the section on the Master Data page now (user, 13 Nov 2026)
+        return 'Order Notification Settings';
     }
 
     public function getSubheading(): ?string
@@ -61,8 +63,12 @@ class SystemSettingsPage extends Page
 
         return $form
             ->statePath('data')
+            // four sections, two a row (user, 13 Nov 2026): Customer review | Enquiry ownership, then
+            // Notifications | Email (SMTP); one under the other on a narrow screen
+            ->columns(['default' => 1, 'lg' => 2])
             ->schema([
                 Forms\Components\Section::make('Customer review')
+                    ->columnSpan(1) // a section is full width unless told (two a row here)
                     ->description('Quotations left under customer review are closed automatically after this many days without any update.')
                     ->schema([
                         Forms\Components\TextInput::make(SystemSettings::PENDING_REVIEW_DAYS)
@@ -71,8 +77,20 @@ class SystemSettingsPage extends Page
                             ->minValue(1)
                             ->maxValue(365)
                             ->required(),
-                    ])->columns(2),
+                    ]),
+                Forms\Components\Section::make('Enquiry ownership')
+                    ->columnSpan(1) // a section is full width unless told (two a row here)
+                    ->schema([
+                        Forms\Components\TextInput::make(SystemSettings::ENQUIRY_LOCK_SECONDS)
+                            ->label($labels[SystemSettings::ENQUIRY_LOCK_SECONDS])
+                            ->numeric()
+                            ->minValue(4)
+                            ->maxValue(300)
+                            ->required()
+                            ->helperText('The salesperson screen sends a heartbeat every 2 seconds; the lock is released after this many seconds without one.'),
+                    ]),
                 Forms\Components\Section::make('Notifications')
+                    ->columnSpan(1) // a section is full width unless told (two a row here)
                     ->schema([
                         Forms\Components\Toggle::make(SystemSettings::EMAILS_ENABLED)
                             ->label($labels[SystemSettings::EMAILS_ENABLED])
@@ -81,14 +99,14 @@ class SystemSettingsPage extends Page
                             ->label($labels[SystemSettings::WHATSAPP_ENABLED]),
                     ])->columns(2),
                 Forms\Components\Section::make('Email (SMTP)')
-                    ->description('The account used to email quotations, proformas, invoices, CSNs and other notifications to customers. Until SMTP is set up, emails are only written to the system log and are not delivered.')
+                    ->columnSpan(1) // a section is full width unless told (two a row here)
+                    // no description under the heading; Email sending takes half the row, the SMTP host beside it (user, 13 Nov 2026)
                     ->schema([
                         Forms\Components\Select::make(MailSettings::MAILER)
                             ->label('Email sending')
                             ->options(['log' => 'Not set up (log only, nothing is delivered)', 'smtp' => 'SMTP'])
                             ->default('log')
-                            ->live()
-                            ->columnSpanFull(),
+                            ->live(),
                         Forms\Components\TextInput::make(MailSettings::HOST)
                             ->label('SMTP host')
                             ->placeholder('e.g. smtp.gmail.com')
@@ -127,16 +145,6 @@ class SystemSettingsPage extends Page
                             ->label('From name')
                             ->placeholder('e.g. O & G Transport')
                             ->visible(fn (Forms\Get $get) => $get(MailSettings::MAILER) === 'smtp'),
-                    ])->columns(2),
-                Forms\Components\Section::make('Enquiry ownership')
-                    ->schema([
-                        Forms\Components\TextInput::make(SystemSettings::ENQUIRY_LOCK_SECONDS)
-                            ->label($labels[SystemSettings::ENQUIRY_LOCK_SECONDS])
-                            ->numeric()
-                            ->minValue(4)
-                            ->maxValue(300)
-                            ->required()
-                            ->helperText('The salesperson screen sends a heartbeat every 2 seconds; the lock is released after this many seconds without one.'),
                     ])->columns(2),
             ]);
     }

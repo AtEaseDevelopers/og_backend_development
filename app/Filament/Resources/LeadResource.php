@@ -15,6 +15,14 @@ use Illuminate\Database\Eloquent\Builder;
 /** Master Data → Leads (user, 20 Oct 2026): name, contact number, email and address of a possible customer. */
 class LeadResource extends Resource
 {
+    use \App\Filament\Concerns\HasModulePermissions;
+
+    /** Open to the roles ticked for "customers.view" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canViewAny(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     protected static ?string $model = Lead::class;
 
     protected static bool $isScopedToTenant = false;
@@ -61,6 +69,8 @@ class LeadResource extends Resource
             Forms\Components\TextInput::make('email')->email()->maxLength(255),
             Forms\Components\Textarea::make('billing_address')->label('Billing address')->rows(2)->columnSpanFull(),
             Forms\Components\Textarea::make('address')->rows(2)->columnSpanFull(),
+            // an inactive lead is no longer offered on Create quotation (client, 16 Nov 2026)
+            Forms\Components\Toggle::make('is_active')->label('Active')->default(true),
         ];
     }
 
@@ -75,11 +85,15 @@ class LeadResource extends Resource
                 Tables\Columns\TextColumn::make('billing_address')->label('Billing address')->limit(50)->wrap()->placeholder('—'),
                 Tables\Columns\TextColumn::make('customer.code')->label('Customer')->placeholder('Not a customer yet')->toggleable(),
                 Tables\Columns\TextColumn::make('created_at')->label('Added')->date('d/m/Y')->sortable(),
+                Tables\Columns\IconColumn::make('is_active')->label('Active')->boolean(),
             ])
             ->defaultSort('created_at', 'desc')
             ->actions([
+                // View beside Edit on every Master Data list (user, 16 Nov 2026): the record in a window, read-only
+                Tables\Actions\ViewAction::make(),
                 Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                // Delete only for a record without history (client, 16 Nov 2026); a used one is set Inactive instead
+                \App\Support\RecordUsage::deleteAction(),
             ]);
     }
 

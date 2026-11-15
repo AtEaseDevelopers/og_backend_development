@@ -44,7 +44,7 @@ class EditRecordedPayment
 
     public static function allows(?User $user): bool
     {
-        return (bool) ($user && ($user->is_hq || $user->hasAnyRole(self::ROLES)));
+        return \App\Support\Permissions::allows('billing.edit_payment', $user);
     }
 
     /**

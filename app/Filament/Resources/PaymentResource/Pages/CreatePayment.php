@@ -22,6 +22,8 @@ use Illuminate\Validation\ValidationException;
  */
 class CreatePayment extends CreateRecord
 {
+    use \App\Filament\Concerns\FormActionsInHeader;
+
     protected static string $resource = PaymentResource::class;
 
     /** @var list<string> payment numbers recorded by this save (for the notification) */

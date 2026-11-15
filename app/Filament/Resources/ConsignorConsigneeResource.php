@@ -21,6 +21,14 @@ use Illuminate\Database\Eloquent\Builder;
  */
 class ConsignorConsigneeResource extends Resource
 {
+    use \App\Filament\Concerns\HasModulePermissions;
+
+    /** Open to the roles ticked for "customers.view" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canViewAny(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     protected static ?string $model = ConsignorConsignee::class;
 
     protected static bool $isScopedToTenant = false;
@@ -63,15 +71,11 @@ class ConsignorConsigneeResource extends Resource
                     ->visible($fromCustomer)
                     ->columnSpanFull(),
                 Forms\Components\TextInput::make('name')->label('Name')->required()->maxLength(255),
-                Forms\Components\Select::make('type')
-                    ->label('Used as')
-                    ->options(ConsignorConsignee::TYPES)
-                    ->default('both')
-                    ->selectablePlaceholder(false)
-                    ->required(),
-                Forms\Components\TextInput::make('pic_name')->label('PIC name')->maxLength(150),
-                Forms\Components\TextInput::make('phone')->label('Telephone number')->tel()->maxLength(50),
-                Forms\Components\Textarea::make('address')->label('Address')->rows(2)->columnSpanFull(),
+                // no "Used as" (client, 16 Nov 2026): every record is offered as a consignor and as a consignee
+                Forms\Components\Hidden::make('type')->default('both')->dehydrateStateUsing(fn () => 'both'),
+                Forms\Components\TextInput::make('pic_name')->label('PIC name')->required()->maxLength(150),
+                Forms\Components\TextInput::make('phone')->label('Telephone number')->tel()->required()->maxLength(50),
+                Forms\Components\Textarea::make('address')->label('Address')->required()->rows(2)->columnSpanFull(),
                 Forms\Components\Select::make('location_id')
                     ->label('Area (price list location)')
                     ->helperText('Optional: filled as From (consignor) or To (consignee) on Create order, so the price follows.')
@@ -86,7 +90,10 @@ class ConsignorConsigneeResource extends Resource
                     ->getOptionLabelFromRecordUsing(fn (Customer $customer) => trim(($customer->code ? $customer->code.' — ' : '').$customer->company_name))
                     ->multiple()
                     ->searchable()
+                    ->extraAttributes(['class' => 'og-tag-select'])
                     ->columnSpanFull(),
+                // "Search tagged customers": marks the matching tags in the field above (user, 13 Nov 2026)
+                Forms\Components\View::make('filament.forms.components.tag-search')->columnSpanFull(),
                 Forms\Components\Toggle::make('is_active')->label('Active')->default(true),
             ])->columns(2),
         ]);
@@ -98,14 +105,17 @@ class ConsignorConsigneeResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('name')->searchable(query: fn (Builder $query, string $search) => $query->where(fn (Builder $q) => $q
                     ->where('name', 'like', "%{$search}%")
-                    ->orWhereHas('customer', fn (Builder $customer) => $customer->where('code', 'like', "%{$search}%"))))->sortable()->weight('semibold')->description(fn (ConsignorConsignee $record) => $record->address),
+                    ->orWhereHas('customer', fn (Builder $customer) => $customer->where('code', 'like', "%{$search}%"))))->sortable()->weight('semibold')
+                    // the address shortened to one short line, so the table needs no sideways scroll (user, 16 Nov 2026);
+                    // the whole address shows on hovering the cell
+                    ->description(fn (ConsignorConsignee $record) => filled($record->address) ? \Illuminate\Support\Str::limit(trim((string) preg_replace('/\s+/', ' ', (string) $record->address)), 45) : null)
+                    ->tooltip(fn (ConsignorConsignee $record) => filled($record->address) ? trim((string) preg_replace('/\s+/', ' ', (string) $record->address)) : null),
                 Tables\Columns\TextColumn::make('source')
                     ->label('Source')
                     ->state(fn (ConsignorConsignee $record) => $record->isFromCustomer() ? 'Customer' : 'Created here')
                     ->badge()
                     ->color(fn (string $state) => $state === 'Customer' ? 'info' : 'gray')
                     ->description(fn (ConsignorConsignee $record) => $record->customer?->code),
-                Tables\Columns\TextColumn::make('type')->label('Used as')->badge()->formatStateUsing(fn (ConsignorConsignee $record) => $record->typeLabel()),
                 Tables\Columns\TextColumn::make('pic_name')->label('PIC')->placeholder('—')->searchable(),
                 Tables\Columns\TextColumn::make('phone')->label('Telephone')->placeholder('—'),
                 Tables\Columns\TextColumn::make('location.name')->label('Area')->placeholder('—'),
@@ -122,12 +132,13 @@ class ConsignorConsigneeResource extends Resource
                         'created' => $query->whereNull('customer_id'),
                         default => $query,
                     }),
-                Tables\Filters\SelectFilter::make('type')->label('Used as')->options(ConsignorConsignee::TYPES),
             ])
             ->actions([
+                // View beside Edit on every Master Data list (user, 16 Nov 2026): the record in a window, read-only
+                Tables\Actions\ViewAction::make(),
                 Tables\Actions\EditAction::make(),
                 // a customer's row goes with the customer
-                Tables\Actions\DeleteAction::make()->hidden(fn (ConsignorConsignee $record) => $record->isFromCustomer()),
+                \App\Support\RecordUsage::deleteAction()->hidden(fn (ConsignorConsignee $record) => $record->isFromCustomer() || \App\Support\RecordUsage::isUsed($record)),
             ]);
     }
 

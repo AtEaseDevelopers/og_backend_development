@@ -68,6 +68,7 @@
         .ow-page .ow-photo-remove:hover, .ow-page .ow-photo-remove:focus-visible { background: #b91c1c; outline: none; }
         /* product row: previous records (history) icon next to the remove button */
         .ow-page .ow-row-actions { display: inline-flex; align-items: center; gap: .4rem; }
+        .ow-page .ow-head-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: .5rem; }
         .ow-page .ow-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 1.85rem; height: 1.85rem; padding: 0; border: 1px solid var(--ow-line); border-radius: .45rem; background: var(--ow-bg); color: var(--ow-muted); cursor: pointer; }
         .ow-page .ow-icon-btn:hover, .ow-page .ow-icon-btn:focus-visible { color: var(--ow-link); border-color: var(--ow-link); outline: none; }
         .ow-page .ow-icon-btn svg { width: 1rem; height: 1rem; }
@@ -129,12 +130,65 @@
             {{-- the main label only (user, 28 Oct 2026): no crumb line or description --}}
             <h1 class="ow-title">{{ $copy['title'] }}</h1>
         </div>
-        {{-- another customer's order on this page: each order keeps its own colour; one Save creates them all --}}
-        @if ($this->canAddOrder())
-            <div class="ow-actions">
+        {{-- every button of the page at the top right (user, 16 Nov 2026: none at the bottom): Add another order, Cancel,
+             Save, and Confirm, pay & print; the bar under the form keeps the price summary only --}}
+        <div class="ow-actions ow-head-actions">
+            @if ($this->canAddOrder())
                 <button type="button" wire:click="addOrder" class="ow-btn" title="Another customer's order on this page; each order keeps its own colour and is created with the same Save">+ Add another order</button>
-            </div>
-        @endif
+            @endif
+            {{-- a saved quotation: what was changed on it before (user, 16 Nov 2026) --}}
+            @if ($isQuote && filled($this->quoteId ?? null))
+                <button type="button" wire:click="mountAction('history')" class="ow-btn" title="The fields changed on this quotation before: from which value to which value">History</button>
+            @endif
+            <a href="{{ $copy['cancel_url'] }}" class="ow-btn">Cancel</a>
+            @php
+                $payNow = $this->paysAny();
+                $submit = match (true) {
+                    $editing => $copy['submit'],
+                    $multiOrder => 'Save '.count($pageOrders).' orders'.($payNow ? ' & record payment' : '').' →',
+                    $payNow => 'Save order & record payment →',
+                    default => $copy['submit'],
+                };
+            @endphp
+            <button type="button" wire:click="save" wire:loading.attr="disabled" class="ow-btn ow-btn-primary">{{ $submit }}</button>
+            @if (! $editing && ! $isQuote)
+                {{-- the customer at the counter with the goods (client, 1 Nov 2026): one click confirms, records the Cash
+                     payment, issues the Cash Bill and creates the CSN, then opens both to print --}}
+                {{-- the CSN opens in a new tab, ready to check and print (user, 10 Nov 2026): the tab is opened on the click
+                     itself (a tab opened later is blocked as a pop-up) and moved to the CSN PDF once the order is saved;
+                     it closes when nothing was created (a check failed, or the CSN waits for the goods) --}}
+                {{-- every click ends the tab (user, 11 Nov 2026): the CSN PDF's address comes back from saveAndPrint (and as an
+                     event) and the tab shows it; with no CSN — a check failed, the order was refused, a Customer Drop Off
+                     waits for the goods, the request failed — the tab closes. The order page is told which PDF is open
+                     already (sessionStorage), so it does not load it a second time --}}
+                <button type="button"
+                        x-data="{
+                            tab: null,
+                            done(url) {
+                                const tab = this.tab;
+                                this.tab = null;
+                                if (! tab || tab.closed) { return }
+                                if (url) {
+                                    try { sessionStorage.setItem('og-print-opened', url) } catch (e) {}
+                                    tab.location.replace(url);
+                                } else {
+                                    tab.close();
+                                }
+                            },
+                            go() {
+                                if (this.tab && ! this.tab.closed) { return }
+                                this.tab = window.open('', '_blank');
+                                if (this.tab) { this.tab.document.write('<title>Preparing the CSN…</title><p style=&quot;font:16px system-ui,sans-serif;padding:2rem;color:#334155&quot;>Saving the order and preparing the CSN…</p>'); }
+                                $wire.saveAndPrint().then((url) => this.done(url || null)).catch(() => this.done(null));
+                            },
+                        }"
+                        x-init="void Livewire.hook('request', ({ fail }) => fail(() => done(null)))"
+                        x-on:click="go()"
+                        x-on:og-print-tab.window="done($event.detail.url)"
+                        x-on:og-print-tab-cancel.window="done(null)"
+                        wire:loading.attr="disabled" wire:target="saveAndPrint" class="ow-btn ow-btn-primary" title="Save the order with its Cash records confirmed and paid now; the CSN opens in a new tab to print">Confirm, pay &amp; print →</button>
+            @endif
+        </div>
     </div>
 
     {{-- the consignor is picked from the customers, as the Customer field (searchable, user 26 Oct 2026) --}}
@@ -1178,56 +1232,6 @@
                 @else
                     · {{ $isQuote ? 'Pending confirmation until Create order' : 'Customer confirmation: Not requested' }}
                     · {{ $multiOrder ? count($pageOrders).' orders, '.collect($pageOrders)->sum(fn ($o) => $o['summary']['records'] ?? 0).' records' : count($pairs).' '.\Illuminate\Support\Str::plural('record', count($pairs)).' under one order number' }}
-                @endif
-            </div>
-            <div class="ow-actions">
-                <a href="{{ $copy['cancel_url'] }}" class="ow-btn">Cancel</a>
-                @php
-                    $payNow = $this->paysAny();
-                    $submit = match (true) {
-                        $editing => $copy['submit'],
-                        $multiOrder => 'Save '.count($pageOrders).' orders'.($payNow ? ' & record payment' : '').' →',
-                        $payNow => 'Save order & record payment →',
-                        default => $copy['submit'],
-                    };
-                @endphp
-                <button type="button" wire:click="save" wire:loading.attr="disabled" class="ow-btn ow-btn-primary">{{ $submit }}</button>
-                @if (! $editing && ! $isQuote)
-                    {{-- the customer at the counter with the goods (client, 1 Nov 2026): one click confirms, records the Cash
-                         payment, issues the Cash Bill and creates the CSN, then opens both to print --}}
-                    {{-- the CSN opens in a new tab, ready to check and print (user, 10 Nov 2026): the tab is opened on the click
-                         itself (a tab opened later is blocked as a pop-up) and moved to the CSN PDF once the order is saved;
-                         it closes when nothing was created (a check failed, or the CSN waits for the goods) --}}
-                    {{-- every click ends the tab (user, 11 Nov 2026): the CSN PDF's address comes back from saveAndPrint (and as an
-                         event) and the tab shows it; with no CSN — a check failed, the order was refused, a Customer Drop Off
-                         waits for the goods, the request failed — the tab closes. The order page is told which PDF is open
-                         already (sessionStorage), so it does not load it a second time --}}
-                    <button type="button"
-                            x-data="{
-                                tab: null,
-                                done(url) {
-                                    const tab = this.tab;
-                                    this.tab = null;
-                                    if (! tab || tab.closed) { return }
-                                    if (url) {
-                                        try { sessionStorage.setItem('og-print-opened', url) } catch (e) {}
-                                        tab.location.replace(url);
-                                    } else {
-                                        tab.close();
-                                    }
-                                },
-                                go() {
-                                    if (this.tab && ! this.tab.closed) { return }
-                                    this.tab = window.open('', '_blank');
-                                    if (this.tab) { this.tab.document.write('<title>Preparing the CSN…</title><p style=&quot;font:16px system-ui,sans-serif;padding:2rem;color:#334155&quot;>Saving the order and preparing the CSN…</p>'); }
-                                    $wire.saveAndPrint().then((url) => this.done(url || null)).catch(() => this.done(null));
-                                },
-                            }"
-                            x-init="void Livewire.hook('request', ({ fail }) => fail(() => done(null)))"
-                            x-on:click="go()"
-                            x-on:og-print-tab.window="done($event.detail.url)"
-                            x-on:og-print-tab-cancel.window="done(null)"
-                            wire:loading.attr="disabled" wire:target="saveAndPrint" class="ow-btn ow-btn-primary" title="Save the order with its Cash records confirmed and paid now; the CSN opens in a new tab to print">Confirm, pay &amp; print →</button>
                 @endif
             </div>
         </div>

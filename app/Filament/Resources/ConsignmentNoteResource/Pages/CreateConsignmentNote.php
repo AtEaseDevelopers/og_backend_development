@@ -12,6 +12,8 @@ use Illuminate\Support\Str;
 
 class CreateConsignmentNote extends CreateRecord
 {
+    use \App\Filament\Concerns\FormActionsInHeader;
+
     protected static string $resource = ConsignmentNoteResource::class;
 
     /** @var list<array<string, mixed>> */

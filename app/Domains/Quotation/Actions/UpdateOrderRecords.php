@@ -132,7 +132,7 @@ class UpdateOrderRecords
         }
 
         if ($order->destinations->count() > 1) {
-            return ['label' => 'Locked · Several destinations', 'note' => 'This record is priced for several destinations. Change it under Items & pricing on the order page.'];
+            return ['label' => 'Locked · Several areas', 'note' => 'This record is priced for several areas. Change it under Items & pricing on the order page.'];
         }
 
         return null;
@@ -914,7 +914,7 @@ class UpdateOrderRecords
         $consignee = trim((string) ($pair['consignee_name'] ?? ''));
         $existingCity = trim((string) $order->destinations->sortBy('sequence')->first()?->city);
         $existingCity = $existingCity !== '' && mb_strtolower($existingCity) !== mb_strtolower(trim((string) $order->consignee_name)) ? $existingCity : null;
-        $column = (string) ($toName ?: ($existingCity ?: ($consignee !== '' ? $consignee : 'Destination')));
+        $column = (string) ($toName ?: ($existingCity ?: ($consignee !== '' ? $consignee : 'Area')));
         // pickup / store of this block; an older caller without one: the header value it changed, else the record's
         $headerService = ServiceType::tryFrom((string) ($data['service_type'] ?? ''))?->value;
         $serviceType = ServiceType::tryFrom((string) ($pair['service_type'] ?? ''))?->value
@@ -1106,7 +1106,7 @@ class UpdateOrderRecords
 
         if ($changes === []) {
             $changes[] = match (true) {
-                ! $linesChanged => 'destination renamed to '.$column,
+                ! $linesChanged => 'area renamed to '.$column,
                 // the same products: some got a price-list rate, or a product without a price became a line again
                 collect($rows)->contains(fn (array $row) => $row['prices'][$column] !== null && ! in_array($row['item_name'].'|'.$row['quantity'].'|'.$priceKey($row['prices'][$column]), $currentSignature, true)) => 'product prices filled from the price list',
                 default => 'products without a price kept on the record',

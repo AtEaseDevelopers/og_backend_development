@@ -11,6 +11,12 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CreditCustomerApproval extends Page
 {
+    /** Open to the roles ticked for "orders.view" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canAccess(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     protected static ?string $navigationIcon = 'heroicon-o-shield-check';
 
     protected static ?string $navigationGroup = 'Approvals';

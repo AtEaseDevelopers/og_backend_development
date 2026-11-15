@@ -11,6 +11,12 @@ use Filament\Tables\Table;
 /** Message / email history: recipient, type, channel, time, delivery status, related document. */
 class NotificationLogResource extends Resource
 {
+    /** Open to the roles ticked for "integrations.view" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canViewAny(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     protected static ?string $model = NotificationLog::class;
 
     protected static ?string $tenantOwnershipRelationshipName = 'company';

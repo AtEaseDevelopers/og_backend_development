@@ -8,6 +8,8 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditItem extends EditRecord
 {
+    use \App\Filament\Concerns\FormActionsInHeader;
+
     protected static string $resource = ItemResource::class;
 
     protected function getHeaderActions(): array

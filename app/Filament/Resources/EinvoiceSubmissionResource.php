@@ -20,6 +20,12 @@ use Throwable;
 
 class EinvoiceSubmissionResource extends Resource
 {
+    /** Open to the roles ticked for "integrations.view" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canViewAny(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     protected static ?string $model = EinvoiceSubmission::class;
 
     protected static bool $isScopedToTenant = false;

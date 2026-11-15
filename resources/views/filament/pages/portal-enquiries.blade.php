@@ -27,7 +27,7 @@
                     type="search"
                     wire:model.live.debounce.400ms="filterSearch"
                     class="cor-toolbar-input"
-                    placeholder="Order ID, customer, destination..."
+                    placeholder="Order ID, customer, area..."
                 />
             </div>
         </div>
@@ -52,7 +52,7 @@
                         <tr>
                             <th>Portal Order ID</th>
                             <th>Customer</th>
-                            <th>Destination</th>
+                            <th>Area</th>
                             <th>Submitted Date</th>
                             <th>Review Status</th>
                         </tr>

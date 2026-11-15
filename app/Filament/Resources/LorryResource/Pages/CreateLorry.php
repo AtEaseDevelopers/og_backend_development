@@ -8,6 +8,8 @@ use Illuminate\Support\Str;
 
 class CreateLorry extends CreateRecord
 {
+    use \App\Filament\Concerns\FormActionsInHeader;
+
     protected static string $resource = LorryResource::class;
 
     protected function mutateFormDataBeforeCreate(array $data): array

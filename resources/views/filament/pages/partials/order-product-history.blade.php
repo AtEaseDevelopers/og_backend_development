@@ -36,7 +36,7 @@
     <div class="oh-meta">
         <span><strong>Product:</strong> {{ $item_name ?: '—' }}</span>
         @if (filled($customer ?? null))<span><strong>Customer:</strong> {{ $customer }}</span>@endif
-        @if (filled($location ?? null))<span><strong>This row's destination:</strong> {{ $location }}{{ $sameCount > 0 ? ' · shown first' : '' }}</span>@endif
+        @if (filled($location ?? null))<span><strong>This row's area:</strong> {{ $location }}{{ $sameCount > 0 ? ' · shown first' : '' }}</span>@endif
     </div>
 
     {{-- special price: Customer → Special pricing --}}
@@ -47,11 +47,11 @@
         @else
             <div class="oh-wrap">
                 <table class="oh-small">
-                    <thead><tr><th>Destination</th><th>Quantity / UOM</th><th class="oh-num">Unit price</th><th class="oh-num">Min. charge</th></tr></thead>
+                    <thead><tr><th>Area</th><th>Quantity / UOM</th><th class="oh-num">Unit price</th><th class="oh-num">Min. charge</th></tr></thead>
                     <tbody>
                         @foreach ($special as $row)
                             <tr @class(['oh-same' => $row['same']])>
-                                <td>{{ $row['destination'] }}@if ($row['same'])<div><span class="oh-pill">This row's destination</span></div>@endif</td>
+                                <td>{{ $row['destination'] }}@if ($row['same'])<div><span class="oh-pill">This row's area</span></div>@endif</td>
                                 <td>{{ $row['uom'] ?? '—' }}</td>
                                 <td class="oh-num">{{ $money($row['price']) }}</td>
                                 <td class="oh-num">{{ $money($row['min_charge']) }}</td>
@@ -75,7 +75,7 @@
                     <tbody>
                         @foreach ($default as $row)
                             <tr @class(['oh-same' => $row['same']])>
-                                <td class="oh-nowrap">{{ $row['location'] }}@if ($row['same'])<div><span class="oh-pill">This row's destination</span></div>@endif</td>
+                                <td class="oh-nowrap">{{ $row['location'] }}@if ($row['same'])<div><span class="oh-pill">This row's area</span></div>@endif</td>
                                 <td>
                                     @if ($row['tiers'] !== [])
                                         <div class="oh-tiers">
@@ -102,7 +102,7 @@
                 <tr>
                     <th>Date</th>
                     <th>Order / quote no.</th>
-                    <th>Destination</th>
+                    <th>Area</th>
                     <th class="oh-num">Qty</th>
                     <th>UOM</th>
                     <th class="oh-num">Unit price</th>
@@ -122,7 +122,7 @@
                         </td>
                         <td>
                             {{ $row['destination'] }}
-                            @if ($row['same_destination'])<div><span class="oh-pill">Same destination</span></div>@endif
+                            @if ($row['same_destination'])<div><span class="oh-pill">Same area</span></div>@endif
                         </td>
                         <td class="oh-num">{{ rtrim(rtrim(number_format((float) $row['qty'], 3, '.', ''), '0'), '.') }}</td>
                         <td>{{ $row['uom'] ?? '—' }}</td>

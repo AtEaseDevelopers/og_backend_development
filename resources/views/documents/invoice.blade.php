@@ -30,7 +30,7 @@
                 <td class="lh-small">@if(filled($letterhead['sst_no'] ?? null))SST No. : {{ $letterhead['sst_no'] }}@endif</td>
             </tr></table>
         </div>
-    </td><td class="lh-qr">@if(! empty($meta['paid']))<div class="lh-paid">PAID</div>@endif @if($qr)<img src="{{ $qr }}" alt="Barcode {{ $meta['number'] ?? '' }}"><div class="lh-qr-text">{{ $meta['number'] ?? '—' }}</div>@endif</td></tr></table>
+    </td><td class="lh-qr">@if($qr)<img src="{{ $qr }}" alt="Barcode {{ $meta['number'] ?? '' }}"><div class="lh-qr-text">{{ $meta['number'] ?? '—' }}</div>@endif</td></tr></table>
     <div class="lh-rule"></div>
     <table class="lh-meta"><tr>
         {{-- one layout for the three payment types (user, 11 Nov 2026): the title at the left, the payment type at the right --}}
@@ -58,75 +58,13 @@
         </tr>
     </table>
 
-    <table class="items inv-items">
-        <thead>
-            <tr>
-                <th class="inv-col-no">No.</th>
-                <th class="inv-col-date">Date</th>
-                <th class="inv-col-csn">CSN</th>
-                <th class="inv-col-ref">Customer D/O</th>
-                <th class="inv-col-area">From Area</th>
-                <th class="inv-col-area">To Area</th>
-                <th class="inv-col-consignee">Consignee</th>
-                <th class="inv-col-goods">Item</th>
-                <th class="inv-col-amt">Amount (RM)</th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse($lines as $line)
-                <tr>
-                    <td class="inv-col-no">{{ $loop->iteration }}</td>
-                    <td class="inv-col-date">{{ $line['date'] ?? '—' }}</td>
-                    <td class="inv-col-csn">{{ $line['csn_number'] ?? '—' }}</td>
-                    <td class="inv-col-ref">
-                        @foreach($line['your_ref'] ?? ['—'] as $ref)
-                            <div class="inv-ref-line">{{ $ref }}</div>
-                        @endforeach
-                    </td>
-                    <td class="inv-col-area">{{ $line['from'] ?? '—' }}</td>
-                    <td class="inv-col-area">{{ $line['to'] ?? '—' }}</td>
-                    <td class="inv-col-consignee">{{ $line['consignee'] ?? '—' }}</td>
-                    <td class="inv-col-goods">
-                        @forelse($line['items'] ?? [] as $item)
-                            <div>{{ $item }}</div>
-                        @empty
-                            —
-                        @endforelse
-                    </td>
-                    <td class="inv-col-amt">{{ $line['amount'] ?? '' }}</td>
-                </tr>
-            @empty
-                <tr>
-                    <td colspan="9" style="padding: 10px 5px; text-align: center; color: #666;">No invoice lines.</td>
-                </tr>
-            @endforelse
-        </tbody>
-    </table>
+    @if (! empty($other))
+        @include('documents.partials.other-lines', ['lines' => $lines, 'remarks' => $remarks ?? null])
+    @else
+        @include('documents.partials.billing-lines', ['lines' => $lines])
+    @endif
 
-    {{-- the amount in words beside Sub total, SST, Total (client, 6 Nov 2026) --}}
-    <table class="inv-foot">
-        <tr>
-            <td class="inv-words-cell">
-                @if(filled($amountInWords))<div class="inv-words">{{ $amountInWords }}</div>@endif
-            </td>
-            <td class="inv-totals-cell">
-                <table class="inv-totals inv-totals-boxed">
-                    <tr>
-                        <td class="inv-totals-label">Sub Total (Excluding Tax)</td>
-                        <td class="inv-totals-value">{{ $totals['subtotal_excl_tax'] ?? '' }}</td>
-                    </tr>
-                    <tr>
-                        <td class="inv-totals-label">{{ $totals['tax_label'] ?? 'SST 6%' }}</td>
-                        <td class="inv-totals-value">{{ filled($totals['tax_amount'] ?? null) ? $totals['tax_amount'] : '0.00' }}</td>
-                    </tr>
-                    <tr class="inv-totals-grand">
-                        <td class="inv-totals-label">Total</td>
-                        <td class="inv-totals-value">RM {{ $totals['total'] ?? '' }}</td>
-                    </tr>
-                </table>
-            </td>
-        </tr>
-    </table>
+    @include('documents.partials.billing-totals', ['totals' => $totals, 'amountInWords' => $amountInWords])
 
     {{-- the notes and the e-Invoice QR (LHDN validated link), as the sample --}}
     <table class="inv-notes-row">
@@ -142,6 +80,7 @@
                 <div>3. Once payment is made, please forward the bank slip to us: <strong>{{ $letterhead['email'] ?? '—' }}@if(filled($letterhead['phone'] ?? null)) / {{ $letterhead['phone'] }}@endif</strong></div>
                 <div class="inv-generated">THIS IS COMPUTER GENERATED<br>DOCUMENT NO SIGNATURE REQUIRED</div>
             </td>
+            @if (empty($other))
             <td class="inv-einv">
                 @if($einvoiceQr)
                     <img src="{{ $einvoiceQr }}" alt="e-Invoice QR" class="inv-einv-qr">
@@ -150,10 +89,13 @@
                 @endif
                 <div class="inv-einv-label">LHDN Validated Link</div>
             </td>
+            @endif
         </tr>
     </table>
 
-    {{-- the terms & conditions, as the client's sample (6 Nov 2026) --}}
+    {{-- the terms & conditions, as the client's sample (6 Nov 2026); they are the transport terms, so not on an
+         Other Invoice --}}
+    @if (empty($other))
     <div class="inv-terms">
         <div class="inv-terms-title">Terms &amp; Conditions</div>
         <div>1. Our company only provides Transportation Services. Customer should be held responsible for any contravention of Law, Customs Duties, Delay, Robbery or Accidents. Our company will not be responsible for it.</div>
@@ -165,4 +107,5 @@
         <div>7. Any claim must be notified within 7 working days from the date of goods delivered. After the expiry of this period, our company retains the right to refuse any request made by customers.</div>
         <div>8. Delivery dates provided are only estimates; our company shall not be liable for any delay in delivery.</div>
     </div>
+    @endif
 </div>

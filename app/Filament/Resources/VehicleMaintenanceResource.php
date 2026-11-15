@@ -25,6 +25,14 @@ use Illuminate\Support\Carbon;
  */
 class VehicleMaintenanceResource extends Resource
 {
+    use \App\Filament\Concerns\HasModulePermissions;
+
+    /** Open to the roles ticked for "masterdata.fleet" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canViewAny(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     protected static ?string $model = Lorry::class;
 
     protected static bool $isScopedToTenant = false;

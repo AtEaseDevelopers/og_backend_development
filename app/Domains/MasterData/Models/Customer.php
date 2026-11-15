@@ -32,12 +32,22 @@ class Customer extends Model
         // the client's Customer Information workbook columns (user, 25 Oct 2026)
         'display_term', 'postcode', 'phone_2', 'mobile', 'contact_person_3', 'phone_3', 'contact_person_4', 'phone_4',
         'gst_no', 'msic_code_2', 'msic_code_3', 'own_note', 'mailing_statement_remark', 'payment_note',
+        // the client's Customer Master Data V2 (user, 16 Nov 2026)
+        'account_opening_date', 'mailing_address',
     ];
 
     protected static function booted(): void
     {
         // every customer is also a consignor / consignee (user, 25 Oct 2026)
         static::saved(fn (Customer $customer) => ConsignorConsignee::syncFromCustomer($customer));
+
+        // Debtor type (Cash / Credit / COD, the client's Customer Master Data V2): kept as the customer's order type;
+        // Credit is a credit customer, Cash and COD are not — the two always agree when the type is set
+        static::saving(function (Customer $customer): void {
+            if ($customer->isDirty('default_order_type') && in_array($customer->default_order_type, ['cash', 'term', 'cod'], true)) {
+                $customer->is_credit = $customer->default_order_type === 'term';
+            }
+        });
 
         // the special prices are kept by debtor code: a code changed on the customer takes them along (user, 11 Nov
         // 2026: a customer created by the price list import gets a generated code, corrected later)
@@ -130,6 +140,7 @@ class Customer extends Model
             'consent_valid_from' => 'date',
             'consent_valid_until' => 'date',
             'is_credit' => 'boolean',
+            'account_opening_date' => 'date',
             'charges_sst' => 'boolean',
             'is_group_company' => 'boolean',
             'portal_approved' => 'boolean',

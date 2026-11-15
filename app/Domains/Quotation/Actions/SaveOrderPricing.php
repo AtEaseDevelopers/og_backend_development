@@ -35,7 +35,7 @@ class SaveOrderPricing
         $columns = collect($pricing['columns'] ?? [])->filter()->values()->all();
 
         if ($columns === []) {
-            throw new InvalidArgumentException('The order has no destination column to price.');
+            throw new InvalidArgumentException('The order has no area column to price.');
         }
 
         $itemRows = collect($pricing['rows'] ?? [])
@@ -67,8 +67,8 @@ class SaveOrderPricing
                 ->map(fn (array $o) => sprintf('%s → %s: standard RM %s, entered RM %s', $o['item'], $o['destination'], number_format($o['standard'], 2), number_format($o['entered'], 2)))
                 ->implode('; ');
 
-            if (! ($actor->is_hq || $actor->hasAnyRole(['super_admin', 'branch_admin', 'branch_manager']))) {
-                throw new InvalidArgumentException('These rates differ from the standard price list and need HQ Admin or Branch Manager permission: '.$summary);
+            if (! \App\Support\Permissions::allows('orders.override_price', $actor)) {
+                throw new InvalidArgumentException('These rates differ from the standard price list and need the permission to enter a price different from the price list: '.$summary);
             }
 
             if ($overrideReason === '') {

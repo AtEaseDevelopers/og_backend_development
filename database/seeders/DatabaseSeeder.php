@@ -38,6 +38,9 @@ class DatabaseSeeder extends Seeder
             Role::findOrCreate($role);
         }
 
+        // a new install: the roles exist only now, so they get their starting permissions here (the migration found none)
+        \App\Support\Permissions::syncDefaults();
+
         $branches = collect([
             [
                 'code' => 'KL',

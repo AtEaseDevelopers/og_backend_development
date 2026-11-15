@@ -54,6 +54,21 @@ class AppServiceProvider extends ServiceProvider
                 ->optionsLimit(fn (\Filament\Forms\Components\Select $component): int => $component->hasRelationship() ? 50 : 500),
         );
 
+        /*
+         * A role can be "view only" on a module (Master Data → Roles & Permission, 13 Nov 2026): every action of a
+         * module's screens follows the module's Create / Edit / Delete ticks (App\Support\ActionGate). An action that
+         * sets its own authorize() afterwards (a resource's Edit / Delete buttons) keeps its own rule.
+         */
+        foreach ([
+            \Filament\Actions\Action::class,
+            \Filament\Tables\Actions\Action::class,
+            \Filament\Tables\Actions\BulkAction::class,
+            \Filament\Forms\Components\Actions\Action::class,
+            \Filament\Infolists\Components\Actions\Action::class,
+        ] as $actionClass) {
+            $actionClass::configureUsing(fn ($action) => $action->authorize(fn () => \App\Support\ActionGate::allows($action)));
+        }
+
         \Filament\Tables\Filters\SelectFilter::configureUsing(
             fn (\Filament\Tables\Filters\SelectFilter $filter) => $filter->searchable()->preload(),
         );

@@ -7,6 +7,8 @@ use Filament\Resources\Pages\CreateRecord;
 
 class CreateDropOffMinCharge extends CreateRecord
 {
+    use \App\Filament\Concerns\FormActionsInHeader;
+
     use \App\Filament\Concerns\MasterDataBreadcrumbs;
 
     protected static string $resource = DropOffMinChargeResource::class;

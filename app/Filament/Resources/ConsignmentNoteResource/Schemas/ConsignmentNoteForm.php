@@ -86,7 +86,7 @@ class ConsignmentNoteForm
                             ->columnSpan(6)
                             ->afterStateUpdated(fn (?string $state, Set $set) => static::fillFromQuotation($state, $set)),
                         Forms\Components\Select::make('quotation_destination_id')
-                            ->label('Destination')
+                            ->label('Area')
                             ->options(fn (Get $get) => static::destinationOptions($get('quotation_id')))
                             ->searchable()
                             ->live()
@@ -228,13 +228,13 @@ class ConsignmentNoteForm
             ->description('Please find the transportation charges for the following:-')
             ->schema([
                 Forms\Components\TagsInput::make('matrix_columns')
-                    ->label('Destinations')
-                    ->placeholder('Add destination')
+                    ->label('Areas')
+                    ->placeholder('Add area')
                     ->default(['Seremban', 'Melaka', 'Johor'])
                     ->live()
                     ->columnSpanFull(),
                 Forms\Components\Select::make('charge_column')
-                    ->label('Bill to destination')
+                    ->label('Bill to area')
                     ->helperText('Prices from this column update transport charges and CSN lines.')
                     ->options(fn (Get $get) => collect($get('matrix_columns') ?? [])
                         ->filter()

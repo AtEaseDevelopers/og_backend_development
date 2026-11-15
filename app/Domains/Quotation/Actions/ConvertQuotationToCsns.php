@@ -42,7 +42,7 @@ class ConvertQuotationToCsns
         }
 
         if ($quotation->destinations()->count() === 0) {
-            throw new InvalidArgumentException('Quotation has no destinations to convert.');
+            throw new InvalidArgumentException('Quotation has no areas to convert.');
         }
 
         return DB::transaction(function () use ($quotation, $actor, $billingType) {

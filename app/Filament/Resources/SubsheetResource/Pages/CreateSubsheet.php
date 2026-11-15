@@ -10,6 +10,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class CreateSubsheet extends CreateRecord
 {
+    use \App\Filament\Concerns\FormActionsInHeader;
+
     protected static string $resource = SubsheetResource::class;
 
     protected function handleRecordCreation(array $data): Model

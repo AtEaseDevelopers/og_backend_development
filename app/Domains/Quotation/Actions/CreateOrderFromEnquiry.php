@@ -71,7 +71,7 @@ class CreateOrderFromEnquiry
         $pairs ??= $this->pairsFromPayload($enquiry);
 
         if ($pairs === []) {
-            throw new InvalidArgumentException('The enquiry has no destination to create an order for.');
+            throw new InvalidArgumentException('The enquiry has no drop-off address to create an order for.');
         }
 
         $branch = Branch::query()->findOrFail($enquiry->branch_id);
@@ -393,7 +393,7 @@ class CreateOrderFromEnquiry
             }
         }
 
-        return (string) ($pair['consignee_name'] ?: 'Destination');
+        return (string) ($pair['consignee_name'] ?: 'Area');
     }
 
     /** @return list<array<string, mixed>> */

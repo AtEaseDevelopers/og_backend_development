@@ -37,6 +37,9 @@ class OrderFormOptions
         $isKl = strcasecmp((string) $branchCode, 'KL') === 0;
         $locations = Location::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']);
         $options = [];
+        // without a Klang Valley area (the client's own area list has none, 16 Nov 2026) the areas inside it are
+        // offered as they are
+        $isKl = $isKl && $locations->contains(fn ($location) => strcasecmp(trim((string) $location->name), self::KLANG_VALLEY) === 0);
 
         foreach ($locations as $location) {
             $name = trim((string) $location->name);

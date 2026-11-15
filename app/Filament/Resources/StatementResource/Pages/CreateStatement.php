@@ -9,6 +9,8 @@ use Filament\Resources\Pages\CreateRecord;
 
 class CreateStatement extends CreateRecord
 {
+    use \App\Filament\Concerns\FormActionsInHeader;
+
     protected static string $resource = StatementResource::class;
 
     protected function handleRecordCreation(array $data): \Illuminate\Database\Eloquent\Model

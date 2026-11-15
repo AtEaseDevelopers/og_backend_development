@@ -39,7 +39,7 @@ class Store extends Model
     /** The price-list "From" location of orders picked up at this store. */
     public function location(): BelongsTo
     {
-        return $this->belongsTo(Location::class);
+        return $this->belongsTo(Location::class)->withTrashed();
     }
 
     public function scopeActive(Builder $query): Builder

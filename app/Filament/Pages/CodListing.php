@@ -7,6 +7,12 @@ use Filament\Pages\Page;
 
 class CodListing extends Page
 {
+    /** Open to the roles ticked for "billing.view" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canAccess(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     protected static ?string $navigationIcon = 'heroicon-o-truck';
 
     protected static ?string $navigationGroup = 'Billing';

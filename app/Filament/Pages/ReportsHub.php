@@ -47,11 +47,9 @@ class ReportsHub extends Page
         };
     }
 
+    /** Open to the roles ticked for "reports.view" on Master Data → Roles & Permission (13 Nov 2026). */
     public static function canAccess(): bool
     {
-        $user = auth()->user();
-
-        return $user?->is_hq
-            || $user?->hasAnyRole(['super_admin', 'branch_admin', 'branch_manager', 'finance', 'dispatcher']);
+        return \App\Support\Permissions::screen(static::class);
     }
 }

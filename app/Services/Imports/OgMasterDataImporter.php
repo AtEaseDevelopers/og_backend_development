@@ -54,8 +54,8 @@ class OgMasterDataImporter
         $locationIds = [];
 
         foreach ($this->uniqueLocations($data) as $locationName) {
-            $location = Location::query()->updateOrCreate(
-                ['name' => $locationName],
+            $location = Location::restoreOrCreate(
+                $locationName,
                 [
                     'code' => $this->locationCode($locationName),
                     'type' => 'delivery',

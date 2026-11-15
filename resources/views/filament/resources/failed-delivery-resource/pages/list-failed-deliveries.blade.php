@@ -108,7 +108,7 @@
                         <th>Company</th>
                         <th>Driver</th>
                         <th>Lorry</th>
-                        <th>Destination</th>
+                        <th>Area</th>
                         <th>Date</th>
                         <th>Status</th>
                     </tr>

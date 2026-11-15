@@ -211,10 +211,10 @@ class ReviewPaymentSubmission
 
     private function assertReviewer(User $actor): void
     {
-        if ($actor->is_hq || $actor->hasAnyRole(['super_admin', 'branch_admin', 'branch_manager', 'finance', 'counter'])) {
+        if (\App\Support\Permissions::allows('billing.review_payment', $actor)) {
             return;
         }
 
-        throw new InvalidArgumentException('Only Finance, Counter, Branch Manager or HQ Admin may review payments.');
+        throw new InvalidArgumentException('You do not have permission to review payments.');
     }
 }

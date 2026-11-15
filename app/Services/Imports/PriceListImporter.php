@@ -61,7 +61,7 @@ class PriceListImporter
         }
 
         if ($columns === []) {
-            throw new RuntimeException('Row 1 must list the destination columns (e.g. Seremban/Melaka, Johor).');
+            throw new RuntimeException('Row 1 must list the area columns (e.g. Seremban/Melaka, Johor).');
         }
 
         $locations = array_values(array_unique(array_merge(...array_values($columns))));
@@ -251,8 +251,8 @@ class PriceListImporter
             $locationIds = [];
 
             foreach ($data['locations'] as $name) {
-                $location = Location::query()->updateOrCreate(
-                    ['name' => $name],
+                $location = Location::restoreOrCreate(
+                    $name,
                     [
                         'code' => Str::upper(Str::slug($name, '_')),
                         'type' => 'delivery',

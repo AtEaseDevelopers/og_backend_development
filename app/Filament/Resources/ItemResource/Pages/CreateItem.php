@@ -9,6 +9,8 @@ use Illuminate\Support\Str;
 
 class CreateItem extends CreateRecord
 {
+    use \App\Filament\Concerns\FormActionsInHeader;
+
     protected static string $resource = ItemResource::class;
 
     protected function mutateFormDataBeforeCreate(array $data): array

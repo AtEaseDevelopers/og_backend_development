@@ -23,7 +23,10 @@
         table.rows { width: 100%; border-collapse: collapse; margin-top: 4px; }
         table.rows th { font-weight: bold; text-align: left; padding: 4px 5px; vertical-align: bottom; border: 1px solid #000; background: #f0f0f0; text-transform: uppercase; }
         table.rows td { padding: 4px 5px; vertical-align: top; border: 1px solid #000; }
+        table.rows { table-layout: fixed; }
         table.rows .num { text-align: right; white-space: nowrap; }
+        /* one row for each No.: a long name is cut, never wrapped */
+        table.rows td.one { white-space: nowrap; overflow: hidden; }
         table.rows .consignor { font-weight: bold; }
         table.rows .consignee { font-weight: bold; font-style: italic; }
         .totals td { padding-top: 6px; font-weight: bold; }
@@ -62,15 +65,13 @@
             <table class="rows">
                 <thead>
                     <tr>
-                        {{-- portrait (client, 13 Nov 2026): the columns narrower; "Advance Taken" is "COD (RM)" --}}
+                        {{-- the drivers' six columns (client, 16 Nov 2026): no Bill No., From or To, so each No. stays on
+                             one row on a portrait page; "Advance Taken" is "COD (RM)" (13 Nov 2026) --}}
                         <th style="width:5%" class="num">No.</th>
-                        <th style="width:13%">CSN No.</th>
-                        <th style="width:14%">Bill No.</th>
-                        <th style="width:10%">From</th>
-                        <th style="width:10%">To</th>
-                        <th style="width:14%">Consignor</th>
-                        <th style="width:14%">Consignee</th>
-                        <th style="width:9%">Qty U/M</th>
+                        <th style="width:17%">CSN No.</th>
+                        <th style="width:28%">Consignor</th>
+                        <th style="width:28%">Consignee</th>
+                        <th style="width:11%">Qty U/M</th>
                         <th style="width:11%" class="num">COD (RM)</th>
                     </tr>
                 </thead>
@@ -78,21 +79,18 @@
                     @forelse ($group['rows'] as $i => $row)
                         <tr>
                             <td class="num">{{ $i + 1 }}</td>
-                            <td>{{ $row['csn'] }}</td>
-                            <td>{{ $row['bill'] }}</td>
-                            <td>{{ $row['from'] }}</td>
-                            <td>{{ $row['to'] }}</td>
-                            <td class="consignor">{{ \Illuminate\Support\Str::limit(strtoupper($row['consignor']), 18, '') }}</td>
-                            <td class="consignee">{{ \Illuminate\Support\Str::limit(strtoupper($row['consignee']), 18, '') }}</td>
+                            <td class="one">{{ $row['csn'] }}</td>
+                            <td class="consignor one">{{ \Illuminate\Support\Str::limit(strtoupper($row['consignor']), 30, '') }}</td>
+                            <td class="consignee one">{{ \Illuminate\Support\Str::limit(strtoupper($row['consignee']), 30, '') }}</td>
                             {{-- the unit, never a product code (client, 5 Nov 2026) --}}
-                            <td>{{ number_format($row['qty'], 2) }} {{ \App\Support\QuantityLabel::unit($row['uom']) ?? 'Unit' }}</td>
+                            <td class="one">{{ number_format($row['qty'], 2) }} {{ \App\Support\QuantityLabel::unit($row['uom']) ?? 'Unit' }}</td>
                             <td class="num">{{ $row['advance'] !== null ? number_format($row['advance'], 2) : '' }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="9">No CSN on this job sheet.</td></tr>
+                        <tr><td colspan="6">No CSN on this job sheet.</td></tr>
                     @endforelse
                     <tr class="totals">
-                        <td colspan="7" style="text-align:right">Total :</td>
+                        <td colspan="4" style="text-align:right">Total :</td>
                         <td class="num" style="text-align:left">{{ number_format($group['qty_total'], 2) }}</td>
                         <td class="num">RM {{ number_format($group['advance_total'], 2) }}</td>
                     </tr>

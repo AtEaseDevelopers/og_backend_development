@@ -47,8 +47,32 @@ class SpecialPriceExport
     /** Writes the workbook to a file. */
     public static function write(Customer $customer, string $path): void
     {
-        static::writeWorkbook($customer, $path);
+        static::writeWorkbook([$customer], $path);
         static::fixSheetView($path);
+    }
+
+    /**
+     * Every customer's special prices in one workbook (client, 16 Nov 2026): one sheet per customer, named by its
+     * debtor code — the layout "Import special price" reads, so the prices can be amended in Excel in bulk and
+     * imported back. Only the customers of the current company that have a special price.
+     */
+    public static function downloadAll(): BinaryFileResponse
+    {
+        $codes = UomRateTier::query()->whereNotNull('customer_code')->where('customer_code', '!=', '')->distinct()->pluck('customer_code');
+        $customers = Customer::query()
+            ->when(CurrentCompany::id(), fn ($q, $id) => $q->where('company_id', $id))
+            ->whereIn('code', $codes)
+            ->orderBy('code')
+            ->get()
+            ->unique(fn (Customer $c) => strtoupper(trim((string) $c->code)))
+            ->values()
+            ->all();
+
+        $path = tempnam(sys_get_temp_dir(), 'og-sp-').'.xlsx';
+        static::writeWorkbook($customers, $path);
+        static::fixSheetView($path);
+
+        return response()->download($path, 'Special Price - all customers - '.now()->format('Y-m-d').'.xlsx', ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'])->deleteFileAfterSend();
     }
 
     /**
@@ -78,10 +102,11 @@ class SpecialPriceExport
         $zip->close();
     }
 
-    private static function writeWorkbook(Customer $customer, string $path): void
+    /** @param  list<Customer>  $customers  one sheet each */
+    private static function writeWorkbook(array $customers, string $path): void
     {
-        $rows = static::rows($customer);
-        $hasFixed = collect($rows)->contains(fn (array $row) => collect(self::RANGES)->contains(fn ($l) => filled($row["range_{$l}_fixed"] ?? null)));
+        $sheets = array_map(fn (Customer $customer) => ['customer' => $customer, 'rows' => static::rows($customer)], $customers);
+        $hasFixed = collect($sheets)->flatMap(fn (array $s) => $s['rows'])->contains(fn (array $row) => collect(self::RANGES)->contains(fn ($l) => filled($row["range_{$l}_fixed"] ?? null)));
         $headers = static::headers($hasFixed);
         $lastColumn = count($headers) - 1;
 
@@ -91,14 +116,13 @@ class SpecialPriceExport
             $options->setColumnWidth($width, $i + 1);
         }
         $options->setColumnWidthForRange(11, count($widths) + 1, $lastColumn + 1);
-        $options->mergeCells(0, 3, min(22, $lastColumn), 3);
-        $options->mergeCells(0, 4, min(22, $lastColumn), 4);
+        foreach (array_keys($sheets ?: [0]) as $sheetIndex) {
+            $options->mergeCells(0, 3, min(22, $lastColumn), 3, $sheetIndex);
+            $options->mergeCells(0, 4, min(22, $lastColumn), 4, $sheetIndex);
+        }
 
         $writer = new Writer($options);
         $writer->openToFile($path);
-        $sheet = $writer->getCurrentSheet();
-        $sheet->setName(Str::limit(preg_replace('/[\\\\\/?*\[\]:]/', '-', $customer->code ?: 'Special price'), 31, ''));
-        $sheet->setSheetView((new SheetView())->setFreezeRow(self::HEADER_ROW + 1)->setFreezeColumn('E'));
 
         $title = (new Style())->setFontBold()->setFontSize(16);
         $name = (new Style())->setFontBold()->setFontSize(12);
@@ -107,6 +131,23 @@ class SpecialPriceExport
         $cell = (new Style())->setBackgroundColor('FFF2CC');
         $money = (new Style())->setBackgroundColor('FFF2CC')->setFormat('#,##0.00');
         $date = (new Style())->setBackgroundColor('FFF2CC')->setFormat('dd/mm/yyyy');
+        $moneyColumns = ['pickup_min_charge', 'construction_min_charge', 'drop_off_min_charge', 'extra_drop_charge'];
+        $names = [];
+
+        if ($sheets === []) {
+            $writer->addRow(Row::fromValues(['', 'No customer has a special price.'], $note));
+        }
+
+        foreach ($sheets as $sheetIndex => ['customer' => $customer, 'rows' => $rows]) {
+        $sheet = $sheetIndex === 0 ? $writer->getCurrentSheet() : $writer->addNewSheetAndMakeItCurrent();
+        $sheetName = Str::limit(preg_replace('/[\\\\\/?*\[\]:]/', '-', $customer->code ?: 'Special price'), 31, '');
+        // a sheet name is used once in a workbook
+        for ($n = 2; in_array(strtolower($sheetName), $names, true); $n++) {
+            $sheetName = Str::limit($sheetName, 27, '').' ('.$n.')';
+        }
+        $names[] = strtolower($sheetName);
+        $sheet->setName($sheetName);
+        $sheet->setSheetView((new SheetView())->setFreezeRow(self::HEADER_ROW + 1)->setFreezeColumn('E'));
 
         $writer->addRow(Row::fromValues([]));
         $writer->addRow(Row::fromValues(['O&G Customer Special Price List'], $title));
@@ -116,8 +157,6 @@ class SpecialPriceExport
         ], $note));
         $writer->addRow(Row::fromValues([]));
         $writer->addRow(Row::fromValues($headers, $head));
-
-        $moneyColumns = ['pickup_min_charge', 'construction_min_charge', 'drop_off_min_charge', 'extra_drop_charge'];
 
         foreach ($rows as $index => $row) {
             $cells = [];
@@ -143,6 +182,7 @@ class SpecialPriceExport
 
         if ($rows === []) {
             $writer->addRow(Row::fromValues(['', 'No special price for this customer.'], $note));
+        }
         }
 
         $writer->close();

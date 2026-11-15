@@ -12,14 +12,17 @@ use Filament\Tables\Table;
 
 class BranchResource extends Resource
 {
+    use \App\Filament\Concerns\HasModulePermissions;
+
     protected static ?string $model = Branch::class;
 
     protected static bool $isScopedToTenant = false;
 
     // Master Data → Company pages (user, 28 Oct 2026): super_admin every company, branch_admin their companies only
+    /** Open to the roles ticked for "masterdata.company" on Master Data → Roles & Permission (13 Nov 2026). */
     public static function canViewAny(): bool
     {
-        return auth()->user()?->canManageStaff() ?? false;
+        return \App\Support\Permissions::screen(static::class);
     }
 
     public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
@@ -82,6 +85,8 @@ class BranchResource extends Resource
             ->actions([
                 Tables\Actions\ViewAction::make(),
                 Tables\Actions\EditAction::make(),
+                // Delete only for a record without history (client, 16 Nov 2026); a used one is set Inactive instead
+                \App\Support\RecordUsage::deleteAction(),
             ]);
     }
 

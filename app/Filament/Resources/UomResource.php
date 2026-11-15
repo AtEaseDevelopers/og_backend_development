@@ -22,6 +22,14 @@ use Illuminate\Support\Str;
 
 class UomResource extends Resource
 {
+    use \App\Filament\Concerns\HasModulePermissions;
+
+    /** Open to the roles ticked for "masterdata.products" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canViewAny(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     protected static ?string $model = Uom::class;
 
     protected static bool $isScopedToTenant = false;
@@ -379,6 +387,8 @@ class UomResource extends Resource
             ->actions([
                 Tables\Actions\ViewAction::make(),
                 Tables\Actions\EditAction::make(),
+                // Delete only for a record without history (client, 16 Nov 2026); a used one is set Inactive instead
+                \App\Support\RecordUsage::deleteAction(),
             ]);
     }
 

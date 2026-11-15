@@ -1,17 +1,30 @@
-{{-- Global "Back to top" button: appears after scrolling down, hides near the top. --}}
+{{-- Global "Back to top" button: there whenever the page is scrolled down, gone at the top.
+     It was sometimes missing (user, 16 Nov 2026): the scroll listener was throttled, and a throttle drops the last
+     event of a scroll — so after a quick scroll the button was still judged from a position near the top; and a page
+     that only scrolls a little never passed the old 400px mark. Now every scroll is looked at (once a frame), the
+     page is looked at again when it changes height or Livewire redraws it, and 120px of scroll is enough. --}}
 <div
     x-data="{
         show: false,
+        queued: false,
         update() {
-            const doc = document.documentElement;
-            const scrolled = window.scrollY;
-            const nearBottom = window.innerHeight + scrolled >= doc.scrollHeight - 120;
-            this.show = scrolled > Math.min(400, window.innerHeight * 0.6) || (nearBottom && scrolled > 150);
+            this.show = (window.scrollY || document.documentElement.scrollTop || 0) > 120;
+        },
+        queue() {
+            if (this.queued) { return }
+            this.queued = true;
+            requestAnimationFrame(() => { this.queued = false; this.update(); });
+        },
+        init() {
+            this.update();
+            window.addEventListener('scroll', () => this.queue(), { passive: true });
+            window.addEventListener('scrollend', () => this.update(), { passive: true });
+            window.addEventListener('resize', () => this.queue(), { passive: true });
+            // the page grows or shrinks without a scroll event (a section opened, rows added, Livewire redrew it)
+            if (window.ResizeObserver) { new ResizeObserver(() => this.queue()).observe(document.body); }
+            document.addEventListener('livewire:navigated', () => this.queue());
         },
     }"
-    x-init="update()"
-    x-on:scroll.window.throttle.100ms="update()"
-    x-on:resize.window.throttle.200ms="update()"
     class="og-back-to-top-wrap"
 >
     <button

@@ -136,7 +136,7 @@ class ClaimCsn
 
         $permitted = $user->is_hq
             || $user->driver_id
-            || $user->hasAnyRole(['super_admin', 'branch_admin', 'branch_manager', 'dispatcher', 'storekeeper', 'counter']);
+            || \App\Support\Permissions::allows('csn.claim', $user);
 
         if (! $permitted) {
             throw new InvalidArgumentException('You are not permitted to claim consignment notes.');

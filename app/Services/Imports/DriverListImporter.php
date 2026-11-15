@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Imports the client's "Lorry & Driver Details" workbook (user, 21 Oct 2026) into Master Data → Drivers: the columns
- * are found by their titles (Lorry Group Code, Lorry Group, Lorry Company Code, Lorry Company, Lorry Number, Lorry
+ * are found by their titles (Lorry Company Code, Lorry Company, Lorry Number, Lorry
  * Type, Tonne, Driver Name / IC / Phone Number / Emergency Contact / Address, Attendant Name / IC / Phone Number /
  * Emergency Contact / Address). A driver already there (same IC, else same name) is updated; each driver's lorry is
  * kept in step in Master Data → Lorries. Uploaded on the Drivers page, so the personal data never sits in the code.
@@ -16,9 +16,6 @@ use Illuminate\Support\Facades\DB;
 class DriverListImporter
 {
     private const COLUMNS = [
-        'lorrygroupcode' => 'lorry_group_code',
-        'lorrygroup' => 'lorry_group',
-        'lorrygroupname' => 'lorry_group',
         'lorrycompanycode' => 'lorry_company_code',
         'lorrycompany' => 'lorry_company',
         'lorrycompanyname' => 'lorry_company',
@@ -149,9 +146,8 @@ class DriverListImporter
                 'branch_id' => $branchId,
                 // a driver of a lorry company is a subcontractor
                 'type' => filled($data['lorry_company'] ?? null) ? 'subcontractor' : 'internal',
-                // the lorry company / group master records (user, 28 Oct 2026): found by code, else created
+                // the lorry company master record (user, 28 Oct 2026): found by code, else created
                 'lorry_company_id' => static::masterId(\App\Domains\MasterData\Models\LorryCompany::class, $companyId, $data['lorry_company_code'] ?? null, $data['lorry_company'] ?? null),
-                'lorry_group_id' => static::masterId(\App\Domains\MasterData\Models\LorryGroup::class, $companyId, $data['lorry_group_code'] ?? null, $data['lorry_group'] ?? null),
                 'is_active' => true,
             ]);
             $result['created']++;

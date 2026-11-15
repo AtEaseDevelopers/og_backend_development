@@ -34,6 +34,12 @@ use Livewire\Attributes\Url;
  */
 class Orders extends Page
 {
+    /** Open to the roles ticked for "orders.view" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canAccess(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     protected static ?string $navigationIcon = 'heroicon-o-clipboard-document-list';
 
     protected static ?string $navigationGroup = 'Operations';

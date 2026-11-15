@@ -34,7 +34,11 @@ class User extends Authenticatable implements FilamentUser, HasTenants
     protected $fillable = [
         'name',
         'email',
+        // the Staff ID staff sign in to the admin panel with (user, 16 Nov 2026); lower case, unique
+        'login_id',
         'password',
+        // an encrypted copy of the password an admin set, shown on Master Data → Users (user, 16 Nov 2026)
+        'password_readable',
         'is_hq',
         'is_active',
         'phone',
@@ -73,6 +77,7 @@ class User extends Authenticatable implements FilamentUser, HasTenants
 
     protected $hidden = [
         'password',
+        'password_readable',
         'remember_token',
     ];
 
@@ -84,6 +89,49 @@ class User extends Authenticatable implements FilamentUser, HasTenants
                 $user->email_verified_at = now();
             }
         });
+
+        // a password changed without its readable copy (a reset link, the driver page, a seeder) leaves no copy: the
+        // old one would be wrong
+        static::saving(function (User $user) {
+            if ($user->isDirty('password') && ! $user->isDirty('password_readable') && array_key_exists('password_readable', $user->getAttributes())) {
+                $user->password_readable = null;
+            }
+        });
+
+        // the Staff ID is kept in lower case; a user saved without one gets a starting one from their email
+        static::saving(function (User $user) {
+            // asked once a request (an older migration may save a user before the column exists)
+            static $hasColumn = null;
+            if (! ($hasColumn ??= \Illuminate\Support\Facades\Schema::hasColumn('users', 'login_id'))) {
+                $hasColumn = null;
+
+                return;
+            }
+
+            $user->login_id = filled($user->login_id)
+                ? static::normaliseLoginId((string) $user->login_id)
+                : static::suggestLoginId((string) $user->email, $user->getKey());
+        });
+    }
+
+    /** A Staff ID as it is stored and compared: trimmed, lower case. */
+    public static function normaliseLoginId(string $loginId): string
+    {
+        return strtolower(trim($loginId));
+    }
+
+    /** A free Staff ID from the part of an email before the @ (a number is added when it is taken). */
+    public static function suggestLoginId(string $email, int|string|null $ignoreId = null): string
+    {
+        $base = strtolower((string) preg_replace('/[^A-Za-z0-9._-]+/', '', explode('@', $email)[0]));
+        $base = substr($base !== '' ? $base : 'user', 0, 50);
+        $candidate = $base;
+
+        for ($n = 2; static::query()->where('login_id', $candidate)->when($ignoreId, fn ($q) => $q->whereKeyNot($ignoreId))->exists(); $n++) {
+            $candidate = $base.$n;
+        }
+
+        return $candidate;
     }
 
     /** Set by portal self-registration before saving. */
@@ -94,6 +142,7 @@ class User extends Authenticatable implements FilamentUser, HasTenants
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'password_readable' => 'encrypted',
             'is_hq' => 'boolean',
             'is_active' => 'boolean',
             // the user's own page settings, e.g. master_data_hidden (the Master Data cards they hide)

@@ -21,6 +21,14 @@ use Throwable;
 /** Section F: payment review queue with two-level approval for cash / counter payments. */
 class PaymentSubmissionResource extends Resource
 {
+    use \App\Filament\Concerns\HasModulePermissions;
+
+    /** Open to the roles ticked for "billing.view" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canViewAny(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     protected static ?string $model = PaymentSubmission::class;
 
     protected static ?string $tenantOwnershipRelationshipName = 'company';

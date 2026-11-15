@@ -174,13 +174,13 @@ class TransferJobSheetTask
     /** Flowchart: lorry / driver changes while in route are allowed only to authorised Admin. */
     public static function canTransfer(?User $user): bool
     {
-        return (bool) ($user?->is_hq || $user?->hasAnyRole(['super_admin', 'branch_admin', 'branch_manager', 'dispatcher']));
+        return \App\Support\Permissions::allows('dispatch.transfer_task', $user);
     }
 
     private static function assertAuthorised(User $actor): void
     {
         if (! self::canTransfer($actor)) {
-            throw new InvalidArgumentException('Only HQ Admin, Branch Manager or Dispatcher may transfer a delivery to another lorry / driver.');
+            throw new InvalidArgumentException('You do not have permission to transfer a delivery to another lorry / driver.');
         }
     }
 

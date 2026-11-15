@@ -1,16 +1,16 @@
 {{-- Commission batch: the commission per lorry (one PO per lorry) and what each of its drivers earned, filtered by
-     lorry group or lorry company (the driver list's columns, on the lorry's default driver; user, 21 Oct 2026) --}}
+     lorry or lorry company (the driver list's columns, on the lorry's default driver; user, 21 Oct 2026); lorry groups
+     are no longer used (user, 13 Nov 2026) --}}
 @php
     $batch = $getRecord();
     $lines = \App\Domains\Commission\Models\CommissionLineItem::query()
         ->whereIn('commission_slip_id', $batch->slips()->select('id'))
         ->where('is_hidden', false)
-        ->with(['driver:id,name,lorry_company_code,lorry_company,lorry_group', 'lorry:id,registration_no,branch_id,default_driver_id', 'lorry.branch:id,name', 'lorry.defaultDriver:id,lorry_company_code,lorry_company,lorry_group', 'deliveryOrder:id,job_sheet_id', 'consignmentNote:id,total_amount', 'slip:id,status'])
+        ->with(['driver:id,name,lorry_company_code,lorry_company', 'lorry:id,registration_no,branch_id,default_driver_id', 'lorry.branch:id,name', 'lorry.defaultDriver:id,lorry_company_code,lorry_company', 'deliveryOrder:id,job_sheet_id', 'consignmentNote:id,total_amount', 'slip:id,status'])
         ->get();
     $byLorry = $lines->groupBy(fn ($line) => (int) $line->lorry_id);
-    // the lorry's company and group: its default driver's (the driver list), else a driver on its lines
-    $companyOf = fn ($group) => $group->first()->lorry?->defaultDriver ?? $group->pluck('driver')->filter(fn ($d) => filled($d?->lorry_company) || filled($d?->lorry_group))->first();
-    $groups = $byLorry->map(fn ($g) => $companyOf($g)?->lorry_group)->filter()->unique()->sort()->values();
+    // the lorry's company: its default driver's (the driver list), else a driver on its lines
+    $companyOf = fn ($group) => $group->first()->lorry?->defaultDriver ?? $group->pluck('driver')->filter(fn ($d) => filled($d?->lorry_company))->first();
     $companies = $byLorry->map(fn ($g) => $companyOf($g)?->lorry_company)->filter()->unique()->sort()->values();
     // a Lorry filter too (user, 3 Nov 2026)
     $lorryNumbers = $byLorry->map(fn ($g) => $g->first()->lorry?->registration_no)->filter()->unique()->sort()->values();
@@ -42,12 +42,6 @@
                     <select class="cbl-select" data-cbl-filter="lorry" aria-label="Filter by lorry">
                         <option value="">All</option>
                         @foreach ($lorryNumbers as $n)<option value="{{ $n }}">{{ $n }}</option>@endforeach
-                    </select>
-                </label>
-                <label>Lorry group
-                    <select class="cbl-select" data-cbl-filter="group" aria-label="Filter by lorry group">
-                        <option value="">All</option>
-                        @foreach ($groups as $g)<option value="{{ $g }}">{{ $g }}</option>@endforeach
                     </select>
                 </label>
                 <label>Lorry company
@@ -89,12 +83,11 @@
                             $totals['sales'] += $sales;
                             $totals['commission'] += $commission;
                         @endphp
-                        <tr data-lorry="{{ $lorry?->registration_no }}" data-group="{{ $company?->lorry_group }}" data-company="{{ $company?->lorry_company }}" @if ($url) onclick="window.location='{{ $url }}'" title="Open lorry {{ $lorry?->registration_no }}" @endif>
+                        <tr data-lorry="{{ $lorry?->registration_no }}" data-company="{{ $company?->lorry_company }}" @if ($url) onclick="window.location='{{ $url }}'" title="Open lorry {{ $lorry?->registration_no }}" @endif>
                             <td><strong>{{ $lorry?->registration_no ?? 'No lorry' }}</strong></td>
                             <td>
                                 {{ $company?->lorry_company ?: '—' }}
                                 @if ($company?->lorry_company_code)<div class="cbl-sub">{{ $company->lorry_company_code }}</div>@endif
-                                @if ($company?->lorry_group)<div class="cbl-sub">{{ $company->lorry_group }}</div>@endif
                             </td>
                             <td>{{ $lorry?->branch?->name ?? '—' }}</td>
                             <td>
@@ -122,7 +115,7 @@
         </div>
     </div>
     <script>
-        // the lorry group / company filters hide the other lorries' rows (the footer keeps the batch's totals)
+        // the lorry / company filters hide the other lorries' rows (the footer keeps the batch's totals)
         document.querySelectorAll('.cbl-panel').forEach((panel) => {
             const selects = panel.querySelectorAll('[data-cbl-filter]');
             const rows = panel.querySelectorAll('tbody tr');

@@ -184,10 +184,9 @@ class AutoCountSync extends Page implements HasForms, HasTable
             ]);
     }
 
+    /** Open to the roles ticked for "integrations.autocount" on Master Data → Roles & Permission (13 Nov 2026). */
     public static function canAccess(): bool
     {
-        $user = auth()->user();
-
-        return $user?->is_hq || $user?->hasAnyRole(['super_admin', 'finance', 'branch_manager']);
+        return \App\Support\Permissions::screen(static::class);
     }
 }

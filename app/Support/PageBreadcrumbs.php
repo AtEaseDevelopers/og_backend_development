@@ -33,6 +33,8 @@ class PageBreadcrumbs
         OrderDetail::class => [Orders::class, 'Orders'],
         ReportDetail::class => [ReportsHub::class, 'Reports'],
         SystemSettingsPage::class => [MasterDataHub::class, 'Master Data'],
+        \App\Filament\Pages\RolesPermissionsPage::class => [MasterDataHub::class, 'Master Data'],
+        \App\Filament\Pages\OrganisationChartPage::class => [MasterDataHub::class, 'Master Data'],
     ];
 
     /** @return array<int|string, string> a plain crumb has an int key, a link its URL */

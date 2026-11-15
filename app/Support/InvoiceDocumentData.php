@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Domains\Billing\Models\Invoice;
+use App\Domains\Billing\Models\ProformaInvoice;
 use App\Domains\Consignment\Models\ConsignmentNote;
 use Illuminate\Support\Carbon;
 
@@ -22,6 +23,7 @@ class InvoiceDocumentData
             'lines.consignmentNote.deliveryOrder',
             'lines.consignmentNote.lines',
             'quotation.portalEnquiry',
+            'quotations',
         ]);
 
         $company = $invoice->company;
@@ -31,6 +33,17 @@ class InvoiceDocumentData
         $subtotal = (float) $invoice->subtotal;
         $taxAmount = (float) $invoice->tax_amount;
         $totalAmount = (float) $invoice->total_amount;
+
+        // an invoice raised from an order keeps the service tax on the order, not on itself: taken from the order(s)
+        // when it is exactly what separates the charges from the total
+        if ($taxAmount <= 0) {
+            $orderTax = (float) ($invoice->quotations->sum('tax_amount') ?: $invoice->quotation?->tax_amount);
+
+            if ($orderTax > 0 && abs($subtotal + $orderTax - $totalAmount) < 0.05) {
+                $taxAmount = $orderTax;
+            }
+        }
+
         $taxRate = $subtotal > 0 && $taxAmount > 0
             ? (int) round(($taxAmount / $subtotal) * 100)
             : null;
@@ -67,10 +80,12 @@ class InvoiceDocumentData
                 // the title and the payment type beside it (user, 11 Nov 2026): INVOICE · CREDIT / TERM, COD INVOICE · COD,
                 // CASH BILL · CASH
                 'title' => strtoupper($invoice->documentLabel()),
-                'payment_label' => $invoice->paymentLabel(),
-                // PAID above the barcode of a paid COD Invoice only, nothing otherwise — not on a Cash Bill or an
-                // Invoice (client, 13 Nov 2026)
-                'paid' => $invoice->type === 'cod' && $invoice->status === \App\Enums\InvoiceStatus::Paid->value,
+                // a paid Cash Bill / COD Invoice reads PAID at the right of the title, in place of CASH / COD; unpaid it
+                // keeps its payment type; the Invoice always reads CREDIT / TERM (client, 13 Nov 2026 — this replaces
+                // the PAID above the barcode)
+                'payment_label' => in_array($invoice->type, ['cash_bill', 'cod'], true) && $invoice->status === \App\Enums\InvoiceStatus::Paid->value
+                    ? 'PAID'
+                    : $invoice->paymentLabel(),
                 'salesperson' => $invoice->quotation?->salesperson?->name,
             ],
             'bill_to' => [
@@ -82,19 +97,106 @@ class InvoiceDocumentData
                 'email' => $customer?->email,
             ],
             'lines' => $this->lines($invoice),
-            'totals' => [
-                'subtotal_excl_tax' => $this->formatAmount($subtotal),
-                // always "SST 6%" (client, 13 Nov 2026): the rate charged, else the system's rate
-                'tax_label' => 'SST '.($taxRate ?: rtrim(rtrim(number_format(QuotationMatrix::sstRate(), 2, '.', ''), '0'), '.')).'%',
-                'tax_amount' => $this->formatAmount($taxAmount),
-                'total' => $this->formatAmount($totalAmount),
-            ],
+            'totals' => $this->totals($totalAmount, $taxAmount, $subtotal, $taxRate),
             'amount_in_words' => AmountInWords::ringgit($totalAmount),
             'disclaimer' => config('og.invoice.disclaimer'),
             'bank_accounts' => config('og.invoice.bank_accounts', []),
             // the e-Invoice QR (client, 6 Nov 2026): the LHDN validated link once the submission has a UUID, else blank
             'einvoice_qr' => $this->einvoiceQr($invoice),
         ];
+    }
+
+    /**
+     * The four lines under every billing document (client, 16 Nov 2026): Transport Charges (Excluding Tax),
+     * Service Tax 6%, Rounding Adj., Total. The rounding is the few cents between charges + tax and the total; any
+     * other difference stays in the charges, so the lines always add up to the total.
+     *
+     * @return array{subtotal_excl_tax: string, tax_label: string, tax_amount: string, rounding: string, total: string}
+     */
+    public function totals(float $total, float $tax, ?float $charges = null, ?int $taxRate = null): array
+    {
+        $charges ??= $total - $tax;
+        $rounding = round($total - $charges - $tax, 2);
+
+        if (abs($rounding) >= 0.05) {
+            $rounding = 0.0;
+        }
+
+        return [
+            'subtotal_excl_tax' => number_format(round($total - $tax - $rounding, 2), 2),
+            // the rate charged, else the system's rate
+            'tax_label' => 'Service Tax '.($taxRate ?: rtrim(rtrim(number_format(QuotationMatrix::sstRate(), 2, '.', ''), '0'), '.')).'%',
+            'tax_amount' => number_format($tax, 2),
+            'rounding' => number_format($rounding, 2),
+            'total' => number_format($total, 2),
+        ];
+    }
+
+    /**
+     * The proforma invoice in the format of the Cash Bill, Invoice and COD Invoice (client, 16 Nov 2026): one row per
+     * consignment note of the order — or one row for the order while it has no consignment note yet.
+     *
+     * @return array{lines: list<array<string, mixed>>, totals: array<string, string>, amount_in_words: string}
+     */
+    public function fromProforma(ProformaInvoice $proforma): array
+    {
+        $proforma->loadMissing(['quotation.lines', 'quotation.fromLocation', 'quotation.toLocation', 'consignmentNote']);
+
+        $quotation = $proforma->quotation;
+        $total = (float) $proforma->total_amount;
+        $tax = (float) ($quotation?->tax_amount ?? 0);
+        $charges = round($total - $tax, 2);
+
+        $csns = $quotation
+            ? $quotation->consignmentNotes()->with(['fromLocation', 'toLocation', 'deliveryOrder', 'lines'])->orderBy('id')->get()
+            : collect([$proforma->consignmentNote])->filter()->values();
+
+        if ($csns->isNotEmpty()) {
+            $lines = $csns
+                ->map(fn (ConsignmentNote $csn) => $this->lineFromCsn($csn, $csns->count() === 1 ? $charges : 0.0))
+                ->map(fn (array $line) => $csns->count() === 1 ? [...$line, 'amount' => number_format($charges, 2)] : $line)
+                ->values()->all();
+        } else {
+            $date = $proforma->issued_at ?? $proforma->created_at;
+            $refs = collect([
+                filled($quotation?->customer_do_number) ? (string) $quotation->customer_do_number : null,
+                ...OrderStops::doNumbers($quotation?->stops),
+            ])->filter()->unique()->values()->all();
+
+            $lines = [[
+                'date' => $date?->format('d/m/Y') ?? '—',
+                'csn_number' => '—',
+                'items' => $this->goods($quotation?->lines ?? collect()),
+                'your_ref' => $refs ?: ['—'],
+                'from' => $quotation?->fromLocation?->name ?: '—',
+                'to' => $quotation?->toLocation?->name ?: '—',
+                'consignee' => $quotation?->consignee_name ?: '—',
+                'amount' => number_format($charges, 2),
+            ]];
+        }
+
+        return [
+            'lines' => $lines,
+            'totals' => $this->totals($total, $tax),
+            'amount_in_words' => AmountInWords::ringgit($total),
+        ];
+    }
+
+    /**
+     * The goods of a row, short enough for one line (client, 16 Nov 2026): the quantity and its unit — "3 CTN",
+     * "3 PALLET", "1 LOAD" — and the item's name only when it has no unit. The pick-up / drop-off / minimum charge
+     * lines are not goods (client, 30 Oct 2026).
+     *
+     * @return list<string>
+     */
+    private function goods(iterable $lines): array
+    {
+        return collect($lines)
+            ->reject(fn ($line) => in_array(trim((string) $line->item_name), \App\Domains\Quotation\Actions\CreateOrderFromEnquiry::CHARGE_LINES, true))
+            ->map(fn ($line) => QuantityLabel::unit($line->uom) !== null
+                ? QuantityLabel::format($line->quantity, $line->uom)
+                : trim(QuantityLabel::format($line->quantity, null).' × '.$line->item_name))
+            ->values()->all();
     }
 
     /** The QR of the LHDN validated link, when the invoice's e-Invoice submission carries a UUID. */
@@ -172,16 +274,7 @@ class InvoiceDocumentData
             $date = Carbon::parse($date);
         }
 
-        // the goods on the CSN (user, 30 Oct 2026): "15 × 1100L Recycle Bin", with the measurement and weight the customer
-        // keyed, never the price band's range (client, 6 Nov 2026) — no charges per line (client, 30 Oct 2026)
-        $items = $csn->lines
-            // the pick-up / drop-off / minimum charge lines are not goods (client, 30 Oct 2026)
-            ->reject(fn ($line) => in_array(trim((string) $line->item_name), \App\Domains\Quotation\Actions\CreateOrderFromEnquiry::CHARGE_LINES, true))
-            ->map(function ($line) {
-                $measure = trim(implode(' · ', array_filter([$line->dimensions ?? null, ($line->weight ?? null) ? $line->weight.' kg' : null])));
-
-                return trim(QuantityLabel::format($line->quantity, $line->uom).' × '.$line->item_name).($measure !== '' ? ' ('.$measure.')' : '');
-            })->values()->all();
+        $items = $this->goods($csn->lines);
 
         return [
             'date' => $date?->format('d/m/Y') ?? '—',

@@ -47,6 +47,12 @@ use Throwable;
  */
 class CreateOrder extends Page
 {
+    /** Open to the roles ticked for "orders.create" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canAccess(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     use WithFileUploads;
 
     protected static bool $shouldRegisterNavigation = false;
@@ -315,7 +321,8 @@ class CreateOrder extends Page
             ->with(['customers:id', 'location:id,name', 'customer:id,code'])
             ->orderBy('name')
             ->get();
-        $parties = $this->savedPartyRows->whereIn('type', [$role, 'both']);
+        // one shared list for consignors and consignees (client, 16 Nov 2026: no "Used as")
+        $parties = $this->savedPartyRows;
         $option = fn (ConsignorConsignee $party) => [
             'label' => ($party->customer?->code ? $party->customer->code.' — ' : '').$party->name
                 .collect([$party->pic_name, $party->location?->name])->filter()->map(fn ($part) => ' · '.$part)->implode(''),
@@ -1053,7 +1060,9 @@ class CreateOrder extends Page
     public function salespersonOptions(): array
     {
         return User::query()->role('salesperson')->where('is_active', true)->orderBy('name')->get()
-            ->mapWithKeys(fn (User $u) => [$u->id => $u->name.($u->saLocation ? ' · '.$u->saLocation->code : '')])
+            // the Staff ID is in the label so the list is searched by name or by staff ID (client, 16 Nov 2026); every
+            // branch's salespersons are offered
+            ->mapWithKeys(fn (User $u) => [$u->id => $u->name.(filled($u->login_id) ? ' ('.$u->login_id.')' : '').($u->saLocation ? ' · '.$u->saLocation->code : '')])
             ->all();
     }
 
@@ -2527,10 +2536,10 @@ class CreateOrder extends Page
             ->form([
                 \Filament\Forms\Components\TextInput::make('name')->label('Name')->required()->maxLength(255),
                 \Filament\Forms\Components\Grid::make(2)->schema([
-                    \Filament\Forms\Components\TextInput::make('pic_name')->label('PIC name')->maxLength(150),
-                    \Filament\Forms\Components\TextInput::make('phone')->label('Telephone number')->tel()->maxLength(50),
+                    \Filament\Forms\Components\TextInput::make('pic_name')->label('PIC name')->required()->maxLength(150),
+                    \Filament\Forms\Components\TextInput::make('phone')->label('Telephone number')->tel()->required()->maxLength(50),
                 ]),
-                \Filament\Forms\Components\Textarea::make('address')->label('Address')->rows(2),
+                \Filament\Forms\Components\Textarea::make('address')->label('Address')->required()->rows(2),
                 \Filament\Forms\Components\Select::make('location_id')
                     ->label('Area (price list location)')
                     ->options(fn () => Location::query()->orderBy('name')->pluck('name', 'id')->all())
@@ -2548,7 +2557,7 @@ class CreateOrder extends Page
                 $party = ConsignorConsignee::query()->create([
                     'company_id' => CurrentCompany::id(),
                     'name' => trim((string) $data['name']),
-                    'type' => $role,
+                    'type' => 'both',
                     'pic_name' => $data['pic_name'] ?? null,
                     'phone' => $data['phone'] ?? null,
                     'address' => $data['address'] ?? null,
@@ -2648,7 +2657,7 @@ class CreateOrder extends Page
             ->where('item_name', $itemName)
             ->get()
             ->map(fn (CustomerPricing $row) => [
-                'destination' => filled($row->destination) ? (string) $row->destination : 'All destinations',
+                'destination' => filled($row->destination) ? (string) $row->destination : 'All areas',
                 'uom' => filled($row->uom) ? (string) $row->uom : null,
                 'price' => ($row->unit_rate ?? $row->base_price) !== null ? (float) ($row->unit_rate ?? $row->base_price) : null,
                 'min_charge' => $row->min_charge !== null ? (float) $row->min_charge : null,

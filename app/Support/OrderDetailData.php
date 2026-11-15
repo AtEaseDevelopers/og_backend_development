@@ -272,7 +272,7 @@ class OrderDetailData
                 'payment_method' => PaymentMethod::tryFrom((string) $enquiry->payment_method)?->getLabel(),
                 'pickup' => ['title' => app(OrderListingData::class)->cityFromAddress($enquiry->pickup_address) ?? ($enquiry->branch?->name ?? 'Pickup'), 'sub' => $enquiry->pickup_address ?: '—'],
                 'destinations' => $destinations->map(fn (array $d, int $i) => [
-                    'title' => trim(($d['city'] ?? $d['consignee_name'] ?? 'Destination '.($i + 1)).(filled($d['drop_off_type'] ?? null) ? ' · '.(DropOffType::tryFrom((string) $d['drop_off_type'])?->getLabel() ?? ucfirst((string) $d['drop_off_type'])) : '')),
+                    'title' => trim(($d['city'] ?? $d['consignee_name'] ?? 'Area '.($i + 1)).(filled($d['drop_off_type'] ?? null) ? ' · '.(DropOffType::tryFrom((string) $d['drop_off_type'])?->getLabel() ?? ucfirst((string) $d['drop_off_type'])) : '')),
                     'sub' => collect([$d['consignee_name'] ?? null, $d['address'] ?? null, $d['postcode'] ?? null, $d['state'] ?? null])->filter()->implode(', ') ?: '—',
                 ])->all(),
                 'items' => $items->map(fn (array $item) => [
@@ -1200,7 +1200,7 @@ class OrderDetailData
     private function permissions(?Quotation $order, ?PortalEnquiry $enquiry, array $stage, bool $lockedByOther, ?int $firstRecordId = null): array
     {
         $user = auth()->user();
-        $isManager = (bool) ($user?->is_hq || $user?->hasAnyRole(['super_admin', 'branch_admin', 'branch_manager', 'finance']));
+        // each button follows the permission of its action (Master Data → Roles & Permission, 13 Nov 2026)
         $enquiryStatus = $enquiry?->status instanceof PortalEnquiryStatus ? $enquiry->status : null;
         $status = $order?->status;
         $latest = $order?->isLatestVersion() ?? false;
@@ -1214,7 +1214,7 @@ class OrderDetailData
             'send' => $order && $latest && in_array($status, [QuotationStatus::Draft, QuotationStatus::Negotiation, QuotationStatus::Sent, QuotationStatus::PendingReview], true) && (float) $order->total_amount > 0,
             'accept' => $order && $latest && ($status->isCustomerActionable() || $status === QuotationStatus::Draft) && (float) $order->total_amount > 0,
             'reject' => $order && $latest && ($status->isCustomerActionable() || ($status === QuotationStatus::Draft && (float) $order->total_amount > 0)),
-            'revise' => $order && $latest && ! in_array($status, [QuotationStatus::Converted, QuotationStatus::Superseded], true) && (! $status->isConfirmedOrLater() || $user?->isSuperadmin()),
+            'revise' => $order && $latest && ! in_array($status, [QuotationStatus::Converted, QuotationStatus::Superseded], true) && (! $status->isConfirmedOrLater() || \App\Support\Permissions::allows('orders.revise_confirmed', $user)),
             // until the customer confirms or a payment is recorded (fixed after that)
             'change_type' => $order && $status !== QuotationStatus::Converted && ! $status->isTerminal() && ! $order->paymentTermLocked(),
             // DO number / expected delivery date on the order page (Customer & order → Edit) until the record has a CSN
@@ -1222,7 +1222,7 @@ class OrderDetailData
             // Admin release: Credit / Term orders, or a part-paid Cash order (user, 28 Oct 2026: admin may go ahead to the CSN)
             'release' => $order && $status === QuotationStatus::Confirmed
                 && ($order->orderType() === OrderType::Term || ($order->orderType() === OrderType::Cash && (float) $order->paid_amount > 0 && (float) $order->paid_amount + 0.005 < (float) $order->total_amount))
-                && ! $order->isReleased() && $order->billingStatus() !== BillingStatus::Generated && $isManager,
+                && ! $order->isReleased() && $order->billingStatus() !== BillingStatus::Generated && \App\Support\Permissions::allows('orders.release', $user),
             // Block COD is no longer offered (user, 10 Oct 2026); an order blocked before keeps Unblock COD
             'block_cod' => false,
             'unblock_cod' => $order && $order->orderType() === OrderType::Cod && $order->cod_blocked,
@@ -1230,8 +1230,8 @@ class OrderDetailData
             'reopen' => $order && $status === QuotationStatus::Closed,
             // close by hand (user, 26 Oct 2026): a rejected order or one awaiting the customer
             'close' => $order && $latest && in_array($status, [QuotationStatus::Rejected, QuotationStatus::Sent, QuotationStatus::PendingReview], true),
-            'credit_decision' => $order && $status === QuotationStatus::PendingApproval && $isManager && CreditApprovalRequest::query()->where('quotation_id', $order->id)->where('status', 'pending')->exists(),
-            'review_payments' => $order && $isManager,
+            'credit_decision' => $order && $status === QuotationStatus::PendingApproval && \App\Support\Permissions::allows('orders.credit_approval', $user) && CreditApprovalRequest::query()->where('quotation_id', $order->id)->where('status', 'pending')->exists(),
+            'review_payments' => $order && \App\Support\Permissions::allows('billing.review_payment', $user),
             'send_invoice' => (bool) $order,
             // credit term: Admin generates the invoice whenever ready, once the CSN exists
             'issue_invoice' => $order && $order->orderType() === OrderType::Term
@@ -1256,6 +1256,11 @@ class OrderDetailData
 
         $type = $order ? 'order' : 'enquiry';
         $id = (int) ($order?->id ?? $enquiry->id);
+
+        // no Edit button without the Orders · Edit tick (Roles & Permission, 16 Nov 2026)
+        if (! \App\Support\Permissions::allows('orders.edit')) {
+            return null;
+        }
 
         if ($enquiry) {
             if (in_array($enquiry->status, [PortalEnquiryStatus::Rejected, PortalEnquiryStatus::Cancelled], true)) {

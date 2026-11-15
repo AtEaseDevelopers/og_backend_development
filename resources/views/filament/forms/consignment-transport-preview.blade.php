@@ -1,5 +1,5 @@
 @include('filament.forms.quotation-body-preview', [
     'title' => 'Transport Charges',
-    'terms' => filled($chargeColumn ?? null) ? 'Billing destination: '.$chargeColumn : 'Per destination rates',
+    'terms' => filled($chargeColumn ?? null) ? 'Billing area: '.$chargeColumn : 'Per area rates',
     'rateMatrix' => $rateMatrix,
 ])

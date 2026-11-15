@@ -13,6 +13,14 @@ use Illuminate\Database\Eloquent\Builder;
 
 class TransferCodeResource extends Resource
 {
+    use \App\Filament\Concerns\HasModulePermissions;
+
+    /** Open to the roles ticked for "masterdata.transfer_stores" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canViewAny(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     protected static ?string $model = TransferCode::class;
 
     protected static bool $isScopedToTenant = false;
@@ -39,10 +47,7 @@ class TransferCodeResource extends Resource
                 ->searchable()
                 ->nullable(),
             Forms\Components\Select::make('type')
-                ->options([
-                    'transfer' => 'Transfer',
-                    'incoming' => 'Incoming PSI',
-                ])
+                ->options(\App\Domains\MasterData\Models\TransferCode::TYPES)
                 ->required()
                 ->default('transfer'),
             // the staff of this code: they assign its subsheets to a lorry (CSN page → Assign subsheets to lorry)
@@ -68,12 +73,16 @@ class TransferCodeResource extends Resource
                 Tables\Columns\TextColumn::make('code')->searchable()->sortable(),
                 Tables\Columns\TextColumn::make('name')->searchable(),
                 Tables\Columns\TextColumn::make('destinationBranch.code')->label('Company'),
-                Tables\Columns\TextColumn::make('type')->badge(),
+                Tables\Columns\TextColumn::make('type')->badge()->formatStateUsing(fn ($state) => \App\Domains\MasterData\Models\TransferCode::TYPES[$state] ?? ucfirst((string) $state)),
                 Tables\Columns\TextColumn::make('staff.name')->label('Staff')->listWithLineBreaks()->limitList(3)->expandableLimitedList()->placeholder('—'),
                 Tables\Columns\IconColumn::make('is_active')->boolean(),
             ])
             ->actions([
+                // View beside Edit on every Master Data list (user, 16 Nov 2026): the record in a window, read-only
+                Tables\Actions\ViewAction::make(),
                 Tables\Actions\EditAction::make(),
+                // Delete only for a record without history (client, 16 Nov 2026); a used one is set Inactive instead
+                \App\Support\RecordUsage::deleteAction(),
             ]);
     }
 

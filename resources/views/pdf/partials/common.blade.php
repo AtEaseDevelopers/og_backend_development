@@ -6,8 +6,6 @@
     .lh-qr { width: 190px; text-align: right; vertical-align: top; padding-top: 4px; }
     .lh-qr img { width: 180px; height: 40px; }
     .lh-qr-text { font-size: 14px; font-weight: bold; letter-spacing: .8px; margin-top: 2px; }
-    /* PAID above the barcode of a paid COD Invoice (client, 13 Nov 2026) */
-    .lh-paid { font-size: 19px; font-weight: bold; letter-spacing: 1px; text-align: right; margin: 0 0 3px; }
     /* the billing customer block: a bold label, the value in normal text (user, 6 Nov 2026) */
     table.bt { border-collapse: collapse; width: 100%; }
     table.bt th { text-align: left; font-size: 10.5px; font-weight: bold; text-transform: uppercase; letter-spacing: .02em; border-bottom: 1px solid #000; padding: 0 0 3px; }

@@ -22,6 +22,25 @@ class ViewCustomer extends ViewRecord
         return [
             // the Special Price workbook can be imported from here too (user, 2 Nov 2026)
             ImportPriceListAction::make()->visible(fn () => UomResource::canCreate()),
+            // the customer's accepted quotation as a PDF, for the customer to view (client, 16 Nov 2026): its items are
+            // the customer's special prices; the latest one, or picked when there are several
+            Actions\Action::make('exportQuotationPdf')
+                ->label('Export quotation (PDF)')
+                ->icon('heroicon-o-document-arrow-down')
+                ->color('gray')
+                ->visible(fn () => $this->acceptedQuotes()->isNotEmpty())
+                ->form(fn () => $this->acceptedQuotes()->count() > 1 ? [
+                    Forms\Components\Select::make('quote_id')->label('Quotation')
+                        ->options($this->acceptedQuotes()->mapWithKeys(fn ($q) => [$q->id => $q->number.' · '.\Illuminate\Support\Carbon::parse($q->quote_date)->format('d/m/Y')])->all())
+                        ->default($this->acceptedQuotes()->first()->id)
+                        ->required(),
+                ] : [])
+                ->modalHeading('Export quotation (PDF)')
+                ->modalSubmitActionLabel('Open PDF')
+                ->action(function (array $data, $livewire): void {
+                    $quote = $this->acceptedQuotes()->firstWhere('id', (int) ($data['quote_id'] ?? 0)) ?? $this->acceptedQuotes()->first();
+                    $livewire->js('window.open('.json_encode(\App\Filament\Resources\QuoteResource::pdfUrl($quote)).', "_blank")');
+                }),
             Actions\Action::make('portalOrderLink')
                 ->label('Portal ordering link')
                 ->icon('heroicon-o-link')
@@ -37,6 +56,18 @@ class ViewCustomer extends ViewRecord
                 ->modalCancelActionLabel('Close'),
         ];
     }
+
+    /** The customer's accepted quotations, the latest first. */
+    protected function acceptedQuotes(): \Illuminate\Support\Collection
+    {
+        return $this->acceptedQuotesCache ??= \App\Domains\Quotation\Models\Quote::query()
+            ->where('customer_id', $this->record->getKey())
+            ->where('status', \App\Domains\Quotation\Models\Quote::ACCEPTED)
+            ->orderByDesc('quote_date')->orderByDesc('id')
+            ->get(['id', 'number', 'quote_date', 'company_id', 'branch_id']);
+    }
+
+    private ?\Illuminate\Support\Collection $acceptedQuotesCache = null;
 
     // no "View …" title on the customer page (user, 28 Oct 2026), but the breadcrumbs stay (user, 4 Nov 2026):
     // Master Data › Customers › the company name

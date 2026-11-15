@@ -46,7 +46,6 @@
                 <table class="head">
                     <tr><td class="k">P/O No</td><td class="v">: {{ $po['number'] }}</td></tr>
                     <tr><td class="k">Date</td><td class="v">: {{ $po['date'] }}</td></tr>
-                    <tr><td class="k">Lorry Group</td><td class="v">: {{ $po['lorry_group'] ?: '—' }}</td></tr>
                     <tr><td class="k">Supplier</td><td class="v">: {{ $po['supplier_code'] ?: '—' }}</td></tr>
                 </table>
             </td>

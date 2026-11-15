@@ -261,11 +261,9 @@ class ReturnedCsnDesk extends Page
         ];
     }
 
+    /** Open to the roles ticked for "csn.returned_desk" on Master Data → Roles & Permission (13 Nov 2026). */
     public static function canAccess(): bool
     {
-        $user = auth()->user();
-
-        return $user?->is_hq
-            || $user?->hasAnyRole(['super_admin', 'branch_admin', 'branch_manager', 'counter', 'storekeeper', 'finance']);
+        return \App\Support\Permissions::screen(static::class);
     }
 }

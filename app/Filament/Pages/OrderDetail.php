@@ -55,6 +55,12 @@ use Throwable;
  */
 class OrderDetail extends Page
 {
+    /** Open to the roles ticked for "orders.view" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canAccess(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     use WithFileUploads;
 
     protected static bool $shouldRegisterNavigation = false;

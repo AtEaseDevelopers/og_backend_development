@@ -18,6 +18,12 @@ use Throwable;
 
 class PortalEnquiries extends Page
 {
+    /** Open to the roles ticked for "orders.view" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canAccess(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     protected static ?string $navigationIcon = 'heroicon-o-clipboard-document-check';
 
     protected static ?string $navigationGroup = 'Approvals';
@@ -355,7 +361,7 @@ class PortalEnquiries extends Page
 
         return response()->streamDownload(function () use ($rows): void {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, ['Portal Order ID', 'Customer', 'Destination', 'Submitted Date', 'Review Status']);
+            fputcsv($handle, ['Portal Order ID', 'Customer', 'Area', 'Submitted Date', 'Review Status']);
 
             foreach ($rows as $row) {
                 fputcsv($handle, [

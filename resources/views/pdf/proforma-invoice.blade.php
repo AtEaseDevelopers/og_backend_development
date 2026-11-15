@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <title>{{ $proforma->number }}</title>
     @include('pdf.partials.common')
+    @include('documents.invoice-styles')
     <style>
         @page { margin: 26px 28px 40px; }
         body { font-size: 10.5px; line-height: 1.35; }
@@ -70,13 +71,7 @@
                     @php $customer = $proforma->customer; @endphp
                     {{-- the standard billing block (client, 7 Nov 2026) --}}
                     @include('pdf.partials.bill-to', ['heading' => false, 'code' => $customer?->code, 'name' => $customer?->company_name, 'reg_no' => $customer?->brn, 'address' => $quotation?->customer_address ?: $customer?->address, 'pic' => $quotation?->attention ?: $customer?->attention, 'phone' => $quotation?->customer_pic_phone ?: $customer?->phone, 'email' => $customer?->email])
-                @if ($quotation?->customer_do_number || $quotation?->consignor_name || $quotation?->consignee_name || $quotation?->toLocation?->name)
-                <table class="bt">
-                    @if ($quotation?->customer_do_number)<tr><td class="bt-k">Customer DO</td><td class="bt-v">{{ $quotation->customer_do_number }}</td></tr>@endif
-                    @if ($quotation?->consignor_name)<tr><td class="bt-k">Consignor</td><td class="bt-v">{{ $quotation->consignor_name }}@if ($quotation->fromLocation?->name) <span class="muted">· {{ $quotation->fromLocation->name }}</span>@endif</td></tr>@endif
-                    @if ($quotation?->consignee_name || $quotation?->toLocation?->name)<tr><td class="bt-k">Consignee</td><td class="bt-v">{{ $quotation?->consignee_name ?: '—' }}@if ($quotation?->toLocation?->name) <span class="muted">· {{ $quotation->toLocation->name }}</span>@endif</td></tr>@endif
-                </table>
-                @endif
+                {{-- the D/O, the areas and the consignee are in the table now (client, 16 Nov 2026) --}}
             </td>
             <td>
                 <table>
@@ -92,38 +87,13 @@
         </tr>
     </table>
 
-    {{-- the items in the order form's format (client, 5 Nov 2026); Paid and Balance due only once a payment was recorded --}}
-    @php $sst = (float) ($proforma->quotation?->tax_amount ?? 0); $sstRate = rtrim(rtrim(number_format(\App\Support\QuotationMatrix::sstRate(), 2, '.', ''), '0'), '.'); @endphp
-    <table class="items">
-        <thead>
-            <tr>
-                <th class="c" style="width:5%">No.</th>
-                <th>Item</th>
-                <th class="num" style="width:9%">Qty</th>
-                <th class="c" style="width:12%">UOM</th>
-                <th class="num" style="width:15%">Unit price (RM)</th>
-                <th class="num" style="width:15%">Amount (RM)</th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse ($lines as $i => $line)
-                <tr>
-                    <td class="c">{{ $i + 1 }}</td>
-                    <td>{{ $line['item'] }}@if ($line['measure'] ?? null)<div class="muted">{{ $line['measure'] }}</div>@endif@if ($line['handling'] ?? null)<div class="muted">{{ $line['handling'] }}</div>@endif</td>
-                    <td class="num">{{ $line['qty'] }}</td>
-                    <td class="c">{{ $line['uom'] ?? '—' }}</td>
-                    <td class="num">{{ $line['unit'] }}</td>
-                    <td class="num">{{ $line['total'] }}</td>
-                </tr>
-            @empty
-                <tr><td class="c">1</td><td>Transport charges</td><td class="num">—</td><td class="c">—</td><td class="num">—</td><td class="num">{{ number_format((float) $proforma->total_amount - $sst, 2) }}</td></tr>
-            @endforelse
-            {{-- Subtotal, SST, then Total (client, 6 Nov 2026): no Paid / Balance due lines --}}
-            <tr class="tot"><td colspan="3" class="blank"></td><td colspan="2" class="num lbl">Sub Total (Excluding Tax)</td><td class="num amt">{{ number_format((float) $proforma->total_amount - $sst, 2) }}</td></tr>
-            <tr class="tot"><td colspan="3" class="blank"></td><td colspan="2" class="num lbl">SST {{ $sstRate }}%</td><td class="num amt">{{ number_format($sst, 2) }}</td></tr>
-            <tr class="tot total"><td colspan="3" class="blank"></td><td colspan="2" class="num lbl">Total</td><td class="num amt">RM {{ number_format((float) $proforma->total_amount, 2) }}</td></tr>
-        </tbody>
-    </table>
+    {{-- the same table and totals as the Cash Bill, Invoice and COD Invoice (client, 16 Nov 2026) --}}
+    @php $billing = app(\App\Support\InvoiceDocumentData::class)->fromProforma($proforma); @endphp
+    <div class="inv-document">
+        @include('documents.partials.billing-lines', ['lines' => $billing['lines']])
+
+        @include('documents.partials.billing-totals', ['totals' => $billing['totals'], 'amountInWords' => $billing['amount_in_words']])
+    </div>
 
     {{-- the client's PI instructions to follow (6 Nov 2026): the payment instructions for now, the rest left blank --}}
     <div class="box">

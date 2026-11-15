@@ -18,6 +18,12 @@ use Livewire\Attributes\Url;
  */
 class DailyLorrySchedule extends Page
 {
+    /** Open to the roles ticked for "dispatch.job_sheets" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canAccess(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     protected static ?string $navigationIcon = 'heroicon-o-calendar';
 
     protected static ?string $navigationGroup = 'Dispatch';

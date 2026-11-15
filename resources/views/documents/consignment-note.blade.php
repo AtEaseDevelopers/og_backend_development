@@ -21,12 +21,10 @@
     $consigneeList = $consignees ?: [['name' => '—', 'address' => null, 'contact' => null, 'do_number' => null]];
     $consignorList = $consignors ?: [['name' => '—', 'address' => null, 'contact' => null, 'do_number' => null]];
 
+    // the consignor: Name, Address, Tel / PIC (client, 16 Nov 2026)
     $consignorBox = function (array $party, int $n, int $count) use ($nl) {
         $out = '<div class="csn-doc-label">Consignor'.($count > 1 ? ' '.$n : '').':</div>';
         $out .= '<div class="csn-doc-party-name">'.e($party['name'] ?? '—').'</div>';
-        if (filled($party['contact'] ?? null)) {
-            $out .= '<div>'.e($party['contact']).'</div>';
-        }
         if (($party['pickups'] ?? []) !== []) {
             $out .= '<table class="csn-doc-pickups">';
             foreach ($party['pickups'] as $i => $pickup) {
@@ -40,32 +38,36 @@
                 $out .= '<div><span class="csn-doc-label">D/O No:</span> '.e($party['do_number']).'</div>';
             }
         }
+        if (filled($party['contact'] ?? null)) {
+            $out .= '<div>'.e($party['contact']).'</div>';
+        }
 
         return $out;
     };
-    $consigneeBox = function (array $consignee, int $n, int $count) use ($nl) {
-        $out = '<div class="csn-doc-label">Consignee'.($count > 1 ? ' '.$n : '').':</div>';
+    // the consignee: its D/O No. just above it, then Name, Address, Tel / PIC (client, 16 Nov 2026)
+    $consigneeInfo = function (array $consignee, int $n, int $count) use ($nl) {
+        $out = filled($consignee['do_number'] ?? null) ? '<div><span class="csn-doc-label">D/O No:</span> '.e($consignee['do_number']).'</div>' : '';
+        $out .= '<div class="csn-doc-label">Consignee'.($count > 1 ? ' '.$n : '').':</div>';
         $out .= '<div class="csn-doc-party-name csn-doc-consignee-name">'.e($consignee['name'] ?? '—').'</div>';
         $out .= '<div class="csn-doc-party-address">'.$nl($consignee['address'] ?? null).'</div>';
         if (filled($consignee['contact'] ?? null)) {
             $out .= '<div>'.e($consignee['contact']).'</div>';
         }
-        if (filled($consignee['do_number'] ?? null)) {
-            $out .= '<div><span class="csn-doc-label">D/O No:</span> '.e($consignee['do_number']).'</div>';
-        }
-        // chop & sign: room for the chop, then Name, IC No. and Date on their own lines (client, 6 Nov 2026)
-        $out .= '<div class="csn-doc-sign-area"><div class="csn-doc-sign-line"></div><div class="csn-doc-sign-note">Please Chop, Sign &amp; Return.</div>'
-            .'<div class="csn-doc-sign-field">Name : <span class="csn-doc-sign-blank"></span></div>'
-            .'<div class="csn-doc-sign-field">IC No. : <span class="csn-doc-sign-blank"></span></div>'
-            .'<div class="csn-doc-sign-field">Date : <span class="csn-doc-sign-blank"></span></div></div>';
 
         return $out;
     };
+    // what the receiver writes: Name, NRIC, Date
+    $signFields = '<div class="csn-doc-sign-field">Name : <span class="csn-doc-sign-blank"></span></div>'
+        .'<div class="csn-doc-sign-field">NRIC : <span class="csn-doc-sign-blank"></span></div>'
+        .'<div class="csn-doc-sign-field">Date : <span class="csn-doc-sign-blank"></span></div>';
+    // the "consignee beside" layout keeps one box: the consignee, the room to chop & sign, then the fields
+    $consigneeBox = fn (array $consignee, int $n, int $count) => $consigneeInfo($consignee, $n, $count)
+        .'<div class="csn-doc-sign-area"><div class="csn-doc-sign-line"></div><div class="csn-doc-sign-note">Please Chop, Sign &amp; Return.</div>'.$signFields.'</div>';
 @endphp
 
 {{-- the client's CSN layout (user, 30 Oct 2026; client, 6 Nov 2026): the letterhead as the order form's, the payment
      (PAID / COD / CREDIT / TERM) left of the title; billing customer, items, remark, consignor, the route in large type,
-     then every consignee with a chop & sign box (Name, IC No., Date) --}}
+     then every consignee with its chop & sign row (Name, NRIC, Date) --}}
 {{-- at most 5 items on a page (client, 7 Nov 2026): the 6th item starts a new page that repeats the whole CSN with only
      that page's items in the table --}}
 @php $allLines = $lines; $pages = array_chunk($allLines, 5) ?: [[]]; @endphp
@@ -126,21 +128,28 @@
             @endforeach
         </table>
 
-        <div class="csn-doc-route">
-            <span class="csn-doc-route-label">From Area:</span> {{ $route['from'] ?? '—' }}
-            <span class="csn-doc-route-arrow">&rarr;</span>
-            <span class="csn-doc-route-label">To Area:</span> {{ $route['to'] ?? '—' }}
-        </div>
-
-        <table class="csn-doc-consignees">
-            @foreach (array_chunk($consigneeList, 2) as $pair)
-                <tr>
-                    @foreach ($pair as $consignee)
-                        <td class="csn-doc-consignee-box" @if (count($pair) === 1) colspan="2" @endif>{!! $consigneeBox($consignee, $loop->parent->index * 2 + $loop->iteration, count($consigneeList)) !!}</td>
-                    @endforeach
-                </tr>
-            @endforeach
-        </table>
+        {{-- each consignee (client, 16 Nov 2026): From area → To area, then one row — the consignee at the left with its
+             D/O No. just above, the signature in the middle, Name / NRIC / Date at the right; a second consignee
+             repeats the same block --}}
+        @foreach ($consigneeList as $consignee)
+            <div class="csn-doc-drop">
+                <div class="csn-doc-route">
+                    <span class="csn-doc-route-label">From Area:</span> {{ $route['from'] ?? '—' }}
+                    <span class="csn-doc-route-arrow">&rarr;</span>
+                    <span class="csn-doc-route-label">To Area:</span> {{ $consignee['to_area'] ?? ($route['to'] ?? '—') }}
+                </div>
+                <table class="csn-doc-consignees csn-doc-drop-row">
+                    <tr>
+                        <td class="csn-doc-consignee-box csn-doc-drop-party">{!! $consigneeInfo($consignee, $loop->iteration, count($consigneeList)) !!}</td>
+                        <td class="csn-doc-consignee-box csn-doc-drop-sign">
+                            <div class="csn-doc-drop-sign-room"></div>
+                            <div class="csn-doc-sign-note">Please Chop, Sign &amp; Return.</div>
+                        </td>
+                        <td class="csn-doc-consignee-box csn-doc-drop-fields">{!! $signFields !!}</td>
+                    </tr>
+                </table>
+            </div>
+        @endforeach
     @else
         {{-- the route, then the consignor(s) at the left and the consignee(s) beside, tall enough to chop and sign --}}
         <div class="csn-doc-route">

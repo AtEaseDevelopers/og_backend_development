@@ -7,6 +7,8 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditLead extends EditRecord
 {
+    use \App\Filament\Concerns\FormActionsInHeader;
+
     use \App\Filament\Concerns\MasterDataBreadcrumbs;
 
     protected static string $resource = LeadResource::class;

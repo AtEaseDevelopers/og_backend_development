@@ -8,6 +8,8 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditLorry extends EditRecord
 {
+    use \App\Filament\Concerns\FormActionsInHeader;
+
     protected static string $resource = LorryResource::class;
 
     protected function getHeaderActions(): array

@@ -27,8 +27,8 @@ class ReviseQuotation
             throw new InvalidArgumentException('Billing has been issued for this order; it can no longer be revised.');
         }
 
-        if ($quotation->status->isConfirmedOrLater() && ! $actor->isSuperadmin()) {
-            throw new InvalidArgumentException('This version was confirmed by the customer. Only a superadmin may reopen it into a new version.');
+        if ($quotation->status->isConfirmedOrLater() && ! \App\Support\Permissions::allows('orders.revise_confirmed', $actor)) {
+            throw new InvalidArgumentException('This version was confirmed by the customer. You do not have permission to reopen it into a new version.');
         }
 
         return DB::transaction(function () use ($quotation, $actor, $reason) {

@@ -15,14 +15,17 @@ use Filament\Tables\Table;
 /** Section A / H: SA locations with their CSN prefix. */
 class SaLocationResource extends Resource
 {
+    use \App\Filament\Concerns\HasModulePermissions;
+
     protected static ?string $model = SaLocation::class;
 
     protected static bool $isScopedToTenant = false;
 
     // Master Data → Company pages (user, 28 Oct 2026): super_admin every company, branch_admin their companies only
+    /** Open to the roles ticked for "masterdata.company" on Master Data → Roles & Permission (13 Nov 2026). */
     public static function canViewAny(): bool
     {
-        return auth()->user()?->canManageStaff() ?? false;
+        return \App\Support\Permissions::screen(static::class);
     }
 
     public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
@@ -88,7 +91,7 @@ class SaLocationResource extends Resource
             ->filters([
                 Tables\Filters\SelectFilter::make('branch_id')->label('Company')->relationship('branch', 'name'),
             ])
-            ->actions([Tables\Actions\EditAction::make()]);
+            ->actions([Tables\Actions\ViewAction::make(), Tables\Actions\EditAction::make(), \App\Support\RecordUsage::deleteAction()]);
     }
 
     public static function getPages(): array

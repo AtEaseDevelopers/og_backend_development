@@ -17,8 +17,8 @@ class DecideCreditApproval
             throw new InvalidArgumentException('Approval request is not pending.');
         }
 
-        if (! $actor->hasAnyRole(['super_admin', 'branch_admin', 'branch_manager']) && ! $actor->is_hq) {
-            throw new InvalidArgumentException('Only branch managers or HQ can decide credit approvals.');
+        if (! \App\Support\Permissions::allows('orders.credit_approval', $actor)) {
+            throw new InvalidArgumentException('You do not have permission to decide credit approvals.');
         }
 
         $request = DB::transaction(function () use ($request, $actor, $approve, $remarks) {

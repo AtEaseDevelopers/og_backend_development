@@ -47,9 +47,10 @@ class CustomerProfileChanges extends Page implements HasTable
         return 'Verify major profile changes from the customer portal. Every portal profile change is kept here.';
     }
 
+    /** Open to the roles ticked for "customers.portal_approvals" on Master Data → Roles & Permission (13 Nov 2026). */
     public static function canAccess(): bool
     {
-        return PortalAccessApprovals::canAccess();
+        return \App\Support\Permissions::screen(static::class);
     }
 
     public static function getNavigationBadge(): ?string

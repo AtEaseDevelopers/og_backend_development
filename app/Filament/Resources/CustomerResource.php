@@ -19,6 +19,14 @@ use Filament\Tables\Table;
 
 class CustomerResource extends Resource
 {
+    use \App\Filament\Concerns\HasModulePermissions;
+
+    /** Open to the roles ticked for "customers.view" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canViewAny(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     protected static ?string $model = Customer::class;
 
     protected static ?string $tenantOwnershipRelationshipName = 'company';
@@ -47,69 +55,66 @@ class CustomerResource extends Resource
                 Infolists\Components\Tabs\Tab::make('Details')->schema([
                     // compact cards side by side, label beside value (user, 25 Oct 2026), so the page needs little scrolling
                     Infolists\Components\ViewEntry::make('compact_style')->hiddenLabel()->view('filament.infolists.customer-compact-style')->columnSpanFull(),
+                    // the view page keeps its cards (user, 16 Nov 2026: one panel read as confusing here; the one-panel layout
+                    // is the edit form's only)
                     Infolists\Components\Grid::make(['default' => 1, 'md' => 2, 'xl' => 3])->extraAttributes(['class' => 'cv-compact'])->schema([
+                    // the cards follow the client's Customer Master Data V2 (user, 16 Nov 2026): Account (with the billing
+                    // address, contact and tax of the account), Credit term, Notes
                     Infolists\Components\Section::make('Account')->icon('heroicon-o-identification')->headerActions([static::editCard('account', 'Account', CustomerForm::accountFields())])->schema([
-                        Infolists\Components\TextEntry::make('code')->label('Debtor code'),
+                        Infolists\Components\TextEntry::make('code')->label('Debtor account code'),
+                        Infolists\Components\TextEntry::make('default_order_type')->label('Debtor type')->badge()
+                            ->state(fn (Customer $record) => CustomerForm::debtorTypes()[$record->default_order_type] ?? ($record->is_credit ? 'Credit' : 'Cash')),
                         Infolists\Components\TextEntry::make('company_name')->label('Company name'),
-                        Infolists\Components\TextEntry::make('brn')->label('Company registration no. (BRN)')->placeholder('—'),
-                        Infolists\Components\TextEntry::make('area')->label('Area code')->placeholder('—'),
-                        Infolists\Components\TextEntry::make('debtor_type')->label('Debtor type')->placeholder('—')
-                            ->formatStateUsing(fn (?string $state) => CustomerForm::debtorTypeOptions()[$state] ?? $state),
-                        Infolists\Components\TextEntry::make('control_account')->label('Control account')->placeholder('—'),
-                        Infolists\Components\TextEntry::make('salesperson.name')->label('Salesperson')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('brn')->label('Company registration no.')->placeholder('—'),
                         Infolists\Components\TextEntry::make('status')->label('Status')->badge()
                             ->formatStateUsing(fn (?string $state) => $state === 'active' ? 'Active' : 'Inactive')
                             ->color(fn (?string $state) => $state === 'active' ? 'success' : 'gray'),
-                        Infolists\Components\IconEntry::make('is_group_company')->label('Group company')->boolean(),
+                        Infolists\Components\TextEntry::make('salesperson.name')->label('Salesperson')->placeholder('—'),
                     ])->compact()->inlineLabel()->columns(1)->columnSpan(1),
-                    Infolists\Components\Section::make('Address')->icon('heroicon-o-map-pin')->headerActions([static::editCard('address', 'Address', static::addressCardFields())])->schema([
-                        Infolists\Components\TextEntry::make('address')->label('Address')->placeholder('—'),
+                    Infolists\Components\Section::make('Billing address & contact')->icon('heroicon-o-map-pin')->headerActions([static::editCard('contact', 'Billing address & contact', CustomerForm::contactFields(relationship: false))])->schema([
+                        Infolists\Components\TextEntry::make('address')->label('Billing address')->placeholder('—'),
                         Infolists\Components\TextEntry::make('postcode')->label('Postcode')->placeholder('—'),
-                        Infolists\Components\TextEntry::make('delivery_address')->label('Delivery address')->placeholder('—')
-                            ->state(fn (Customer $record) => $record->addresses()->where('type', 'delivery')->orderByDesc('is_default')->value('address')),
-                        Infolists\Components\TextEntry::make('delivery_postcode')->label('Deliver postcode')->placeholder('—')
-                            ->state(fn (Customer $record) => $record->addresses()->where('type', 'delivery')->orderByDesc('is_default')->value('postcode')),
-                    ])->compact()->inlineLabel()->columns(1)->columnSpan(1),
-                    Infolists\Components\Section::make('Contact')->icon('heroicon-o-phone')->headerActions([static::editCard('contact', 'Contact', CustomerForm::contactFields(relationship: false))])->schema([
-                        // the PIC list (user, 10 Nov 2026): "PIC name · contact number", the default first
-                        Infolists\Components\TextEntry::make('pic_list')->label('PIC')
+                        // the attention list: "name · phone", the default first (row 1 = Attention and Phone 1, row 2 = Phone 2)
+                        Infolists\Components\TextEntry::make('pic_list')->label('Attention & phone')
                             ->state(fn (Customer $record) => $record->pics()->orderByDesc('is_default')->orderBy('id')->get()
                                 ->map(fn ($pic) => ($pic->name ?: '—').' · '.($pic->phone ?: '—'))->all())
                             ->listWithLineBreaks()
                             ->placeholder('—'),
-                        Infolists\Components\TextEntry::make('business_nature')->label('Business nature')->hidden(fn (?string $state) => blank($state)),
-                        Infolists\Components\TextEntry::make('fax')->hidden(fn (?string $state) => blank($state)),
+                        Infolists\Components\TextEntry::make('mobile')->label('Mobile no.')->placeholder('—'),
                         Infolists\Components\TextEntry::make('email')->label('Email address')->placeholder('—'),
-                        Infolists\Components\TextEntry::make('website')->hidden(fn (?string $state) => blank($state)),
                     ])->compact()->inlineLabel()->columns(1)->columnSpan(1),
-                    Infolists\Components\Section::make('Credit & statement')->icon('heroicon-o-banknotes')->headerActions([static::editCard('credit', 'Credit & statement', CustomerForm::creditFields())])->schema([
-                        Infolists\Components\TextEntry::make('display_term')->label('Display term')->placeholder('—'),
-                        Infolists\Components\TextEntry::make('credit_term_days')->label('Credit term')
-                            ->formatStateUsing(fn ($state) => CustomerForm::creditTermOptions()[$state] ?? "{$state} days"),
-                        Infolists\Components\TextEntry::make('aging_on')->label('Aging on')->placeholder('—')
-                            ->formatStateUsing(fn (?string $state) => ['invoice_date' => 'Invoice date (I)', 'due_date' => 'Due date (D)'][$state] ?? $state),
-                        Infolists\Components\TextEntry::make('statement_type')->label('Statement type')->placeholder('—')
-                            ->formatStateUsing(fn (?string $state) => ['open_item' => 'Open item (O)', 'balance_forward' => 'Balance forward (B)', 'no_statement' => 'No statement (N)'][$state] ?? $state),
-                        Infolists\Components\IconEntry::make('is_credit')->label('Credit customer')->boolean(),
-                        Infolists\Components\TextEntry::make('credit_limit')->money('MYR'),
-                        Infolists\Components\TextEntry::make('currency')->placeholder('—'),
-                    ])->compact()->inlineLabel()->columns(1)->columnSpan(1),
-                    Infolists\Components\Section::make('Tax & e-invoice')->icon('heroicon-o-receipt-percent')->headerActions([static::editCard('tax', 'Tax & e-invoice', CustomerForm::taxFields())])->schema([
+                    Infolists\Components\Section::make('Tax')->icon('heroicon-o-receipt-percent')->headerActions([static::editCard('tax', 'Tax', CustomerForm::taxFields())])->schema([
                         Infolists\Components\TextEntry::make('gst_no')->label('GST no.')->placeholder('—'),
                         Infolists\Components\TextEntry::make('sst_registration_no')->label('SST no.')->placeholder('—'),
-                        Infolists\Components\TextEntry::make('tax_type')->label('Tax code')->placeholder('—'),
-                        Infolists\Components\IconEntry::make('charges_sst')->label('Charge SST')->boolean(),
+                        Infolists\Components\TextEntry::make('tax_type')->label('SST tax code')->placeholder('—'),
                         Infolists\Components\TextEntry::make('tin')->label('TIN no.')->placeholder('—'),
                         Infolists\Components\TextEntry::make('msic_code')->label('MSIC 1')->placeholder('—'),
                         Infolists\Components\TextEntry::make('msic_code_2')->label('MSIC 2')->placeholder('—'),
                         Infolists\Components\TextEntry::make('msic_code_3')->label('MSIC 3')->placeholder('—'),
-                        Infolists\Components\TextEntry::make('einvoice_buyer_name')->label('Buyer name')->placeholder('—'),
-                        Infolists\Components\TextEntry::make('einvoice_address')->label('E-invoice address')->placeholder('—')->columnSpanFull(),
+                        Infolists\Components\IconEntry::make('charges_sst')->label('Charge SST')->boolean(),
+                    ])->compact()->inlineLabel()->columns(1)->columnSpan(1),
+                    // the e-invoice buyer details (used by the LHDN submission and the portal profile): shown as what is
+                    // sent — the buyer's own value, else the account's
+                    Infolists\Components\Section::make('E-invoice buyer')->icon('heroicon-o-document-text')->headerActions([static::editCard('einvoice', 'E-invoice buyer', CustomerForm::einvoiceFields())])->schema([
+                        Infolists\Components\TextEntry::make('einvoice_buyer_name')->label('Buyer name')->state(fn (Customer $record) => $record->einvoice_buyer_name ?: $record->company_name)->placeholder('—'),
+                        Infolists\Components\TextEntry::make('einvoice_tin')->label('Buyer TIN')->state(fn (Customer $record) => $record->einvoice_tin ?: $record->tin)->placeholder('—'),
+                        Infolists\Components\TextEntry::make('einvoice_id')->label('ID')->state(fn (Customer $record) => trim(($record->einvoice_id_type ?: 'BRN').' '.($record->einvoice_id_value ?: $record->brn)))->placeholder('—'),
+                        Infolists\Components\TextEntry::make('einvoice_address')->label('Address')->state(fn (Customer $record) => $record->einvoice_address ?: $record->address)->placeholder('—'),
+                    ])->compact()->inlineLabel()->columns(1)->columnSpan(1),
+                    Infolists\Components\Section::make('Credit term')->icon('heroicon-o-banknotes')->headerActions([static::editCard('credit', 'Credit term', CustomerForm::creditFields())])->schema([
+                        Infolists\Components\TextEntry::make('credit_term_days')->label('Credit term')
+                            ->formatStateUsing(fn ($state) => CustomerForm::creditTermOptions()[$state] ?? "{$state} days"),
+                        Infolists\Components\TextEntry::make('credit_limit')->label('Credit limit')->money('MYR'),
+                        Infolists\Components\TextEntry::make('aging_on')->label('Aging on')->placeholder('—')
+                            ->formatStateUsing(fn (?string $state) => ['invoice_date' => 'Invoice date (I)', 'due_date' => 'Due date (D)'][$state] ?? $state),
+                        Infolists\Components\TextEntry::make('statement_type')->label('Statement type')->placeholder('—')
+                            ->formatStateUsing(fn (?string $state) => ['open_item' => 'Open item (O)', 'balance_forward' => 'Balance forward (B)', 'no_statement' => 'No statement (N)'][$state] ?? $state),
                     ])->compact()->inlineLabel()->columns(1)->columnSpan(1),
                     Infolists\Components\Section::make('Notes')->icon('heroicon-o-chat-bubble-bottom-center-text')->headerActions([static::editCard('notes', 'Notes', CustomerForm::noteFields())])->schema([
-                        Infolists\Components\TextEntry::make('own_note')->label('Own note: other email, statement remark')->placeholder('—'),
-                        Infolists\Components\TextEntry::make('mailing_statement_remark')->label('Mailing statement remark')->placeholder('—'),
-                        Infolists\Components\TextEntry::make('payment_note')->label('Own note (payment)')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('account_opening_date')->label('Account opening date')->date('d/m/Y')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('mailing_address')->label('Mailing address')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('mailing_statement_remark')->label('Mailing statement remarks')->placeholder('—'),
+                        Infolists\Components\TextEntry::make('own_note')->label('Internal office note')->placeholder('—'),
                     ])->compact()->inlineLabel()->columns(1)->columnSpan(1),
                     ]),
                 ]),
@@ -191,10 +196,9 @@ class CustomerResource extends Resource
                     $data['pics'] = $record->pics()->orderByDesc('is_default')->orderBy('id')->get(['id', 'name', 'phone'])->toArray() ?: [['id' => null, 'name' => '', 'phone' => '']];
                 }
 
-                if ($key === 'address') {
-                    $delivery = $record->addresses()->where('type', 'delivery')->orderByDesc('is_default')->first();
-                    $data['delivery_address_text'] = $delivery?->address;
-                    $data['delivery_postcode'] = $delivery?->postcode;
+                // Debtor type: an older customer without one shows what it is
+                if ($key === 'account' && ! array_key_exists((string) ($data['default_order_type'] ?? ''), CustomerForm::debtorTypes())) {
+                    $data['default_order_type'] = $record->is_credit ? 'term' : 'cash';
                 }
 
                 return $data;
@@ -205,35 +209,9 @@ class CustomerResource extends Resource
                     unset($data['pics']);
                 }
 
-                if ($key === 'address') {
-                    $delivery = trim((string) ($data['delivery_address_text'] ?? ''));
-
-                    if ($delivery !== '') {
-                        \App\Domains\MasterData\Models\CustomerAddress::query()->updateOrCreate(
-                            ['customer_id' => $record->id, 'type' => 'delivery', 'is_default' => true],
-                            ['label' => 'Primary delivery', 'address' => $delivery, 'postcode' => $data['delivery_postcode'] ?? null],
-                        );
-                    }
-
-                    unset($data['delivery_address_text'], $data['delivery_postcode']);
-                }
-
                 $record->update($data);
                 \Filament\Notifications\Notification::make()->title($heading.' saved')->success()->send();
             });
-    }
-
-    /** @return list<\Filament\Forms\Components\Component> */
-    private static function addressCardFields(): array
-    {
-        return [
-            \Filament\Forms\Components\Grid::make(2)->schema([
-                \Filament\Forms\Components\Textarea::make('address')->label('Address (address 1 – 4)')->rows(4),
-                \Filament\Forms\Components\Textarea::make('delivery_address_text')->label('Delivery address (deliver address 1 – 4)')->rows(4),
-                \Filament\Forms\Components\TextInput::make('postcode')->label('Postcode')->maxLength(20),
-                \Filament\Forms\Components\TextInput::make('delivery_postcode')->label('Deliver postcode')->maxLength(20),
-            ]),
-        ];
     }
 
     /** The customer's special price rows (one per product and condition, as the price list template's rows). */
@@ -337,6 +315,8 @@ class CustomerResource extends Resource
         ])->actions([
             Tables\Actions\ViewAction::make(),
             Tables\Actions\EditAction::make(),
+            // Delete only for a record without history (client, 16 Nov 2026); a used one is set Inactive instead
+            \App\Support\RecordUsage::deleteAction(),
         ]);
     }
 

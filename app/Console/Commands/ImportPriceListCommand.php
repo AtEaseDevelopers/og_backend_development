@@ -41,7 +41,7 @@ class ImportPriceListCommand extends Command
         }
 
         $this->info('Price list: '.$file);
-        $this->line('Destinations: '.implode(', ', $data['locations']));
+        $this->line('Areas: '.implode(', ', $data['locations']));
         $this->newLine();
 
         $this->table(

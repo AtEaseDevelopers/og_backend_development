@@ -12,6 +12,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class CreateBreakBulk extends CreateRecord
 {
+    use \App\Filament\Concerns\FormActionsInHeader;
+
     protected static string $resource = BreakBulkResource::class;
 
     public function getTitle(): string

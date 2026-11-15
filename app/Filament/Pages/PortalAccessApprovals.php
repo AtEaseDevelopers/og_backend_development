@@ -48,11 +48,10 @@ class PortalAccessApprovals extends Page implements HasTable
         return 'Approve or reject customer logins asking for portal access to a company account (BRN).';
     }
 
+    /** Open to the roles ticked for "customers.portal_approvals" on Master Data → Roles & Permission (13 Nov 2026). */
     public static function canAccess(): bool
     {
-        $user = auth()->user();
-
-        return (bool) ($user?->is_hq || $user?->hasAnyRole(['hq_admin', 'branch_manager', 'finance']));
+        return \App\Support\Permissions::screen(static::class);
     }
 
     public static function getNavigationBadge(): ?string

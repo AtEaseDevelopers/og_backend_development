@@ -64,6 +64,17 @@ class Quotation extends Model
         'locked_by', 'locked_at', 'lock_heartbeat_at',
     ];
 
+    protected static function booted(): void
+    {
+        // the consignor / consignee addresses keyed on the order are kept in Master Data → Consignor / Consignee
+        // (user, 16 Nov 2026), so a company with several addresses is offered once per address next time
+        static::saved(function (self $order): void {
+            if ($order->wasRecentlyCreated || $order->wasChanged(['consignor_name', 'pickup_location', 'consignee_name', 'drop_off_location', 'consignee_address', 'stops'])) {
+                \App\Domains\MasterData\Models\ConsignorConsignee::rememberFromOrder($order);
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [
@@ -118,12 +129,12 @@ class Quotation extends Model
 
     public function fromLocation(): BelongsTo
     {
-        return $this->belongsTo(\App\Domains\MasterData\Models\Location::class, 'from_location_id');
+        return $this->belongsTo(\App\Domains\MasterData\Models\Location::class, 'from_location_id')->withTrashed();
     }
 
     public function toLocation(): BelongsTo
     {
-        return $this->belongsTo(\App\Domains\MasterData\Models\Location::class, 'to_location_id');
+        return $this->belongsTo(\App\Domains\MasterData\Models\Location::class, 'to_location_id')->withTrashed();
     }
 
     /** The branch of the store the consignor brings the goods to (older Store records: the store itself). */

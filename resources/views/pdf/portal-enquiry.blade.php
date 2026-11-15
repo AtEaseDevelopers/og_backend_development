@@ -122,7 +122,7 @@
     @forelse ($destinations as $i => $destination)
         @php $dropLabel = $dropOffTypes[$destination['drop_off_type'] ?? ''] ?? ($destination['drop_off_type'] ?? null); @endphp
         <div class="block">
-            <div><strong>Destination {{ $i + 1 }}@if (! empty($destination['consignee_name'])) — {{ $destination['consignee_name'] }}@endif</strong></div>
+            <div><strong>Drop-off {{ $i + 1 }}@if (! empty($destination['consignee_name'])) — {{ $destination['consignee_name'] }}@endif</strong></div>
             @if ($dropLabel)<div class="muted">{{ $dropLabel }}</div>@endif
             @if (! empty($destination['collect_store']))<div>Own collection at O&amp;G store: {{ $destination['collect_store'] }}</div>@endif
             <div>{{ collect([$destination['address'] ?? null, $destination['postcode'] ?? null, $destination['city'] ?? null, $destination['state'] ?? null])->filter()->implode(', ') }}</div>
@@ -130,7 +130,7 @@
             @if (! empty($destination['special_requirements']))<div>Remark: {{ $destination['special_requirements'] }}</div>@endif
         </div>
     @empty
-        <div class="muted">No drop-off destination.</div>
+        <div class="muted">No drop-off address.</div>
     @endforelse
 
     @if ($contacts->isNotEmpty())

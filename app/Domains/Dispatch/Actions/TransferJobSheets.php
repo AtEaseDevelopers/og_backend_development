@@ -38,6 +38,13 @@ class TransferJobSheets
             return null;
         }
 
+        // a pickup has no job number of its own with a letter behind (client, 16 Nov 2026): only a transfer /
+        // break-bulk code opens "KL0001J"; the pickup goes on the job sheet of the lorry it is given to, under that
+        // lorry's normal job number
+        if ($subsheet->task_type === 'incoming_psi') {
+            return null;
+        }
+
         $csn = $subsheet->consignmentNote()->with('deliveryOrder.jobSheet')->first();
         $main = $csn?->deliveryOrder?->jobSheet;
 

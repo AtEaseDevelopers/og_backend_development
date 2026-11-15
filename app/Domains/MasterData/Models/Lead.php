@@ -14,7 +14,12 @@ class Lead extends Model
 {
     use BelongsToCompany;
 
-    protected $fillable = ['company_id', 'name', 'pic_name', 'contact', 'email', 'billing_address', 'address', 'customer_id'];
+    protected $fillable = ['company_id', 'name', 'pic_name', 'contact', 'email', 'billing_address', 'address', 'customer_id', 'is_active'];
+
+    protected function casts(): array
+    {
+        return ['is_active' => 'boolean'];
+    }
 
     public function customer(): BelongsTo
     {

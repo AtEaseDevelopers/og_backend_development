@@ -23,6 +23,14 @@ use Throwable;
 
 class JobSheetResource extends Resource
 {
+    use \App\Filament\Concerns\HasModulePermissions;
+
+    /** Open to the roles ticked for "dispatch.job_sheets" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canViewAny(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     protected static ?string $model = JobSheet::class;
 
     protected static ?string $tenantOwnershipRelationshipName = 'company';

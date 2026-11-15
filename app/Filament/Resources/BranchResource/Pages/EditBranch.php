@@ -8,12 +8,14 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditBranch extends EditRecord
 {
+    use \App\Filament\Concerns\FormActionsInHeader;
+
     use \App\Filament\Concerns\MasterDataBreadcrumbs;
 
     protected static string $resource = BranchResource::class;
 
     protected function getHeaderActions(): array
     {
-        return [Actions\ViewAction::make(), Actions\DeleteAction::make()];
+        return [Actions\ViewAction::make(), Actions\DeleteAction::make()->visible(fn ($record) => ! \App\Support\RecordUsage::isUsed($record))];
     }
 }

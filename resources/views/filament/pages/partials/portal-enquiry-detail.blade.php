@@ -113,7 +113,7 @@
     <section class="cor-info-card">
         <h3 class="cor-section-title">Delivery Information</h3>
         <div class="cor-info-block">
-            <div class="cor-info-label">Destination</div>
+            <div class="cor-info-label">Area</div>
             <div class="cor-info-value">{!! nl2br(e($detail['delivery_address'])) !!}</div>
         </div>
         <div class="cor-info-block">

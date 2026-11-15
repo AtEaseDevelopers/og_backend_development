@@ -11,7 +11,8 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (! Location::query()->where('name', 'Klang Valley')->exists()) {
+        // the query builder, not the model: the model reads deleted_at, a column added by a later migration
+        if (! \Illuminate\Support\Facades\DB::table('locations')->where('name', 'Klang Valley')->exists()) {
             Location::query()->create([
                 'code' => 'KLANG_VALLEY',
                 'name' => 'Klang Valley',
@@ -24,6 +25,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Location::query()->where('code', 'KLANG_VALLEY')->where('type', 'pickup')->delete();
+        \Illuminate\Support\Facades\DB::table('locations')->where('code', 'KLANG_VALLEY')->where('type', 'pickup')->delete();
     }
 };

@@ -31,6 +31,12 @@ use Throwable;
  */
 class EditOrder extends CreateOrder
 {
+    /** Open to the roles ticked for "orders.create" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canAccess(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     protected static bool $shouldRegisterNavigation = false;
 
     protected static ?string $slug = 'orders/{type}/{id}/edit';
@@ -152,7 +158,7 @@ class EditOrder extends CreateOrder
         $this->knownRecordIds = $records->map(fn (Quotation $q) => (int) $q->id)->values()->all();
         // record id → the payment terms that record may change to (each block has its own term)
         $this->recordOrderTypes = $records->mapWithKeys(fn (Quotation $q) => [(int) $q->id => array_map(fn (OrderType $type) => $type->value, $q->allowedOrderTypes())])->all();
-        $this->salespersonLocked =$enquiry && $enquiry->salesperson_locked && $enquiry->salesperson_id && ! $user?->isSuperadmin();
+        $this->salespersonLocked =$enquiry && $enquiry->salesperson_locked && $enquiry->salesperson_id && ! \App\Support\Permissions::allows('orders.reassign_salesperson', $user);
 
         // a saved "A / B" PIC into the first PIC and the extra rows (user, 10 Nov 2026)
         $this->form = $this->expandFormPics($this->formFrom($enquiry, $records));
@@ -969,7 +975,7 @@ class EditOrder extends CreateOrder
             if (($result['unpriced'] ?? []) !== []) {
                 Notification::make()
                     ->title('Some products have no price yet')
-                    ->body(collect($result['unpriced'])->map(fn (array $names, $number) => $number.': '.implode(', ', $names))->implode(' · ').' · no price-list rate for the destination. They are kept on the order: enter their price under Items & pricing on the order page.')
+                    ->body(collect($result['unpriced'])->map(fn (array $names, $number) => $number.': '.implode(', ', $names))->implode(' · ').' · no price-list rate for the area. They are kept on the order: enter their price under Items & pricing on the order page.')
                     ->warning()
                     ->persistent()
                     ->send();

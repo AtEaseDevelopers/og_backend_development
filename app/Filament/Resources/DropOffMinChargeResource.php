@@ -15,6 +15,14 @@ use Filament\Tables\Table;
 /** Section B: minimum charge per destination drop-off type (formula pending O&G confirmation). */
 class DropOffMinChargeResource extends Resource
 {
+    use \App\Filament\Concerns\HasModulePermissions;
+
+    /** Open to the roles ticked for "masterdata.products" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canViewAny(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     protected static ?string $model = DropOffMinCharge::class;
 
     protected static bool $isScopedToTenant = false;
@@ -58,7 +66,7 @@ class DropOffMinChargeResource extends Resource
                 Tables\Columns\IconColumn::make('is_active')->boolean(),
                 Tables\Columns\TextColumn::make('remarks')->limit(40),
             ])
-            ->actions([Tables\Actions\EditAction::make(), Tables\Actions\DeleteAction::make()]);
+            ->actions([Tables\Actions\ViewAction::make(), Tables\Actions\EditAction::make(), \App\Support\RecordUsage::deleteAction()]);
     }
 
     public static function getPages(): array

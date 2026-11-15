@@ -40,7 +40,19 @@
     .csn-doc-consignee-name { font-size: 13px; font-weight: bold; }
     .csn-doc-consignee-box .csn-doc-party-address { font-size: 11.5px; }
 
-    /* the chop & sign fields: Name, IC No. and Date on their own lines with room to write */
+    /* one row per consignee (client, 16 Nov 2026): consignee | signature | Name, NRIC, Date; kept on one page */
+    .csn-doc-drop { page-break-inside: avoid; }
+    .csn-doc-drop .csn-doc-route { margin-bottom: 0; }
+    .csn-doc-drop .csn-doc-consignees { margin-top: 4px; }
+    .csn-doc-drop-row .csn-doc-drop-party { width: 46%; }
+    .csn-doc-drop-row .csn-doc-drop-sign { width: 27%; text-align: center; vertical-align: bottom; }
+    .csn-doc-drop-row .csn-doc-drop-fields { width: 27%; vertical-align: middle; }
+    .csn-doc-drop-sign-room { height: 58px; border-bottom: 1px dotted #000; margin: 0 8px 4px; }
+    .csn-doc-drop-fields .csn-doc-sign-field { padding-left: 0; margin-top: 9px; }
+    .csn-doc-drop-fields .csn-doc-sign-field:first-child { margin-top: 0; }
+    .csn-doc-drop-fields .csn-doc-sign-blank { width: 68%; }
+
+    /* the chop & sign fields: Name, NRIC and Date on their own lines with room to write */
     .csn-doc-sign-field { text-align: left; font-size: 10.5px; margin-top: 7px; padding-left: 10px; }
     .csn-doc-sign-blank { display: inline-block; width: 62%; border-bottom: 1px solid #000; height: 11px; vertical-align: bottom; }
 

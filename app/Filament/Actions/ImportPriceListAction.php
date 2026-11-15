@@ -199,7 +199,7 @@ class ImportPriceListAction
             $default = collect($data['rates'])->where('customer_code', null)->count();
             $special = count($data['rates']) - $default;
             $lines = [
-                e($data['rows'].' price row(s) read · '.count($data['products']).' product(s) · '.count($data['locations']).' destination(s)'),
+                e($data['rows'].' price row(s) read · '.count($data['products']).' product(s) · '.count($data['locations']).' area(s)'),
                 e(($default > 0 ? $default.' default price row(s) for '.implode(', ', $data['branches']) : 'no default prices')
                     .' · '.($special > 0 ? $special.' special price row(s) for '.count($customers).' customer(s)' : 'no special prices')),
             ];

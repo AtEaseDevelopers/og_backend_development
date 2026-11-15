@@ -28,6 +28,12 @@ use App\Filament\Concerns\HasExcelColumnFilters;
  */
 class CodReconciliation extends Page implements HasTable
 {
+    /** Open to the roles ticked for "billing.view" on Master Data → Roles & Permission (13 Nov 2026). */
+    public static function canAccess(): bool
+    {
+        return \App\Support\Permissions::screen(static::class);
+    }
+
     use HasExcelColumnFilters, InteractsWithTable {
         HasExcelColumnFilters::filterTableQuery insteadof InteractsWithTable;
         InteractsWithTable::filterTableQuery as filamentFilterTableQuery;

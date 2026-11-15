@@ -186,7 +186,7 @@ class CustomerQuotationPriceHistory
             ->get()
             ->map(fn (CustomerPricing $row) => [
                 'measurement' => $row->item_name ?: '—',
-                'destination' => $row->destination ?: 'All destinations',
+                'destination' => $row->destination ?: 'All areas',
                 'uom' => $row->uom ?: '—',
                 'route' => $row->route ?: '—',
                 'qty' => 1,

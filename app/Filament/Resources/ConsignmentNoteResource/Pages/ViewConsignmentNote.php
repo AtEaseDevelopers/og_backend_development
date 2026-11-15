@@ -43,7 +43,7 @@ class ViewConsignmentNote extends ViewRecord
                 ->visible(fn () => ! $record->deliveryOrder()->exists()
                     && $record->status !== CsnStatus::Cancelled
                     && $record->canAssignToLorry())
-                ->form(ConsignmentNoteResource::assignLorryFormSchema())
+                ->form(fn () => ConsignmentNoteResource::assignLorryFormSchema(null, collect([$record])))
                 ->action(function (array $data) use ($record) {
                     try {
                         ConsignmentNoteResource::runAssignAndSubsheets($record, $data);
