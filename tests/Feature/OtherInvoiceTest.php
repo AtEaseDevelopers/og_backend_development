@@ -41,11 +41,12 @@ class OtherInvoiceTest extends TestCase
         Filament::setTenant($customer->company);
 
         // Master Data → Other Items: a description only
-        Livewire::test(CreateOtherItem::class)->fillForm(['name' => 'Payment on Behalf'])->call('create')->assertHasNoFormErrors();
+        Livewire::test(CreateOtherItem::class)->fillForm(['name' => 'Payment on Behalf', 'category' => 'Payment', 'code' => 'POB'])->call('create')->assertHasNoFormErrors();
         Livewire::test(CreateOtherItem::class)->fillForm(['name' => 'Rental Income'])->call('create')->assertHasNoFormErrors();
         $behalf = OtherItem::query()->where('name', 'Payment on Behalf')->firstOrFail();
         $rental = OtherItem::query()->where('name', 'Rental Income')->firstOrFail();
         $this->assertTrue($behalf->is_active);
+        $this->assertSame(['Payment', 'POB', 'POB — Payment on Behalf'], [$behalf->category, $behalf->code, $behalf->label()]);
 
         // the invoice: the customer, the date, two lines
         Livewire::test(CreateOtherInvoice::class)

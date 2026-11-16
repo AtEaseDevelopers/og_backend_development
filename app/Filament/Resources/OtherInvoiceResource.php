@@ -96,7 +96,7 @@ class OtherInvoiceResource extends Resource
                 Forms\Components\Placeholder::make('lines_head')->hiddenLabel()->columnSpanFull()
                     ->content(new \Illuminate\Support\HtmlString(<<<'HTML'
                         <style>
-                            .og-oi-head { display: grid; grid-template-columns: 3fr 7fr 2fr; gap: .75rem; padding: .45rem 2.75rem .45rem .75rem; margin-bottom: -1.5rem;
+                            .og-oi-head { display: grid; grid-template-columns: 2fr 3fr 5fr 2fr; gap: .75rem; padding: .45rem 2.75rem .45rem .75rem; margin-bottom: -1.5rem;
                                 font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: rgb(100 116 139);
                                 background: rgb(248 250 252); border: 1px solid rgb(229 231 235); border-bottom: 0; border-radius: .6rem .6rem 0 0; }
                             .og-oi-table > ul { border: 1px solid rgb(229 231 235); border-radius: 0 0 .6rem .6rem; }
@@ -111,20 +111,45 @@ class OtherInvoiceResource extends Resource
                             .dark .og-oi-table > ul { border-color: rgb(55 65 81); }
                             .dark .og-oi-table li.fi-fo-repeater-item { border-top-color: rgb(55 65 81); }
                         </style>
-                        <div class="og-oi-head"><span>Item</span><span>Description</span><span>Amount (RM)</span></div>
+                        <div class="og-oi-head"><span>Category</span><span>Item</span><span>Description</span><span>Amount (RM)</span></div>
                         HTML)),
                 Forms\Components\Repeater::make('lines')
                     ->hiddenLabel()
                     ->extraAttributes(['class' => 'og-oi-table'])
                     ->relationship('lines')
                     ->schema([
+                        // the category first (a searchable list of the categories of Master Data → Other Items), then the
+                        // items of that category (user, 16 Nov 2026); not saved on the line — it is the item's
+                        Forms\Components\Select::make('category')->label('Category')->placeholder('All')
+                            ->options(fn () => OtherItem::query()->when(CurrentCompany::id(), fn ($q, $id) => $q->where('company_id', $id))
+                                ->where('is_active', true)->whereNotNull('category')->where('category', '!=', '')->distinct()->orderBy('category')->pluck('category', 'category'))
+                            ->searchable()
+                            ->live()
+                            ->dehydrated(false)
+                            ->afterStateHydrated(function (Forms\Components\Select $component, $state, Get $get): void {
+                                if (blank($state) && filled($get('other_item_id'))) {
+                                    $component->state(OtherItem::query()->whereKey($get('other_item_id'))->value('category'));
+                                }
+                            })
+                            ->afterStateUpdated(function ($state, Get $get, Forms\Set $set): void {
+                                // another category: an item of the old one is no longer the pick
+                                if (filled($state) && filled($get('other_item_id')) && OtherItem::query()->whereKey($get('other_item_id'))->value('category') !== $state) {
+                                    $set('other_item_id', null);
+                                }
+                            })
+                            ->columnSpan(2),
                         Forms\Components\Select::make('other_item_id')->label('Item')->placeholder('Select item')
-                            ->options(fn (?string $state) => OtherItem::query()->when(CurrentCompany::id(), fn ($q, $id) => $q->where('company_id', $id))
-                                ->where(fn ($q) => $q->where('is_active', true)->when($state, fn ($q) => $q->orWhere('id', $state)))->orderBy('name')->pluck('name', 'id'))
+                            ->options(fn (?string $state, Get $get) => OtherItem::query()->when(CurrentCompany::id(), fn ($q, $id) => $q->where('company_id', $id))
+                                ->where(fn ($q) => $q->where(fn ($q) => $q->where('is_active', true)->when(filled($get('category')), fn ($q) => $q->where('category', $get('category'))))
+                                    ->when($state, fn ($q) => $q->orWhere('id', $state)))
+                                ->orderBy('name')->get()->mapWithKeys(fn (OtherItem $item) => [$item->id => $item->label()]))
                             ->searchable()
                             ->required()
+                            ->live()
+                            // an item picked without a category shows its category
+                            ->afterStateUpdated(fn ($state, Forms\Set $set) => filled($state) ? $set('category', OtherItem::query()->whereKey($state)->value('category')) : null)
                             ->columnSpan(3),
-                        Forms\Components\TextInput::make('description')->label('Description')->maxLength(500)->placeholder('e.g. DIESEL LORRY NO. ABC1234 OCT 26')->columnSpan(7),
+                        Forms\Components\TextInput::make('description')->label('Description')->maxLength(500)->placeholder('e.g. DIESEL LORRY NO. ABC1234 OCT 26')->columnSpan(5),
                         Forms\Components\TextInput::make('amount')->label('Amount (RM)')->numeric()->minValue(0)->required()->live(onBlur: true)->columnSpan(2),
                     ])
                     ->columns(12)

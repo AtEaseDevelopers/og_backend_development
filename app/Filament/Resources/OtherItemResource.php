@@ -53,9 +53,16 @@ class OtherItemResource extends Resource
         return $form->schema([
             Forms\Components\Section::make()->schema([
                 Forms\Components\Hidden::make('company_id')->default(fn () => CurrentCompany::id()),
-                Forms\Components\TextInput::make('name')->label('Item')->required()->maxLength(255)->placeholder('e.g. Rental Income')->columnSpan(2),
-                Forms\Components\Toggle::make('is_active')->label('Active')->default(true)->inline(false),
-            ])->columns(3),
+                // free text (user, 16 Nov 2026); the categories already used are offered while typing, so the same one
+                // is written the same way — on an Other Invoice the category is picked first, then its items
+                Forms\Components\TextInput::make('category')->label('Category')->maxLength(150)->placeholder('e.g. Rental')
+                    ->datalist(fn () => OtherItem::query()->when(CurrentCompany::id(), fn ($q, $id) => $q->where('company_id', $id))
+                        ->whereNotNull('category')->where('category', '!=', '')->distinct()->orderBy('category')->pluck('category')->all())
+                    ->columnSpan(3),
+                Forms\Components\TextInput::make('code')->label('Code')->maxLength(50)->columnSpan(2),
+                Forms\Components\TextInput::make('name')->label('Item')->required()->maxLength(255)->placeholder('e.g. Rental Income')->columnSpan(5),
+                Forms\Components\Toggle::make('is_active')->label('Active')->default(true)->inline(false)->columnSpan(2),
+            ])->columns(12),
         ]);
     }
 
@@ -63,6 +70,8 @@ class OtherItemResource extends Resource
     {
         return $table
             ->columns([
+                Tables\Columns\TextColumn::make('category')->label('Category')->searchable()->sortable()->placeholder('—'),
+                Tables\Columns\TextColumn::make('code')->label('Code')->searchable()->sortable()->placeholder('—'),
                 Tables\Columns\TextColumn::make('name')->label('Item')->searchable()->sortable()->weight('semibold'),
                 Tables\Columns\IconColumn::make('is_active')->label('Active')->boolean(),
                 Tables\Columns\TextColumn::make('created_at')->label('Added')->date('d/m/Y')->sortable(),
