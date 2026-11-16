@@ -4,12 +4,17 @@ namespace App\Support;
 
 class AmountInWords
 {
+    /**
+     * 754.72 → "RINGGIT MALAYSIA : SEVEN HUNDRED FIFTY FOUR RINGGIT AND SEVENTY TWO SEN"; a whole amount has no sen
+     * part. (The sen were dropped and the ringgit rounded: 754.72 read "SEVEN HUNDRED FIFTY FIVE RINGGIT".)
+     */
     public static function ringgit(float $amount): string
     {
-        $whole = (int) round($amount, 0, PHP_ROUND_HALF_DOWN);
-        $words = self::spell($whole);
+        $cents = (int) round(abs($amount) * 100);
+        $sen = $cents % 100;
 
-        return 'RINGGIT MALAYSIA : '.strtoupper($words).' RINGGIT';
+        return 'RINGGIT MALAYSIA : '.strtoupper(self::spell(intdiv($cents, 100))).' RINGGIT'
+            .($sen > 0 ? ' AND '.strtoupper(self::spell($sen)).' SEN' : '');
     }
 
     private static function spell(int $number): string
