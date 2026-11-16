@@ -21,4 +21,10 @@ class Receipt extends Model
     {
         return $this->belongsTo(Payment::class);
     }
+
+    /** Used by the receipt PDF (DocumentPdf::receipt): without it the portal's receipt download failed. */
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\MasterData\Models\Customer::class);
+    }
 }
