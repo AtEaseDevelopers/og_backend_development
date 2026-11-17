@@ -48,7 +48,7 @@ class MasterDataHub extends Page
         // the sections as the user set them (13 Nov 2026): drivers, vehicles and lorry companies here
         'Fleet & dispatch' => [
             ['class' => Resources\DriverResource::class, 'label' => 'Drivers', 'icon' => 'heroicon-o-user'],
-            ['class' => Resources\FleetVehicleResource::class, 'label' => 'Fleet Vehicles', 'icon' => 'heroicon-o-truck'],
+            ['class' => Resources\FleetVehicleResource::class, 'label' => 'Lorry Database', 'icon' => 'heroicon-o-truck'],
             ['class' => Resources\LorryCompanyResource::class, 'label' => 'Lorry Companies', 'icon' => 'heroicon-o-building-office'],
         ],
         // user, 25 Oct 2026: the switcher's KL, JB, … are companies; a company's sales areas are its branches;

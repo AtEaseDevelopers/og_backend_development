@@ -9,6 +9,7 @@ use App\Domains\MasterData\Models\CustomerPricing;
 use App\Domains\MasterData\Models\CustomerAddress;
 use App\Domains\MasterData\Models\Location;
 use App\Domains\Quotation\Models\Quotation;
+use App\Domains\MasterData\Models\SaLocation;
 use App\Domains\MasterData\Models\Store;
 use App\Domains\MasterData\Models\Uom;
 use App\Domains\MasterData\Models\UomRateTier;
@@ -230,6 +231,8 @@ class CreateOrder extends Page
             // optional: how the order reached us
             'received_through' => '',
             'salesperson_id' => '',
+            // HQ / super admin without a branch of their own picks the branch (prefix) of the order (client, 17 Nov 2026)
+            'sa_location_id' => (string) ($this->needsBranchChoice() ? (SaLocation::query()->where('branch_id', CurrentCompany::branchId())->where('is_active', true)->orderBy('id')->value('id') ?? '') : ''),
             // a quotation's contact person (client, 6 Nov 2026): the staff named at the foot of the PDF; the user who
             // creates it unless another is chosen (orders ignore it)
             'contact_person_id' => (string) auth()->id(),
@@ -1055,6 +1058,21 @@ class CreateOrder extends Page
             ->whereDoesntHave('roles', fn ($q) => $q->where('name', 'customer'))
             ->when($branchId, fn ($q) => $q->whereHas('branches', fn ($b) => $b->whereKey($branchId)))
             ->orderBy('name')->pluck('name', 'id')->all();
+    }
+
+    /** HQ / super admin has no branch of their own: the order's branch (its prefix) is chosen on the page. */
+    public function needsBranchChoice(): bool
+    {
+        $user = auth()->user();
+
+        return $user && ! $user->sa_location_id && $user->isSuperadmin() && ! $this->isEditing();
+    }
+
+    /** @return array<int, string> every active branch, prefix first */
+    public function branchChoiceOptions(): array
+    {
+        return SaLocation::query()->where('is_active', true)->orderBy('csn_prefix')->get()
+            ->mapWithKeys(fn (SaLocation $l) => [$l->id => $l->csn_prefix.' — '.$l->name])->all();
     }
 
     public function salespersonOptions(): array
@@ -2787,6 +2805,8 @@ class CreateOrder extends Page
             // optional; when picked it must be one of the listed channels
             'form.received_through' => 'nullable|in:'.implode(',', array_keys($this->receivedThroughOptions())),
             'form.salesperson_id' => 'nullable|exists:users,id',
+            // required only where there is a branch to choose (a company without branches keeps its own prefix)
+            'form.sa_location_id' => ($this->needsBranchChoice() && ! $this->isQuote() && $this->branchChoiceOptions() !== [] ? 'required' : 'nullable').'|exists:sa_locations,id',
             'pairs' => 'required|array|min:1',
             // optional: a blank consignor / consignee is saved blank (see pairData)
             'pairs.*.consignor_name' => 'nullable|string|max:255',
@@ -3156,6 +3176,7 @@ class CreateOrder extends Page
                 'customer_pic_phone' => static::customerPics($this->form)['phone'],
                 'received_through' => ($this->form['received_through'] ?? '') ?: null,
                 'salesperson_id' => $this->form['salesperson_id'] ?: null,
+                'sa_location_id' => $this->needsBranchChoice() ? (($this->form['sa_location_id'] ?? '') ?: null) : null,
                 // each record has its own payment term; the order form keeps the first block's
                 'order_type' => $pairs[0]['order_type'] ?? $this->form['order_type'],
                 // pickup / store is per record; the order form keeps the first block's

@@ -118,6 +118,10 @@ class CustomerPortalTest extends TestCase
         $customer = Customer::query()->findOrFail($user->approvedCustomerIds()->first());
         $salesperson = $this->salesperson();
         $customer->update(['salesperson_id' => $salesperson->id]);
+        // the salesperson belongs to another branch than the one the customer orders from (client, 17 Nov 2026)
+        $jb = \App\Domains\MasterData\Models\Branch::query()->where('code', 'JB')->firstOrFail();
+        $jbAt = \App\Domains\MasterData\Models\SaLocation::query()->firstOrCreate(['csn_prefix' => 'JB'], ['company_id' => \App\Domains\MasterData\Models\Company::query()->where('branch_id', $jb->id)->value('id'), 'branch_id' => $jb->id, 'code' => 'JB', 'name' => 'JB Branch', 'is_active' => true]);
+        $salesperson->forceFill(['sa_location_id' => $jbAt->id])->save();
 
         $this->actingAs($user, 'portal');
         $this->get('/portal/select-company')->assertRedirect('/portal');
@@ -134,6 +138,9 @@ class CustomerPortalTest extends TestCase
 
         $enquiry = \App\Domains\Quotation\Models\PortalEnquiry::query()->latest('id')->firstOrFail();
         $this->assertSame($salesperson->id, (int) $enquiry->salesperson_id);
+        // an order the customer submits takes the salesperson's branch: its prefix and its order number
+        $this->assertSame($jbAt->id, (int) $enquiry->sa_location_id);
+        $this->assertStringStartsWith('OFJB', (string) $enquiry->order_number);
     }
 
     public function test_password_reset_by_email_link(): void

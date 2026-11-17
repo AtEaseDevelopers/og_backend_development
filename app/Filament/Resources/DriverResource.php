@@ -57,7 +57,7 @@ class DriverResource extends Resource
                 Forms\Components\Toggle::make('is_active')->default(true)->inline(false),
             ])->columns(3),
             Forms\Components\Section::make('Lorry')
-                ->description('The lorry number, type and tonne also fill the lorry in Master Data → Fleet Vehicles (created if new) with this driver as its default driver.')
+                ->description('The lorry number, type and tonne also fill the lorry in Master Data → Lorry Database (created if new) with this driver as its default driver.')
                 ->schema([
                     // picked from Master Data → Lorry Companies (user, 28 Oct 2026); lorry groups are no longer used (13 Nov 2026)
                     Forms\Components\Select::make('lorry_company_id')

@@ -492,7 +492,7 @@ class GenerateOrderBilling
         $invoice = Invoice::query()->create([
             // each invoice document has its own running number (user, 11 Nov 2026): a cash bill CBKL…, a COD invoice
             // CIKL…, a credit / term invoice IVKL…
-            'number' => $this->numbering->next($quotation->branch, match ($type) {
+            'number' => $this->numbering->nextAt($quotation->saLocation, $quotation->branch, match ($type) {
                 'cash_bill' => DocumentType::CashBill,
                 'cod' => DocumentType::CodInvoice,
                 default => DocumentType::Invoice,

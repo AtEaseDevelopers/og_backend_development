@@ -115,7 +115,7 @@ class CharteredLorryFit
             $text = $what.' — ';
             $text .= $fit['same'] !== []
                 ? 'suitable '.e($first['size']['label']).' lorries: <strong>'.e(implode(', ', $fit['same'])).'</strong>.'
-                : 'no active '.e($first['size']['label']).' lorry in Fleet Vehicles.';
+                : 'no active '.e($first['size']['label']).' lorry in Lorry Database.';
             if ($fit['larger'] !== []) {
                 $text .= ' Larger: '.e(implode(', ', $fit['larger'])).'.';
             }

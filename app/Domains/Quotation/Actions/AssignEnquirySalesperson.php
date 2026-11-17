@@ -32,10 +32,14 @@ class AssignEnquirySalesperson
             }
         }
 
-        return DB::transaction(function () use ($enquiry, $salesperson, $actor, $lock, $source) {
+        // the prefix (branch) follows the salesperson only on an order the customer submitted; an order keyed in by
+        // staff keeps the branch of the staff / the receiving store (client, 17 Nov 2026)
+        $staffEntered = $enquiry->user_id === null && $enquiry->sa_location_id !== null;
+
+        return DB::transaction(function () use ($enquiry, $salesperson, $actor, $lock, $source, $staffEntered) {
             $enquiry->update([
                 'salesperson_id' => $salesperson->id,
-                'sa_location_id' => $salesperson->sa_location_id ?? $enquiry->sa_location_id,
+                'sa_location_id' => $staffEntered ? $enquiry->sa_location_id : ($salesperson->sa_location_id ?? $enquiry->sa_location_id),
                 'salesperson_locked' => $lock || $enquiry->salesperson_locked,
                 'source' => $source ?? $enquiry->source,
                 'attended_by' => $enquiry->attended_by ?? $actor?->id,
@@ -45,9 +49,8 @@ class AssignEnquirySalesperson
             // All order records from the same enquiry remain under the same salesperson.
             $enquiry->quotations()->update([
                 'salesperson_id' => $salesperson->id,
-                'sa_location_id' => $salesperson->sa_location_id,
                 'salesperson_locked' => true,
-            ]);
+            ] + ($staffEntered ? [] : ['sa_location_id' => $salesperson->sa_location_id]));
 
             activity()
                 ->performedOn($enquiry)

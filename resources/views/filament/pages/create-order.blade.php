@@ -419,6 +419,19 @@
                     </select>
                     @error($ep.'form.salesperson_id')<div class="ow-field-error">{{ $message }}</div>@enderror
                 </div>
+                @if ($this->needsBranchChoice())
+                <div class="ow-field">
+                    <label>Company / Branch <span class="ow-req">*</span></label>
+                    <select wire:model="orders.{{ $oi }}.form.sa_location_id" class="ow-select">
+                        <option value="">— Choose —</option>
+                        @foreach ($this->branchChoiceOptions() as $id => $label)
+                            <option value="{{ $id }}">{{ $label }}</option>
+                        @endforeach
+                    </select>
+                    <div class="ow-note">The order's documents take this branch's prefix.</div>
+                    @error($ep.'form.sa_location_id')<div class="ow-field-error">{{ $message }}</div>@enderror
+                </div>
+                @endif
                 @endunless
             </div>
             {{-- the long note under the salesperson was removed (user, 28 Oct 2026); only the locks are still said --}}

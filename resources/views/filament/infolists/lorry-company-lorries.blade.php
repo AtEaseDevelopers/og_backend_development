@@ -3,7 +3,7 @@
     $lorries = $getRecord()->lorries()->with('defaultDriver')->orderBy('registration_no')->get();
 @endphp
 @if ($lorries->isEmpty())
-    <p class="text-sm text-gray-500">No lorry under this company yet. Pick the company on the lorry in Master Data → Fleet Vehicles.</p>
+    <p class="text-sm text-gray-500">No lorry under this company yet. Pick the company on the lorry in Master Data → Lorry Database.</p>
 @else
     <div style="max-height: 22rem; overflow-y: auto">
         <table class="w-full text-sm" style="border-collapse: collapse">

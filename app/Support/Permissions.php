@@ -54,7 +54,7 @@ class Permissions
         'commission' => ['group' => 'Commission', 'label' => 'Commission', 'note' => 'commission batches, rules and purchase orders', 'abilities' => ['view', 'create', 'edit', 'delete'], 'roles' => self::STAFF],
         'customers' => ['group' => 'Customers', 'label' => 'Customers', 'note' => 'customers, consignors / consignees, leads', 'abilities' => ['view', 'create', 'edit', 'delete'], 'roles' => self::STAFF],
         'products' => ['group' => 'Master Data', 'label' => 'Products & pricing', 'note' => 'measurements, items, chartered lorry, drop-off charges, areas', 'abilities' => ['view', 'create', 'edit', 'delete'], 'roles' => self::STAFF],
-        'fleet' => ['group' => 'Master Data', 'label' => 'Fleet', 'note' => 'drivers, fleet vehicles, lorry companies, vehicle maintenance', 'abilities' => ['view', 'create', 'edit', 'delete'], 'roles' => self::STAFF],
+        'fleet' => ['group' => 'Master Data', 'label' => 'Fleet', 'note' => 'drivers, lorry database, lorry companies, vehicle maintenance', 'abilities' => ['view', 'create', 'edit', 'delete'], 'roles' => self::STAFF],
         'transfer_stores' => ['group' => 'Master Data', 'label' => 'Transfer codes & stores', 'note' => 'transfer codes and stores', 'abilities' => ['view', 'create', 'edit', 'delete'], 'roles' => self::STAFF],
         'company' => ['group' => 'Master Data', 'label' => 'Company & branches', 'note' => 'the company and its branches', 'abilities' => ['view', 'create', 'edit'], 'roles' => self::ADMINS],
         'users' => ['group' => 'System Settings', 'label' => 'Users', 'note' => 'users and the organisation chart', 'abilities' => ['view', 'create', 'edit', 'delete'], 'roles' => self::ADMINS],

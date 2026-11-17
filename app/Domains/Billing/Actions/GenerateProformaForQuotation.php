@@ -27,7 +27,7 @@ class GenerateProformaForQuotation
         $quotation->loadMissing(['branch', 'customer']);
 
         return DB::transaction(fn () => ProformaInvoice::query()->create([
-            'number' => $this->numbering->next($quotation->branch, DocumentType::Proforma),
+            'number' => $this->numbering->nextAt($quotation->saLocation, $quotation->branch, DocumentType::Proforma),
             'quotation_id' => $quotation->id,
             'customer_id' => $quotation->customer_id,
             'company_id' => $quotation->company_id,

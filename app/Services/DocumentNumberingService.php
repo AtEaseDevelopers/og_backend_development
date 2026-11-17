@@ -78,6 +78,17 @@ class DocumentNumberingService
     }
 
     /**
+     * A number with the prefix of the order's branch (SaLocation), counted with that branch's own numbers so two
+     * companies never issue the same number; no branch = the company's own prefix (client, 17 Nov 2026).
+     */
+    public function nextAt(?SaLocation $at, Branch|int $fallback, DocumentType $type): string
+    {
+        return $at && $at->branch_id && filled($at->csn_prefix)
+            ? $this->next((int) $at->branch_id, $type, $at->csn_prefix)
+            : $this->next($fallback, $type);
+    }
+
+    /**
      * Next CSN number: XXYYMM#####, e.g. KL261200001. XX = the branch's location code, YYMM = the year and month the
      * order was placed, ##### = a running number per location code that keeps growing. CSN numbers are unique across
      * companies: the counter continues after the highest number in use for the code (any company, either format).

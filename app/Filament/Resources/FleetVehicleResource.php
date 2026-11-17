@@ -32,13 +32,13 @@ class FleetVehicleResource extends Resource
     // opened from its card on the Master Data page, Fleet & dispatch (user, 25 Oct 2026), not the menu
     protected static bool $shouldRegisterNavigation = false;
 
-    // Fleet Vehicles keeps its name (user, 16 Nov 2026); it is the main page to search a lorry and see its company, its driver and
+    // "Fleet Vehicles" is named Lorry Database (client, 17 Nov 2026); it is the main page to search a lorry and see its company, its driver and
     // attendant with their phone numbers
-    protected static ?string $navigationLabel = 'Fleet Vehicles';
+    protected static ?string $navigationLabel = 'Lorry Database';
 
-    protected static ?string $modelLabel = 'Fleet Vehicle';
+    protected static ?string $modelLabel = 'Lorry';
 
-    protected static ?string $pluralModelLabel = 'Fleet Vehicles';
+    protected static ?string $pluralModelLabel = 'Lorry Database';
 
     protected static ?string $slug = 'fleet-vehicles';
 

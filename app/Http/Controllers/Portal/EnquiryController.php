@@ -327,7 +327,9 @@ class EnquiryController extends Controller
             'branch_id' => $block['branch_id'],
             'user_id' => $request->user()->id,
             'reference_no' => 'ENQ-'.Str::upper(Str::random(8)),
-            'order_number' => app(\App\Services\DocumentNumberingService::class)->next($branch, \App\Enums\DocumentType::Order),
+            'order_number' => app(\App\Services\DocumentNumberingService::class)->nextAt(
+                ($serviceStore ? Store::query()->find($serviceStore['store_id'])?->saLocation : null) ?? $chosenSalesperson?->saLocation,
+                $branch, \App\Enums\DocumentType::Order),
             'source' => $linkedSalesperson ? PortalEnquiry::SOURCE_SALESPERSON_LINK : PortalEnquiry::SOURCE_PORTAL,
             'order_type' => $block['order_type'],
             'service_type' => $block['service_type'],

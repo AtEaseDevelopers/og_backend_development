@@ -6,6 +6,7 @@ use App\Domains\MasterData\Models\Branch;
 use App\Domains\MasterData\Models\Company;
 use App\Domains\MasterData\Models\Customer;
 use App\Domains\MasterData\Models\Location;
+use App\Domains\MasterData\Models\SaLocation;
 use App\Domains\Quotation\Models\PortalEnquiry;
 use App\Enums\DocumentType;
 use App\Enums\OrderType;
@@ -74,16 +75,25 @@ class CreateAdminOrder
             ]
             : [];
 
-        return DB::transaction(function () use ($data, $actor, $branch, $company, $customer, $pairs, $salesperson, $receivedThrough, $billingAddress, $customerPic): array {
+        // the order's branch = its prefix (client, 17 Nov 2026): the staff who keys it in (their own branch, the one an
+        // HQ user chose, else the company's), not the salesperson's; a Customer Drop Off record takes its store's
+        $saLocationId = ($data['sa_location_id'] ?? null) ?: $actor->sa_location_id
+            ?: SaLocation::query()->where('branch_id', $branch->id)->where('is_active', true)->orderBy('id')->value('id');
+
+        return DB::transaction(function () use ($data, $actor, $branch, $company, $customer, $pairs, $salesperson, $receivedThrough, $billingAddress, $customerPic, $saLocationId): array {
             $first = $pairs->first();
+            $firstStore = ($first['service_type'] ?? null) === \App\Enums\ServiceType::Store->value && filled($first['store_id'] ?? null)
+                ? \App\Domains\MasterData\Models\Store::query()->whereKey($first['store_id'])->value('sa_location_id')
+                : null;
 
             $enquiry = PortalEnquiry::query()->create([
                 'company_id' => $company?->id ?? $customer->company_id,
                 'customer_id' => $customer->id,
                 'branch_id' => $branch->id,
+                'sa_location_id' => $saLocationId,
                 'user_id' => null,
                 'reference_no' => 'ENQ-'.Str::upper(Str::random(8)),
-                'order_number' => $this->numbering->next($branch, DocumentType::Order),
+                'order_number' => $this->numbering->nextAt(SaLocation::query()->find($firstStore ?? $saLocationId), $branch, DocumentType::Order),
                 'source' => $receivedThrough === 'walk_in' ? PortalEnquiry::SOURCE_WALK_IN : PortalEnquiry::SOURCE_ADMIN,
                 'received_through' => $receivedThrough,
                 'order_type' => $data['order_type'] ?? $customer->default_order_type,

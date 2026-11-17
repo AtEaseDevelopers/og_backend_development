@@ -55,7 +55,8 @@ class ConvertQuotationToCsns
 
             $orderType = $quotation->orderType() ?? OrderType::fromBillingType($billingType);
             $billingType = $orderType?->billingType()->value ?? $billingType;
-            $saLocation = $quotation->saLocation ?? $quotation->salesperson?->saLocation;
+            $saLocation = ($quotation->service_type === \App\Enums\ServiceType::Store ? $quotation->store?->saLocation : null)
+                ?? $quotation->saLocation ?? $quotation->salesperson?->saLocation;
             $csnPrefix = $saLocation?->csn_prefix;
             $latestInvoice = $quotation->invoices->sortByDesc('id')->first();
             $orderProforma = $quotation->proformaInvoice;

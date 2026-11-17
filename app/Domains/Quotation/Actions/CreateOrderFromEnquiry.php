@@ -102,7 +102,9 @@ class CreateOrderFromEnquiry
                     'portal_enquiry_id' => $enquiry->id,
                     'salesperson_id' => $enquiry->salesperson_id,
                     'salesperson_locked' => $enquiry->salesperson_id !== null,
-                    'sa_location_id' => $enquiry->sa_location_id ?? $enquiry->salesperson?->sa_location_id,
+                    // Customer Drop Off: the branch of the store that receives the goods (client, 17 Nov 2026)
+                    'sa_location_id' => ($storeId ? \App\Domains\MasterData\Models\Store::query()->whereKey($storeId)->value('sa_location_id') : null)
+                        ?? $enquiry->sa_location_id ?? $enquiry->salesperson?->sa_location_id,
                     // the block's own payment term (admin entry), else the order's
                     'order_type' => OrderType::tryFrom((string) ($pair['order_type'] ?? ''))?->value ?? $enquiry->order_type?->value ?? $enquiry->customer?->default_order_type,
                     'service_type' => $serviceType,
@@ -163,7 +165,7 @@ class CreateOrderFromEnquiry
                     'version' => 1,
                 ]);
 
-                $data['number'] = $this->numbering->next($branch, DocumentType::Quotation);
+                $data['number'] = $this->numbering->nextAt(\App\Domains\MasterData\Models\SaLocation::query()->find($data['sa_location_id']), $branch, DocumentType::Quotation);
 
                 /** @var Quotation $order */
                 $order = Quotation::query()->create(Arr::only($data, $fillable));
