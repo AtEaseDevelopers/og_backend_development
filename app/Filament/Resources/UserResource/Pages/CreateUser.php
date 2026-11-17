@@ -2,7 +2,6 @@
 
 namespace App\Filament\Resources\UserResource\Pages;
 
-use App\Domains\MasterData\Models\Branch;
 use App\Filament\Resources\UserResource;
 use Filament\Resources\Pages\CreateRecord;
 
@@ -28,16 +27,7 @@ class CreateUser extends CreateRecord
     {
         UserResource::syncStaffRole($this->record, $this->data['role_id'] ?? null);
 
-        $branchId = $this->form->getState()['branch_id'] ?? null;
-
-        if (! $branchId) {
-            return;
-        }
-
-        $branch = Branch::query()->find($branchId);
-
-        if ($branch) {
-            $this->record->assignToBranch($branch, isDefault: true);
-        }
+        // read from the page's data: the field is not a column, so the form's saved state leaves it out
+        UserResource::syncBranches($this->record, (array) ($this->data['branch_ids'] ?? []));
     }
 }

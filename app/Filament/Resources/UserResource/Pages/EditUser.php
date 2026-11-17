@@ -28,6 +28,7 @@ class EditUser extends EditRecord
         $data['permission_effective'] = $boxes;
         // the Role field: the user's one staff role
         $data['role_id'] = UserResource::staffRoleId($user);
+        $data['branch_ids'] = $user->branches()->pluck('branches.id')->all();
 
         return $data;
     }
@@ -52,6 +53,7 @@ class EditUser extends EditRecord
 
         // the one role picked (before the permissions below, which are compared with the role)
         UserResource::syncStaffRole($user, $this->data['role_id'] ?? null);
+        UserResource::syncBranches($user, (array) ($this->data['branch_ids'] ?? []));
 
         // an admin who changes their own password stays signed in (user, 16 Nov 2026: saving it signed them out,
         // because the session remembers the old password): the session takes the new one

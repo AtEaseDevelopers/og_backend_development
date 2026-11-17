@@ -48,6 +48,30 @@ class UserResource extends Resource
             ->when($user?->isBranchAdmin(), fn (Builder $q) => $q->whereHas('branches', fn (Builder $b) => $b->whereIn('branches.id', $user->accessibleBranchIds())));
     }
 
+    /**
+     * "Company access": the user works in exactly the companies picked. A branch admin changes only the companies
+     * they manage themselves; the user's other companies stay.
+     */
+    public static function syncBranches(User $user, array $ids): void
+    {
+        $ids = array_map('intval', $ids);
+        $mine = auth()->user()?->isBranchAdmin() ? auth()->user()->accessibleBranchIds() : null;
+        $has = $user->branches()->pluck('branches.id')->map(fn ($id) => (int) $id);
+
+        $removed = $has->reject(fn ($id) => in_array($id, $ids, true))
+            ->when($mine !== null, fn ($c) => $c->intersect($mine))->values()->all();
+        if ($removed) {
+            $user->branches()->detach($removed);
+            $user->companies()->detach(\App\Domains\MasterData\Models\Company::query()->whereIn('branch_id', $removed)->pluck('id')->all());
+        }
+
+        $hasDefault = $user->branches()->wherePivot('is_default', true)->exists();
+        foreach (Branch::query()->whereIn('id', array_diff($ids, $has->all()))->orderBy('code')->get() as $branch) {
+            $user->assignToBranch($branch, isDefault: ! $hasDefault);
+            $hasDefault = true;
+        }
+    }
+
     public static function form(Form $form): Form
     {
         return $form->schema([
@@ -95,15 +119,18 @@ class UserResource extends Resource
                 ->dehydrated(fn (?string $state) => filled($state))
                 ->dehydrateStateUsing(fn (?string $state) => filled($state) ? Hash::make($state) : null),
             Forms\Components\TextInput::make('phone')->tel()->maxLength(50),
-            Forms\Components\Select::make('branch_id')
+            // the companies the user works in, on New and on Edit (client, 17 Nov 2026: the one picked on a new user
+            // was not saved, and there was no place to change it). The pages load and save it (syncBranches).
+            Forms\Components\Select::make('branch_ids')
                 ->label('Company access')
                 ->options(fn () => Branch::query()->where('is_active', true)
                     ->when(auth()->user()?->isBranchAdmin(), fn ($q) => $q->whereIn('id', auth()->user()->accessibleBranchIds()))
                     ->orderBy('code')->pluck('name', 'id'))
+                ->multiple()
                 ->searchable()
-                ->required()
-                ->dehydrated(false)
-                ->visible(fn (string $operation) => $operation === 'create'),
+                // a super admin works in every company without one being picked
+                ->required(fn (?User $record): bool => ! $record?->isSuperadmin())
+                ->dehydrated(false),
             // one role a user (user, 16 Nov 2026: no more several roles). The field is not the relationship itself:
             // the pages load and save it (UserResource::staffRoleId / syncStaffRole), keeping a hidden role (driver,
             // customer) the account also has. Only a super admin gives the super admin role.
