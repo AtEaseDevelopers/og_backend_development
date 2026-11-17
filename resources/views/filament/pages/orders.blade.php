@@ -372,10 +372,6 @@
                                         <svg x-show="! ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                                         <svg x-show="ok" x-cloak viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
                                     </button>
-                                    @if (($row['kind'] ?? '') === 'order' && \App\Support\Permissions::allows('orders.create'))
-                                        {{-- a new order prefilled from this one (user, 27 Oct 2026) --}}
-                                        <a href="{{ \App\Filament\Pages\CreateOrder::getUrl().'?duplicate='.$row['id'] }}" class="ow-dup" title="A new order with the same details">Duplicate</a>
-                                    @endif
                                     <div class="ow-l2">
                                         {{ $row['customer'] }}
                                         @if ($row['customer_type'])
@@ -462,7 +458,21 @@
                                     @endif
                                 </td>
                                 @endif
-                                <td class="ow-td-toggle"></td>
+                                {{-- the row's menu behind three dots (client, 17 Nov 2026): Open order, and Duplicate — a new
+                                     order prefilled from this one (user, 27 Oct 2026), no longer a button beside the order no. --}}
+                                <td class="ow-td-toggle" style="text-align:right;padding-right:.75rem"
+                                    x-data="{ open: false, style: '', place() { const r = this.$refs.btn.getBoundingClientRect(); this.style = `top:${Math.round(r.bottom + 4)}px;left:${Math.round(Math.max(8, r.right - 176))}px`; } }"
+                                    x-on:keydown.escape.window="open = false" x-on:scroll.window.passive="open = false" x-on:resize.window="open = false">
+                                    <button type="button" x-ref="btn" class="ow-row-menu-btn" x-on:click.stop="place(); open = ! open" title="More" aria-label="More actions" x-bind:aria-expanded="open.toString()">
+                                        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><circle cx="10" cy="4" r="1.6"/><circle cx="10" cy="10" r="1.6"/><circle cx="10" cy="16" r="1.6"/></svg>
+                                    </button>
+                                    <div class="ow-row-menu" x-show="open" x-cloak x-bind:style="style" x-transition.opacity.duration.100ms x-on:click.outside="if (! $refs.btn.contains($event.target)) open = false" role="menu">
+                                        <a href="{{ $row['url'] }}" role="menuitem">Open order</a>
+                                        @if (($row['kind'] ?? '') === 'order' && \App\Support\Permissions::allows('orders.create'))
+                                            <a href="{{ \App\Filament\Pages\CreateOrder::getUrl().'?duplicate='.$row['id'] }}" role="menuitem" title="A new order with the same details">Duplicate order</a>
+                                        @endif
+                                    </div>
+                                </td>
                             </tr>
                         @empty
                             <tr>

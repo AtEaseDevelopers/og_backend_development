@@ -139,6 +139,11 @@ class OrderFormOptions
             if ($defaultAddress) {
                 $state['pickup_location_preset'] = (string) $defaultAddress->id;
                 $state['pickup_location'] = static::formatAddress($defaultAddress);
+            } elseif (filled($customer->address)) {
+                // no saved address: the consignor address starts as the billing address (client, 17 Nov 2026) and
+                // can be typed over
+                $state['pickup_location_preset'] = static::NEW_ADDRESS;
+                $state['pickup_location'] = trim((string) preg_replace('/\s+/', ' ', (string) $customer->address));
             }
         }
 

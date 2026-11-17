@@ -1591,21 +1591,33 @@ class CreateOrder extends Page
                     $pair['pickup_restore'] = ['preset' => (string) ($pair['pickup_preset'] ?? ''), 'location' => (string) ($pair['pickup_location'] ?? '')];
                 }
 
-                // no store picked yet: the only store of the order's branch, when it has just one
+                // no store picked yet: the store of the admin's own branch (client, 17 Nov 2026: a KL warehouse admin
+                // starts on the KL warehouse), else the only store of the order's branch; it can be changed
                 if (! $store) {
+                    $own = auth()->user()?->sa_location_id
+                        ? Store::query()->active()->where('sa_location_id', auth()->user()->sa_location_id)->orderBy('id')->value('id')
+                        : null;
                     $branchStores = Store::query()->active()->where('branch_id', CurrentCompany::branchId())->pluck('id');
+                    $default = $own ?: ($branchStores->count() === 1 ? $branchStores->first() : null);
 
-                    if ($branchStores->count() === 1) {
-                        $pair['store_id'] = (string) $branchStores->first();
+                    if ($default) {
+                        $pair['store_id'] = (string) $default;
                         $store = OrderFormOptions::storeDefaults($pair['store_id']);
                     }
                 }
             }
 
-            // a Customer Drop Off: the store is picked on the form (user, 10 Nov 2026; the branch's only store to start);
-            // the consignor's own address, From, PIC and contact are used (user, 3 Nov 2026)
+            // a Customer Drop Off: the store is picked on the form (user, 10 Nov 2026); the consignor's own address,
+            // PIC and contact are used (user, 3 Nov 2026). The From is the store's area (client, 17 Nov 2026: the KL
+            // warehouse gives Kuala Lumpur) and can be changed
             if ($store) {
                 $pair['legacy_store_branch_id'] = '';
+
+                if ($store['from_location_id'] !== '') {
+                    $pair['from_location_id'] = $store['from_location_id'];
+                    unset($pair);
+                    $this->refreshPairPrices($index);
+                }
             }
 
             return;

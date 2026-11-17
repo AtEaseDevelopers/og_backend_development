@@ -50,6 +50,17 @@
     }
 
     .ow-page > section { padding-top: .5rem !important; }
+    /* the path has its own line under the top bar, the title and buttons start under it (client, 17 Nov 2026: the title
+       sat on the path and the buttons touched the line) — the path takes 1.6rem back from what follows it */
+    .ow-page > .og-page-breadcrumbs { margin-top: .85rem; }
+    .ow-page > .og-page-breadcrumbs + section { padding-top: 2.35rem !important; }
+    /* the row's own menu (client, 17 Nov 2026: Duplicate behind three dots) */
+    .ow-row-menu-btn { display: inline-flex; align-items: center; justify-content: center; width: 1.7rem; height: 1.7rem; border: 1px solid var(--ow-line); border-radius: .4rem; background: var(--ow-bg); color: var(--ow-muted); cursor: pointer; }
+    .ow-row-menu-btn:hover { background: var(--ow-soft-2); color: var(--ow-text); }
+    .ow-row-menu-btn svg { width: 1rem; height: 1rem; }
+    .ow-row-menu { position: fixed; z-index: 60; min-width: 11rem; padding: .25rem; border: 1px solid var(--ow-line); border-radius: .5rem; background: var(--ow-bg); box-shadow: 0 8px 24px rgb(15 23 42 / .16); }
+    .ow-row-menu a { display: block; padding: .4rem .65rem; border-radius: .35rem; font-size: .8125rem; font-weight: 500; color: var(--ow-text); text-decoration: none; white-space: nowrap; }
+    .ow-row-menu a:hover { background: var(--ow-soft-2); text-decoration: none; }
 
     /* --- header ------------------------------------------------------- */
     .ow-crumb { font-size: .75rem; color: var(--ow-muted); margin-bottom: .25rem; }

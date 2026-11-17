@@ -141,65 +141,6 @@
             {{-- the main label only (user, 28 Oct 2026): no crumb line or description --}}
             <h1 class="ow-title">{{ $copy['title'] }}</h1>
         </div>
-        {{-- every button of the page at the top right (user, 16 Nov 2026: none at the bottom): Add another order, Cancel,
-             Save, and Confirm, pay & print; the bar under the form keeps the price summary only --}}
-        <div class="ow-actions ow-head-actions">
-            @if ($this->canAddOrder())
-                <button type="button" wire:click="addOrder" class="ow-btn" title="Another customer's order on this page; each order keeps its own colour and is created with the same Save">+ Add another order</button>
-            @endif
-            {{-- a saved quotation: what was changed on it before (user, 16 Nov 2026) --}}
-            @if ($isQuote && filled($this->quoteId ?? null))
-                <button type="button" wire:click="mountAction('history')" class="ow-btn" title="The fields changed on this quotation before: from which value to which value">History</button>
-            @endif
-            <a href="{{ $copy['cancel_url'] }}" class="ow-btn">Cancel</a>
-            @php
-                $payNow = $this->paysAny();
-                $submit = match (true) {
-                    $editing => $copy['submit'],
-                    $multiOrder => 'Save '.count($pageOrders).' orders'.($payNow ? ' & record payment' : '').' →',
-                    $payNow => 'Save order & record payment →',
-                    default => $copy['submit'],
-                };
-            @endphp
-            <button type="button" wire:click="save" wire:loading.attr="disabled" class="ow-btn ow-btn-primary">{{ $submit }}</button>
-            @if (! $editing && ! $isQuote)
-                {{-- the customer at the counter with the goods (client, 1 Nov 2026): one click confirms, records the Cash
-                     payment, issues the Cash Bill and creates the CSN, then opens both to print --}}
-                {{-- the CSN opens in a new tab, ready to check and print (user, 10 Nov 2026): the tab is opened on the click
-                     itself (a tab opened later is blocked as a pop-up) and moved to the CSN PDF once the order is saved;
-                     it closes when nothing was created (a check failed, or the CSN waits for the goods) --}}
-                {{-- every click ends the tab (user, 11 Nov 2026): the CSN PDF's address comes back from saveAndPrint (and as an
-                     event) and the tab shows it; with no CSN — a check failed, the order was refused, a Customer Drop Off
-                     waits for the goods, the request failed — the tab closes. The order page is told which PDF is open
-                     already (sessionStorage), so it does not load it a second time --}}
-                <button type="button"
-                        x-data="{
-                            tab: null,
-                            done(url) {
-                                const tab = this.tab;
-                                this.tab = null;
-                                if (! tab || tab.closed) { return }
-                                if (url) {
-                                    try { sessionStorage.setItem('og-print-opened', url) } catch (e) {}
-                                    tab.location.replace(url);
-                                } else {
-                                    tab.close();
-                                }
-                            },
-                            go() {
-                                if (this.tab && ! this.tab.closed) { return }
-                                this.tab = window.open('', '_blank');
-                                if (this.tab) { this.tab.document.write('<title>Preparing the CSN…</title><p style=&quot;font:16px system-ui,sans-serif;padding:2rem;color:#334155&quot;>Saving the order and preparing the CSN…</p>'); }
-                                $wire.saveAndPrint().then((url) => this.done(url || null)).catch(() => this.done(null));
-                            },
-                        }"
-                        x-init="void Livewire.hook('request', ({ fail }) => fail(() => done(null)))"
-                        x-on:click="go()"
-                        x-on:og-print-tab.window="done($event.detail.url)"
-                        x-on:og-print-tab-cancel.window="done(null)"
-                        wire:loading.attr="disabled" wire:target="saveAndPrint" class="ow-btn ow-btn-primary" title="Save and confirm the order now: Cash is paid, Term and COD pay nothing here. The CSN opens in a new tab to print; the Cash Bill (Cash) or Proforma (COD) on the order page">Confirm, pay &amp; print →</button>
-            @endif
-        </div>
     </div>
 
     {{-- the consignor is picked from the customers, as the Customer field (searchable, user 26 Oct 2026) --}}
@@ -956,7 +897,6 @@
                                             @error($ep.'pairs.'.$i.'.items.'.$j.'.manual_price')<div class="ow-field-error">{{ $message }}</div>@enderror
                                         @elseif (filled($item['item_name']) && blank($pair['to_location_id']))
                                             <span class="ow-note">Select the "To" location</span>
-                                            @if ($item['available'] ?? null)<div class="ow-price-hint">Rated: {{ $item['available'] }}</div>@endif
                                         @elseif (filled($item['item_name']))
                                             {{-- no special / price-list rate: the price is keyed in here (blank = priced later under Items & pricing) --}}
                                             <label class="ow-manual-price">
@@ -969,7 +909,6 @@
                                                 ($item['kind'] ?? '') === 'measurement' && blank($item['catalog_key'] ?? null) => 'Enter L, W, H and weight for the list price, or key in the price',
                                                 default => 'No rate for this location · key in the price',
                                             } }}</div>
-                                            @if ($item['available'] ?? null)<div class="ow-price-hint">Rated: {{ $item['available'] }}</div>@endif
                                             @error($ep.'pairs.'.$i.'.items.'.$j.'.manual_price')<div class="ow-field-error">{{ $message }}</div>@enderror
                                         @else
                                             <span class="ow-note">—</span>
@@ -1270,6 +1209,65 @@
                 @else
                     · {{ $isQuote ? 'Pending confirmation until Create order' : 'Customer confirmation: Not requested' }}
                     · {{ $multiOrder ? count($pageOrders).' orders, '.collect($pageOrders)->sum(fn ($o) => $o['summary']['records'] ?? 0).' records' : count($pairs).' '.\Illuminate\Support\Str::plural('record', count($pairs)).' under one order number' }}
+                @endif
+            </div>
+            {{-- every button of the page under the form (client, 17 Nov 2026: the page is scrolled to its end anyway; they were
+                 at the top right since 16 Nov): Add another order, Cancel, Save, and Confirm, pay & print, beside the price summary --}}
+            <div class="ow-actions ow-head-actions">
+                @if ($this->canAddOrder())
+                    <button type="button" wire:click="addOrder" class="ow-btn" title="Another customer's order on this page; each order keeps its own colour and is created with the same Save">+ Add another order</button>
+                @endif
+                {{-- a saved quotation: what was changed on it before (user, 16 Nov 2026) --}}
+                @if ($isQuote && filled($this->quoteId ?? null))
+                    <button type="button" wire:click="mountAction('history')" class="ow-btn" title="The fields changed on this quotation before: from which value to which value">History</button>
+                @endif
+                <a href="{{ $copy['cancel_url'] }}" class="ow-btn">Cancel</a>
+                @php
+                    $payNow = $this->paysAny();
+                    $submit = match (true) {
+                        $editing => $copy['submit'],
+                        $multiOrder => 'Save '.count($pageOrders).' orders'.($payNow ? ' & record payment' : '').' →',
+                        $payNow => 'Save order & record payment →',
+                        default => $copy['submit'],
+                    };
+                @endphp
+                <button type="button" wire:click="save" wire:loading.attr="disabled" class="ow-btn ow-btn-primary">{{ $submit }}</button>
+                @if (! $editing && ! $isQuote)
+                    {{-- the customer at the counter with the goods (client, 1 Nov 2026): one click confirms, records the Cash
+                         payment, issues the Cash Bill and creates the CSN, then opens both to print --}}
+                    {{-- the CSN opens in a new tab, ready to check and print (user, 10 Nov 2026): the tab is opened on the click
+                         itself (a tab opened later is blocked as a pop-up) and moved to the CSN PDF once the order is saved;
+                         it closes when nothing was created (a check failed, or the CSN waits for the goods) --}}
+                    {{-- every click ends the tab (user, 11 Nov 2026): the CSN PDF's address comes back from saveAndPrint (and as an
+                         event) and the tab shows it; with no CSN — a check failed, the order was refused, a Customer Drop Off
+                         waits for the goods, the request failed — the tab closes. The order page is told which PDF is open
+                         already (sessionStorage), so it does not load it a second time --}}
+                    <button type="button"
+                            x-data="{
+                                tab: null,
+                                done(url) {
+                                    const tab = this.tab;
+                                    this.tab = null;
+                                    if (! tab || tab.closed) { return }
+                                    if (url) {
+                                        try { sessionStorage.setItem('og-print-opened', url) } catch (e) {}
+                                        tab.location.replace(url);
+                                    } else {
+                                        tab.close();
+                                    }
+                                },
+                                go() {
+                                    if (this.tab && ! this.tab.closed) { return }
+                                    this.tab = window.open('', '_blank');
+                                    if (this.tab) { this.tab.document.write('<title>Preparing the CSN…</title><p style=&quot;font:16px system-ui,sans-serif;padding:2rem;color:#334155&quot;>Saving the order and preparing the CSN…</p>'); }
+                                    $wire.saveAndPrint().then((url) => this.done(url || null)).catch(() => this.done(null));
+                                },
+                            }"
+                            x-init="void Livewire.hook('request', ({ fail }) => fail(() => done(null)))"
+                            x-on:click="go()"
+                            x-on:og-print-tab.window="done($event.detail.url)"
+                            x-on:og-print-tab-cancel.window="done(null)"
+                            wire:loading.attr="disabled" wire:target="saveAndPrint" class="ow-btn ow-btn-primary" title="Save and confirm the order now: Cash is paid, Term and COD pay nothing here. The CSN opens in a new tab to print; the Cash Bill (Cash) or Proforma (COD) on the order page">Confirm, pay &amp; print →</button>
                 @endif
             </div>
         </div>
