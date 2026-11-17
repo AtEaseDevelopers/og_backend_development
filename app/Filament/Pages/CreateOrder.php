@@ -2218,7 +2218,8 @@ class CreateOrder extends Page
             return 0;
         }
 
-        return max(0, count(\App\Support\OrderStops::clean((array) ($pair['dropoff_stops'] ?? []))) - 1);
+        // the rows are Consignee 2, 3 … (Consignee 1 is the record's own consignee; client, 17 Nov 2026)
+        return count(\App\Support\OrderStops::clean((array) ($pair['dropoff_stops'] ?? [])));
     }
 
     public function addPair(): void
@@ -2804,7 +2805,8 @@ class CreateOrder extends Page
             'pairs.*.from_location_id' => 'nullable|exists:locations,id',
             // with several stops the DO numbers are on the stops
             // the DO number sits on the extra addresses when a side has several (user, 28 Oct 2026)
-            'pairs.*.customer_do_number' => ['nullable', 'string', 'max:100', function (string $attribute, mixed $value, \Closure $fail): void {
+            // several DO numbers in one box, separated by a comma, or "-" when the customer has none (client, 17 Nov 2026)
+            'pairs.*.customer_do_number' => ['nullable', 'string', 'max:255', function (string $attribute, mixed $value, \Closure $fail): void {
                 $index = (int) explode('.', $attribute)[1];
                 $pair = $this->pairs[$index] ?? [];
 
@@ -2815,13 +2817,14 @@ class CreateOrder extends Page
             }],
             'pairs.*.pickup_stops' => 'array',
             'pairs.*.pickup_stops.*.location' => 'nullable|string|max:500',
-            'pairs.*.pickup_stops.*.do_number' => 'required_if:pairs.*.multi_pickup,true|nullable|string|max:100',
+            // no DO number on the consignor side (client, 17 Nov 2026): it is keyed in per consignee
+            'pairs.*.pickup_stops.*.do_number' => 'nullable|string|max:255',
             'pairs.*.dropoff_stops' => 'array',
             'pairs.*.dropoff_stops.*.name' => 'nullable|string|max:150',
             'pairs.*.dropoff_stops.*.pic_name' => 'nullable|string|max:100',
             'pairs.*.dropoff_stops.*.pic_phone' => 'nullable|string|max:50',
             'pairs.*.dropoff_stops.*.location' => 'nullable|string|max:500',
-            'pairs.*.dropoff_stops.*.do_number' => 'required_if:pairs.*.multi_dropoff,true|nullable|string|max:100',
+            'pairs.*.dropoff_stops.*.do_number' => 'required_if:pairs.*.multi_dropoff,true|nullable|string|max:255',
             // becomes the CSN date when the record's CSN is created
             // optional free text (a remark, e.g. "Mon 13/10 before noon"); not the CSN date
             'pairs.*.expected_delivery_date' => 'nullable|string|max:255',
@@ -2928,7 +2931,8 @@ class CreateOrder extends Page
             'expected_delivery_date' => $text($pair['expected_delivery_date'] ?? null),
             'instructions' => $text($pair['instructions'] ?? null),
             'admin_notes' => $text($pair['admin_notes'] ?? null),
-            'stops' => \App\Support\OrderStops::merge($pair) ?: null,
+            // Consignee 1 (the record's own consignee, PICs joined) is saved as the first drop-off stop
+            'stops' => \App\Support\OrderStops::merge(['consignee_pic_name' => $text(static::pairPics($pair, 'consignee')['name']), 'consignee_pic_phone' => $text(static::pairPics($pair, 'consignee')['phone'])] + $pair) ?: null,
             'consignee_mode' => ($pair['consignee_mode'] ?? '') === 'store' ? 'store' : 'deliver',
             'consignee_store_id' => ($pair['consignee_mode'] ?? '') === 'store' ? (($pair['consignee_store_id'] ?? null) ?: null) : null,
             'items' => array_map(fn (array $item) => [

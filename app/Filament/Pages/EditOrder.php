@@ -359,7 +359,7 @@ class EditOrder extends CreateOrder
                 'existing_photos' => $this->recordPhotos($q, $enquiry),
                 'instructions' => UpdateOrderRecords::instructionsFromNotes($q->notes),
                 'admin_notes' => (string) ($q->admin_notes ?? ''),
-                ...\App\Support\OrderStops::split($q->stops),
+                ...\App\Support\OrderStops::split($q->stops, ['name' => $q->consignee_name, 'location' => $q->drop_off_location]),
                 'consignee_mode' => $q->consignee_store_id ? 'store' : 'deliver',
                 'consignee_store_id' => (string) ($q->consignee_store_id ?? ''),
                 'items' => $items !== [] ? $items : [$this->itemTemplate()],

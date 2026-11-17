@@ -1559,7 +1559,7 @@ class UpdateOrderRecords
             'store_branch_id' => $order->store_branch_id,
             'store_id' => $order->store_id,
             'admin_notes' => $order->admin_notes,
-            ...\App\Support\OrderStops::split($order->stops),
+            ...\App\Support\OrderStops::split($order->stops, ['name' => $order->consignee_name, 'location' => $order->drop_off_location]),
             'consignee_mode' => $order->consignee_store_id ? 'store' : 'deliver',
             'consignee_store_id' => $order->consignee_store_id,
             'consignor_pic_name' => $order->consignor_pic_name,

@@ -58,6 +58,8 @@ class OrderStops
                 'do_number' => $do !== '' ? $do : null,
                 // kept when a CSN's stop was scanned already (the order form never sets these)
                 ...array_intersect_key($row, ['scanned_at' => true, 'scanned_by' => true]),
+                // Consignee 1 of Multiple consignees: the record's own consignee (see merge)
+                ...(! empty($row['main']) ? ['main' => true] : []),
             ];
         }
 
@@ -77,9 +79,23 @@ class OrderStops
 
         foreach (['pickup' => self::PICKUP, 'dropoff' => self::DROPOFF] as $side => $type) {
             if (! empty($pair['multi_'.$side])) {
-                foreach ((array) ($pair[$side.'_stops'] ?? []) as $row) {
-                    $rows[] = is_array($row) ? ['type' => $type] + $row : ['type' => $type];
+                $sideRows = array_map(fn ($row) => is_array($row) ? ['type' => $type] + $row : ['type' => $type], array_values((array) ($pair[$side.'_stops'] ?? [])));
+
+                // Multiple consignees (client, 17 Nov 2026): the form's rows are Consignee 2, 3 …; the record's own
+                // consignee is Consignee 1 and is saved as the first drop-off stop, with the record's DO number, so
+                // the CSN, the Order Form and the extra drop-off charge keep counting every consignee
+                if ($side === 'dropoff' && static::clean($sideRows) !== []) {
+                    array_unshift($sideRows, [
+                        'type' => $type, 'main' => true,
+                        'name' => $pair['consignee_name'] ?? null,
+                        'pic_name' => $pair['consignee_pic_name'] ?? null,
+                        'pic_phone' => $pair['consignee_pic_phone'] ?? null,
+                        'location' => $pair['drop_off_location'] ?? null,
+                        'do_number' => $pair['customer_do_number'] ?? null,
+                    ]);
                 }
+
+                $rows = [...$rows, ...$sideRows];
             }
         }
 
@@ -91,10 +107,22 @@ class OrderStops
      *
      * @return array{multi_pickup: bool, pickup_stops: list<array<string, mixed>>, multi_dropoff: bool, dropoff_stops: list<array<string, mixed>>}
      */
-    public static function split(?array $stops): array
+    public static function split(?array $stops, ?array $main = null): array
     {
         $pickup = array_values(array_filter($stops ?? [], fn ($s) => ($s['type'] ?? '') === self::PICKUP));
         $dropoff = array_values(array_filter($stops ?? [], fn ($s) => ($s['type'] ?? '') !== self::PICKUP));
+
+        // for the order form ($main = the record's own consignee [name, location]): Consignee 1 is the record's own
+        // fields, so its saved stop is left out; a record saved before 17 Nov 2026 whose first stop repeats it too
+        if ($main !== null && $dropoff !== []) {
+            $same = fn ($a, $b) => mb_strtolower(trim((string) $a)) === mb_strtolower(trim((string) $b));
+
+            if (array_filter($dropoff, fn ($s) => ! empty($s['main'])) !== []) {
+                $dropoff = array_values(array_filter($dropoff, fn ($s) => empty($s['main'])));
+            } elseif ($same($dropoff[0]['name'] ?? '', $main['name'] ?? '') && $same($dropoff[0]['location'] ?? '', $main['location'] ?? '')) {
+                array_shift($dropoff);
+            }
+        }
 
         return [
             'multi_pickup' => $pickup !== [],
