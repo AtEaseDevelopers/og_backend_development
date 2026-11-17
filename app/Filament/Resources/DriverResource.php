@@ -34,6 +34,28 @@ class DriverResource extends Resource
     protected static bool $shouldRegisterNavigation = false;
     protected static ?int $navigationSort = 3;
 
+    /**
+     * Another driver of the company with the same IC (dashes and spaces aside), or with the same name.
+     * Two drivers may share a name only when both have an IC and the ICs differ: they are two people.
+     */
+    public static function duplicate(string $by, ?string $name, ?string $ic, $companyId, ?int $ignoreId = null): ?Driver
+    {
+        $plain = fn (?string $v) => mb_strtoupper(str_replace(['-', ' '], '', (string) $v));
+        $name = mb_strtoupper(trim((string) $name));
+        $ic = $plain($ic);
+        if ($by === 'ic' ? $ic === '' : $name === '') {
+            return null;
+        }
+
+        return Driver::query()
+            ->when($companyId, fn ($q, $id) => $q->where('company_id', $id))
+            ->when($ignoreId, fn ($q, $id) => $q->whereKeyNot($id))
+            ->get(['id', 'code', 'name', 'ic_number'])
+            ->first(fn (Driver $d) => $by === 'ic'
+                ? $plain($d->ic_number) === $ic
+                : mb_strtoupper(trim($d->name)) === $name && ($ic === '' || $plain($d->ic_number) === '' || $plain($d->ic_number) === $ic));
+    }
+
     public static function form(Form $form): Form
     {
         // the driver list's columns (user, 21 Oct 2026): driver, lorry company and lorry, attendant
@@ -44,8 +66,19 @@ class DriverResource extends Resource
                 Forms\Components\Placeholder::make('branch_label')->label('Company')
                     ->content(fn () => \App\Support\CurrentBranch::get()?->getFilamentName() ?? '—'),
                 Forms\Components\TextInput::make('code')->maxLength(50),
-                Forms\Components\TextInput::make('name')->label('Driver Name')->required()->maxLength(255),
-                Forms\Components\TextInput::make('ic_number')->label('Driver IC')->maxLength(30),
+                // a driver keyed in twice is caught on its name and its IC (client, 17 Nov 2026)
+                Forms\Components\TextInput::make('name')->label('Driver Name')->required()->maxLength(255)
+                    ->rule(fn (Get $get, ?Driver $record) => function ($attribute, $value, $fail) use ($get, $record) {
+                        if ($same = static::duplicate('name', $value, $get('ic_number'), $get('company_id'), $record?->id)) {
+                            $fail('This driver name is already in the list'.($same->code ? " (code {$same->code})" : '').'. Open that driver instead of adding it again.');
+                        }
+                    }),
+                Forms\Components\TextInput::make('ic_number')->label('Driver IC')->maxLength(30)
+                    ->rule(fn (Get $get, ?Driver $record) => function ($attribute, $value, $fail) use ($get, $record) {
+                        if ($same = static::duplicate('ic', $get('name'), $value, $get('company_id'), $record?->id)) {
+                            $fail("This IC is already used by the driver {$same->name}.");
+                        }
+                    }),
                 Forms\Components\TextInput::make('phone')->label('Driver Phone Number')->tel()->maxLength(50),
                 Forms\Components\TextInput::make('emergency_contact')->label('Driver Emergency Contact')->maxLength(150)->placeholder('e.g. 0197878888 (WIFE)'),
                 Forms\Components\Textarea::make('address')->label('Driver Address')->rows(2)->columnSpanFull(),
