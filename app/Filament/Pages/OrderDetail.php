@@ -147,8 +147,11 @@ class OrderDetail extends Page
         abort_unless($detail, 404);
 
         if (request()->boolean('print')) {
+            // a COD order prints its Proforma Invoice with the CSN (client, 17 Nov 2026); Cash its Cash Bill; Term the CSN
+            $cod = $this->order()?->orderType() === \App\Enums\OrderType::Cod;
             $this->printDocs = collect($detail['overview']['linked'] ?? [])
                 ->flatMap(fn (array $link) => match ($link['title']) {
+                    'Proforma Invoice' => $cod && filled($link['url']) ? [['label' => 'Proforma Invoice '.\Illuminate\Support\Str::before($link['sub'], ' ·'), 'url' => $link['url']]] : [],
                     'Cash Bill', 'Invoice', 'COD Invoice' => filled($link['url']) ? [['label' => $link['title'].' '.\Illuminate\Support\Str::before($link['sub'], ' ·'), 'url' => $link['url']]] : [],
                     'CSN' => collect($link['links'])->where('label', 'PDF')->map(fn (array $l) => ['label' => 'CSN '.$link['sub'], 'url' => $l['url']])->all(),
                     default => [],

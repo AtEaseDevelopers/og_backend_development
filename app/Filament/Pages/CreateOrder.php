@@ -753,21 +753,14 @@ class CreateOrder extends Page
         }
 
         $this->stashActive();
-        $cash = 0;
 
+        // every payment term (client, 17 Nov 2026): the Cash records are paid now; Credit / Term and COD records pay
+        // nothing at the counter and are confirmed, so their CSN (and the COD's Proforma) print at once
         foreach ($this->orders as $index => $order) {
-            $records = collect($order['pairs'] ?? [])->where('order_type', OrderType::Cash->value)->count();
-            $this->orders[$index]['pay_now'] = $records > 0;
-            $cash += $records;
+            $this->orders[$index]['pay_now'] = collect($order['pairs'] ?? [])->where('order_type', OrderType::Cash->value)->isNotEmpty();
         }
 
         $this->useOrder($this->activeOrder);
-
-        if ($cash === 0) {
-            Notification::make()->title('Confirm, pay & print needs a consignor & consignee with the Cash payment term')->body('Use "Save order & prepare pricing" for the other payment terms.')->danger()->send();
-
-            return;
-        }
 
         $this->payment['method'] = filled($this->payment['method'] ?? null) ? $this->payment['method'] : PaymentMethod::Cash->value;
         $this->payment['payment_date'] = filled($this->payment['payment_date'] ?? null) ? $this->payment['payment_date'] : now()->toDateString();
@@ -3069,6 +3062,12 @@ class CreateOrder extends Page
                     // null = in full; else this order's part of a short payment
                     'amount' => $payAmount,
                 ], auth()->user());
+            }
+
+            // "Confirm, pay & print": Term / COD records are confirmed and a Customer Drop Off's goods are at the
+            // counter, so every record has its CSN now
+            if ($this->printAfterSave) {
+                $paid = [...$paid, ...app(\App\Domains\Quotation\Actions\ExpressCounterOrder::class)->execute($orders, auth()->user())];
             }
 
             // products kept without a price yet (no price-list rate): priced under Items & pricing

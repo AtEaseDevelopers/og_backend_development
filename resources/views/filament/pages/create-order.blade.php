@@ -197,7 +197,7 @@
                         x-on:click="go()"
                         x-on:og-print-tab.window="done($event.detail.url)"
                         x-on:og-print-tab-cancel.window="done(null)"
-                        wire:loading.attr="disabled" wire:target="saveAndPrint" class="ow-btn ow-btn-primary" title="Save the order with its Cash records confirmed and paid now; the CSN opens in a new tab to print">Confirm, pay &amp; print →</button>
+                        wire:loading.attr="disabled" wire:target="saveAndPrint" class="ow-btn ow-btn-primary" title="Save and confirm the order now: Cash is paid, Term and COD pay nothing here. The CSN opens in a new tab to print; the Cash Bill (Cash) or Proforma (COD) on the order page">Confirm, pay &amp; print →</button>
             @endif
         </div>
     </div>
