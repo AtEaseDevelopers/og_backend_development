@@ -63,7 +63,7 @@ class UserResource extends Resource
                 ->dehydrateStateUsing(fn (?string $state) => User::normaliseLoginId((string) $state))
                 ->unique(ignoreRecord: true)
                 ->autocomplete('off'),
-            Forms\Components\TextInput::make('email')->email()->required()->maxLength(255)->unique(ignoreRecord: true),
+            Forms\Components\TextInput::make('email')->email()->maxLength(255)->unique(ignoreRecord: true),
             // Edit (user, 16 Nov 2026): the current password is shown as text with a "Change password" tick box; ticked,
             // the box to type a new one opens (shown as typed, not dots). The password is stored hashed; what is shown
             // is the encrypted copy kept when it was set on this page (password_readable) — none for an older one.

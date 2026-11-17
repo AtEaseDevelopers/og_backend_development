@@ -37,6 +37,12 @@ class PageBreadcrumbs
         \App\Filament\Pages\OrganisationChartPage::class => [MasterDataHub::class, 'Master Data'],
     ];
 
+    /** a menu group with a page of its own: its crumb opens that page (client, 17 Nov 2026: "Master Data" was plain text) */
+    private const HUBS = [
+        'Master Data' => MasterDataHub::class,
+        'Reports' => ReportsHub::class,
+    ];
+
     /** @return array<int|string, string> a plain crumb has an int key, a link its URL */
     public static function for(Page $page): array
     {
@@ -61,7 +67,16 @@ class PageBreadcrumbs
                 $crumbs = [$group] + static::reindex($crumbs);
             }
 
-            return static::reindex($crumbs);
+            $crumbs = static::reindex($crumbs);
+            $firstKey = array_key_first($crumbs);
+            $hub = $firstKey !== null && is_int($firstKey) ? (self::HUBS[$crumbs[$firstKey]] ?? null) : null;
+
+            // the first crumb opens its group's page, except on that page itself
+            if ($hub && ! $page instanceof $hub) {
+                $crumbs = [$hub::getUrl() => $crumbs[$firstKey]] + array_slice($crumbs, 1, null, true);
+            }
+
+            return $crumbs;
         } catch (Throwable) {
             return [];
         }
