@@ -46,7 +46,27 @@ class User extends Authenticatable implements FilamentUser, HasTenants
         'customer_id',
         'sa_location_id',
         'ordering_token',
+        // the Register Link allowed for this user (a super admin sets it on Master Data -> Users, 17 Nov 2026)
+        'register_link_enabled',
     ];
+
+    /** The Register Link is allowed for this user (allowed unless a super admin disabled it). */
+    public function registerLinkAllowed(): bool
+    {
+        return (bool) ($this->register_link_enabled ?? true);
+    }
+
+    /** The link this user gives a customer to register: a salesperson's own (they become the customer's salesperson), else the public one. */
+    public function registerLink(): string
+    {
+        if ($this->hasRole('salesperson')) {
+            $this->ensureOrderingToken();
+
+            return (string) $this->orderingLink();
+        }
+
+        return route('portal.register');
+    }
 
     public function saLocation(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
@@ -145,6 +165,7 @@ class User extends Authenticatable implements FilamentUser, HasTenants
             'password_readable' => 'encrypted',
             'is_hq' => 'boolean',
             'is_active' => 'boolean',
+            'register_link_enabled' => 'boolean',
             // the user's own page settings, e.g. master_data_hidden (the Master Data cards they hide)
             'preferences' => 'array',
         ];

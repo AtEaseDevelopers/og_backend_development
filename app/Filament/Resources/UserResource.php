@@ -154,7 +154,7 @@ class UserResource extends Resource
                         ->label('Customer ordering link')
                         ->content(fn (?User $record) => $record?->ordering_token
                             ? new \Illuminate\Support\HtmlString('<code class="text-xs">'.e($record->orderingLink()).'</code>')
-                            : 'Save the account, then use "Generate ordering link" on the edit page.')
+                            : 'Save the account; the link is copied with "Copy link" on the Users list.')
                         ->visible(fn (string $operation) => $operation === 'edit'),
                 ])->columns(2),
             static::permissionsSection(),
@@ -234,7 +234,6 @@ class UserResource extends Resource
                 ->copyable()
                 ->placeholder('—')
                 ->visible(fn () => \App\Support\Permissions::allows('users.edit')),
-            Tables\Columns\TextColumn::make('email')->searchable(),
             Tables\Columns\TextColumn::make('branches.code')
                 ->label('Companies')
                 ->badge()
@@ -248,26 +247,20 @@ class UserResource extends Resource
                 ->label('Branch')
                 ->placeholder('—'),
             Tables\Columns\IconColumn::make('is_active')->boolean(),
+            // the Register Link user by user (user, 17 Nov 2026): a super admin allows or disables it — disabled, the user
+            // has no "Register Link" button at the top of the page; and a button that copies a salesperson's own link
+            Tables\Columns\ToggleColumn::make('register_link_enabled')
+                ->label('Allow register link')
+                ->visible(fn () => (bool) auth()->user()?->isSuperadmin()),
+            Tables\Columns\ViewColumn::make('register_link')
+                ->label('Register link')
+                ->view('filament.tables.columns.user-register-link'),
         ])
             // the Role filter is a dropdown beside the search box (ListUsers), not a filter card
             ->actions([
             // View beside Edit on every Master Data list (user, 16 Nov 2026): the record in a window, read-only
             Tables\Actions\ViewAction::make(),
             Tables\Actions\EditAction::make(),
-            Tables\Actions\Action::make('orderingLink')
-                ->label(fn (User $record) => $record->ordering_token ? 'Copy ordering link' : 'Generate ordering link')
-                ->icon('heroicon-o-link')
-                ->visible(fn (User $record) => $record->hasRole('salesperson'))
-                ->action(function (User $record) {
-                    $record->ensureOrderingToken();
-
-                    \Filament\Notifications\Notification::make()
-                        ->title('Ordering link for '.$record->name)
-                        ->body($record->orderingLink())
-                        ->persistent()
-                        ->success()
-                        ->send();
-                }),
         ]);
     }
 

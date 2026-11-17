@@ -4,13 +4,10 @@
     $ogUser = auth()->user();
     $ogIsSalesperson = (bool) $ogUser?->hasRole('salesperson');
 
-    if ($ogIsSalesperson) {
-        $ogUser->ensureOrderingToken();
-    }
-
-    $ogRegisterLink = $ogIsSalesperson ? $ogUser->orderingLink() : route('portal.register');
+    // a super admin can disable the Register Link of a user (Master Data -> Users, 17 Nov 2026): no button then
+    $ogRegisterLink = $ogUser?->registerLinkAllowed() ? $ogUser->registerLink() : null;
 @endphp
-@if ($ogUser)
+@if ($ogRegisterLink)
     <div
         x-data="{
             copied: false,
