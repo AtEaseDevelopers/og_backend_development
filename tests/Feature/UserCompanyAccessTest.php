@@ -34,6 +34,7 @@ class UserCompanyAccessTest extends TestCase
             ->fillForm([
                 'name' => 'New Staff', 'login_id' => 'newstaff', 'password' => '1234',
                 'branch_ids' => [$kl->id],
+                'sa_location_id' => \App\Domains\MasterData\Models\SaLocation::query()->firstOrCreate(['csn_prefix' => 'KL'], ['company_id' => \App\Domains\MasterData\Models\Company::query()->value('id'), 'branch_id' => \App\Domains\MasterData\Models\Branch::query()->where('code', 'KL')->value('id'), 'code' => 'KL', 'name' => 'KL Branch', 'is_active' => true])->id,
                 'role_id' => Role::query()->where('name', 'salesperson')->value('id'),
             ])
             ->call('create')
@@ -47,6 +48,20 @@ class UserCompanyAccessTest extends TestCase
         Livewire::test(EditUser::class, ['record' => $user->getRouteKey()])
             ->assertFormSet(['branch_ids' => [$kl->id]])
             ->fillForm(['branch_ids' => [$jb->id]])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        // one company a user; only a super admin may have several (user, 17 Nov 2026)
+        Livewire::test(EditUser::class, ['record' => $user->getRouteKey()])
+            ->fillForm(['branch_ids' => [$kl->id, $jb->id]])
+            ->call('save')
+            ->assertHasFormErrors(['branch_ids']);
+        Livewire::test(EditUser::class, ['record' => $user->getRouteKey()])
+            ->fillForm(['role_id' => Role::query()->where('name', 'super_admin')->value('id'), 'branch_ids' => [$kl->id, $jb->id]])
+            ->call('save')
+            ->assertHasNoFormErrors();
+        Livewire::test(EditUser::class, ['record' => $user->getRouteKey()])
+            ->fillForm(['role_id' => Role::query()->where('name', 'salesperson')->value('id'), 'branch_ids' => [$jb->id]])
             ->call('save')
             ->assertHasNoFormErrors();
 

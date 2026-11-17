@@ -96,6 +96,7 @@ class RolesPermissionsTest extends TestCase
 
         $role->revokePermissionTo(['customers.create', 'customers.edit', 'customers.delete']);
         $clerk = User::query()->role('counter')->firstOrFail();
+        $clerk->forceFill(['sa_location_id' => \App\Domains\MasterData\Models\SaLocation::query()->firstOrCreate(['csn_prefix' => 'KL'], ['company_id' => \App\Domains\MasterData\Models\Company::query()->value('id'), 'branch_id' => \App\Domains\MasterData\Models\Branch::query()->where('code', 'KL')->value('id'), 'code' => 'KL', 'name' => 'KL Branch', 'is_active' => true])->id])->saveQuietly();
         $this->actingOnPanel($clerk);
         $customer = \App\Domains\MasterData\Models\Customer::query()->firstOrFail();
 
@@ -174,6 +175,7 @@ class RolesPermissionsTest extends TestCase
     {
         $admin = $this->admin();
         $clerk = User::query()->role('counter')->firstOrFail();
+        $clerk->forceFill(['sa_location_id' => \App\Domains\MasterData\Models\SaLocation::query()->firstOrCreate(['csn_prefix' => 'KL'], ['company_id' => \App\Domains\MasterData\Models\Company::query()->value('id'), 'branch_id' => \App\Domains\MasterData\Models\Branch::query()->where('code', 'KL')->value('id'), 'code' => 'KL', 'name' => 'KL Branch', 'is_active' => true])->id])->saveQuietly();
         $oldHash = $clerk->password;
         $this->actingOnPanel($admin);
 
@@ -215,6 +217,7 @@ class RolesPermissionsTest extends TestCase
     {
         $admin = $this->admin();
         $clerk = User::query()->role('counter')->firstOrFail();
+        $clerk->forceFill(['sa_location_id' => \App\Domains\MasterData\Models\SaLocation::query()->firstOrCreate(['csn_prefix' => 'KL'], ['company_id' => \App\Domains\MasterData\Models\Company::query()->value('id'), 'branch_id' => \App\Domains\MasterData\Models\Branch::query()->where('code', 'KL')->value('id'), 'code' => 'KL', 'name' => 'KL Branch', 'is_active' => true])->id])->saveQuietly();
         $finance = Role::findByName('finance', 'web');
         $this->actingOnPanel($admin);
 
@@ -229,6 +232,7 @@ class RolesPermissionsTest extends TestCase
 
         // a driver's hidden role stays when a staff role is picked
         $driver = User::query()->role('driver')->firstOrFail();
+        $driver->forceFill(['sa_location_id' => \App\Domains\MasterData\Models\SaLocation::query()->firstOrCreate(['csn_prefix' => 'KL'], ['company_id' => \App\Domains\MasterData\Models\Company::query()->value('id'), 'branch_id' => \App\Domains\MasterData\Models\Branch::query()->where('code', 'KL')->value('id'), 'code' => 'KL', 'name' => 'KL Branch', 'is_active' => true])->id])->saveQuietly();
         Livewire::test(EditUser::class, ['record' => $driver->getRouteKey()])
             ->assertSet('data.role_id', null)
             ->set('data.role_id', $finance->id)
@@ -276,6 +280,7 @@ class RolesPermissionsTest extends TestCase
     {
         $admin = $this->admin();
         $clerk = User::query()->role('counter')->firstOrFail();
+        $clerk->forceFill(['sa_location_id' => \App\Domains\MasterData\Models\SaLocation::query()->firstOrCreate(['csn_prefix' => 'KL'], ['company_id' => \App\Domains\MasterData\Models\Company::query()->value('id'), 'branch_id' => \App\Domains\MasterData\Models\Branch::query()->where('code', 'KL')->value('id'), 'code' => 'KL', 'name' => 'KL Branch', 'is_active' => true])->id])->saveQuietly();
         $this->actingOnPanel($admin);
 
         // the form's buttons are in the page header (top right), none under the form
@@ -313,6 +318,7 @@ class RolesPermissionsTest extends TestCase
         $admin = $this->admin();
         // a counter clerk: the role cannot open reports and can create orders
         $clerk = User::query()->role('counter')->firstOrFail();
+        $clerk->forceFill(['sa_location_id' => \App\Domains\MasterData\Models\SaLocation::query()->firstOrCreate(['csn_prefix' => 'KL'], ['company_id' => \App\Domains\MasterData\Models\Company::query()->value('id'), 'branch_id' => \App\Domains\MasterData\Models\Branch::query()->where('code', 'KL')->value('id'), 'code' => 'KL', 'name' => 'KL Branch', 'is_active' => true])->id])->saveQuietly();
         $this->assertFalse(Permissions::allows('reports.view', $clerk));
         $this->assertTrue(Permissions::allows('orders.create', $clerk));
 

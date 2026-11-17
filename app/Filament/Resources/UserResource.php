@@ -127,10 +127,25 @@ class UserResource extends Resource
                     ->when(auth()->user()?->isBranchAdmin(), fn ($q) => $q->whereIn('id', auth()->user()->accessibleBranchIds()))
                     ->orderBy('code')->pluck('name', 'id'))
                 ->multiple()
+                // one company a user (user, 17 Nov 2026); only a super admin, who sees every company and branch, is
+                // not held to one
+                ->maxItems(fn (Forms\Get $get, ?User $record): ?int => static::picksSuperAdmin($get('role_id'), $record) ? null : 1)
+                ->validationMessages(['max' => 'A user has one company only. Only a Super Admin can have more.'])
+                ->helperText(fn (Forms\Get $get, ?User $record): string => static::picksSuperAdmin($get('role_id'), $record)
+                    ? 'A Super Admin sees every company and branch.'
+                    : 'One company only.')
                 ->searchable()
                 // a super admin works in every company without one being picked
-                ->required(fn (?User $record): bool => ! $record?->isSuperadmin())
+                ->required(fn (Forms\Get $get, ?User $record): bool => ! static::picksSuperAdmin($get('role_id'), $record))
                 ->dehydrated(false),
+            // the user's branch, a normal field beside the company (user, 17 Nov 2026: no "Sales ownership" box); it
+            // carries the prefix of the documents. Compulsory, as the company, for everyone but a super admin
+            Forms\Components\Select::make('sa_location_id')
+                ->label('Branch')
+                ->options(fn () => \App\Domains\MasterData\Models\SaLocation::query()->where('is_active', true)->orderBy('code')->get()
+                    ->mapWithKeys(fn ($l) => [$l->id => $l->code.' — '.$l->name]))
+                ->searchable()
+                ->required(fn (Forms\Get $get, ?User $record): bool => ! static::picksSuperAdmin($get('role_id'), $record)),
             // one role a user (user, 16 Nov 2026: no more several roles). The field is not the relationship itself:
             // the pages load and save it (UserResource::staffRoleId / syncStaffRole), keeping a hidden role (driver,
             // customer) the account also has. Only a super admin gives the super admin role.
@@ -138,25 +153,12 @@ class UserResource extends Resource
                 ->label('Role')
                 ->options(fn () => static::staffRoleOptions())
                 ->native(false)
+                // the role decides how many companies may be picked
+                ->live()
                 ->dehydrated(false)
                 // an account that is only a driver or a portal customer has no staff role to pick
                 ->required(fn (?User $record): bool => ! $record?->hasAnyRole(['customer', 'driver'])),
             Forms\Components\Toggle::make('is_active')->default(true),
-            Forms\Components\Section::make('Sales ownership (section A)')
-                ->description('Each salesperson belongs to one branch; the branch carries the CSN prefix. The ordering link fixes the salesperson on every order a customer submits through it.')
-                ->schema([
-                    Forms\Components\Select::make('sa_location_id')
-                        ->label('Branch')
-                        ->options(fn () => \App\Domains\MasterData\Models\SaLocation::query()->where('is_active', true)->orderBy('code')->get()
-                            ->mapWithKeys(fn ($l) => [$l->id => $l->code.' — '.$l->name.' ('.$l->csn_prefix.')']))
-                        ->searchable(),
-                    Forms\Components\Placeholder::make('ordering_link')
-                        ->label('Customer ordering link')
-                        ->content(fn (?User $record) => $record?->ordering_token
-                            ? new \Illuminate\Support\HtmlString('<code class="text-xs">'.e($record->orderingLink()).'</code>')
-                            : 'Save the account; the link is copied with "Copy link" on the Users list.')
-                        ->visible(fn (string $operation) => $operation === 'edit'),
-                ])->columns(2),
             static::permissionsSection(),
         ]);
     }
@@ -186,6 +188,16 @@ class UserResource extends Resource
             ->collapsed(fn (?User $record) => ! $record || count(\App\Support\Permissions::overridesFor($record)) === 0)
             ->visible(fn (string $operation, ?User $record) => $operation === 'edit' && $record && \App\Support\Permissions::allows('settings.roles')
                 && ! $record->hasAnyRole(['customer', 'driver']));
+    }
+
+    /** The Role picked on the form is the super admin's (or, with none picked yet, the account already is one). */
+    public static function picksSuperAdmin(mixed $roleId, ?User $record = null): bool
+    {
+        if (filled($roleId)) {
+            return \Spatie\Permission\Models\Role::query()->whereKey($roleId)->value('name') === 'super_admin';
+        }
+
+        return (bool) $record?->isSuperadmin();
     }
 
     /** The roles of the Role field: id => name as shown; never the hidden ones, the super admin only for a super admin. @return array<int, string> */
