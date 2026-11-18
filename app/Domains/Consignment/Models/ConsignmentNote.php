@@ -39,7 +39,7 @@ class ConsignmentNote extends Model
 
     protected $fillable = [
         'number', 'company_id', 'source_branch_id', 'quotation_id', 'quotation_destination_id',
-        'customer_id', 'billing_type', 'period_month', 'issued_at', 'status', 'return_status', 'payment_status',
+        'customer_id', 'billing_type', 'period_month', 'issued_at', 'pickup_date', 'status', 'return_status', 'payment_status',
         'customer_name', 'customer_brn', 'customer_tin', 'customer_phone', 'customer_reference',
         'do_number', 'job_no', 'job_date', 'from_location_id', 'to_location_id',
         'consignor_address', 'consignor_name', 'consignor_phone',
@@ -60,6 +60,17 @@ class ConsignmentNote extends Model
         'moved_to_company_id', 'moved_at', 'moved_by',
     ];
 
+    protected static function booted(): void
+    {
+        // the pickup date (client, 18 Nov 2026): the order record's, else the CSN date; CSN management lists by it
+        static::creating(function (self $csn): void {
+            if (blank($csn->pickup_date)) {
+                $csn->pickup_date = ($csn->quotation_id ? \Illuminate\Support\Facades\DB::table('quotations')->where('id', $csn->quotation_id)->value('pickup_date') : null)
+                    ?? $csn->issued_at ?? now()->toDateString();
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [
@@ -73,6 +84,7 @@ class ConsignmentNote extends Model
             'status' => CsnStatus::class,
             'payment_status' => PaymentStatus::class,
             'issued_at' => 'date',
+            'pickup_date' => 'date',
             'job_date' => 'date',
             'ps_job_date' => 'date',
             'transport_charges' => 'decimal:2',

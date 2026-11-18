@@ -143,8 +143,9 @@
                             </select>
                         </div>
                         <div class="ow-field">
-                            <label>CSN date</label>
-                            <x-og.date-range from="csnFrom" to="csnTo" :from-value="$csnFrom" :to-value="$csnTo" label="CSN date" />
+                            {{-- the pickup date (client, 18 Nov 2026); the CSN date is under "Filters +" --}}
+                            <label>Pickup date</label>
+                            <x-og.date-range from="csnFrom" to="csnTo" :from-value="$csnFrom" :to-value="$csnTo" label="Pickup date" />
                         </div>
                         <div class="ow-actions">
                             <button type="button" wire:click="toggleFilters" @class(['ow-btn', 'ow-pill-dark' => $filtersOpen])>
@@ -156,6 +157,10 @@
 
                     @if ($filtersOpen)
                         <div class="ow-fgrid">
+                            <div class="ow-field">
+                                <label>CSN date</label>
+                                <x-og.date-range from="issuedFrom" to="issuedTo" :from-value="$issuedFrom" :to-value="$issuedTo" label="CSN date" />
+                            </div>
                             {{-- the transfer code first (user, 3 Nov 2026), then customer, order type and payment status: under "Filters +" --}}
                             <div class="ow-field">
                                 <label>Transfer code</label>
@@ -279,15 +284,15 @@
             </div>
 
             {{-- CSN date strip: one card per day with its CSN count (other filters and the tab apply); click a day to show only that day --}}
-            <section aria-label="CSN date">
+            <section aria-label="Pickup date">
                 <div class="ow-strip-head">
-                    <span class="ow-strip-title">CSN date <span class="ow-strip-range">· {{ $this->stripRangeLabel() }}</span></span>
+                    <span class="ow-strip-title">Pickup date <span class="ow-strip-range">· {{ $this->stripRangeLabel() }}</span></span>
                     <span class="ow-strip-links">
                         @unless ($this->stripShowsToday())
                             <button type="button" wire:click="stripToday" class="ow-btn-link">Today</button>
                         @endunless
                         @if ($hasCsnDate)
-                            <button type="button" wire:click="clearCsnDate" class="ow-btn-link">Clear CSN date</button>
+                            <button type="button" wire:click="clearCsnDate" class="ow-btn-link">Clear pickup date</button>
                         @endif
                     </span>
                 </div>

@@ -181,6 +181,7 @@ class CreateAdminOrder
                     'consignee_pic_phone' => $pair['consignee_pic_phone'] ?? null,
                     'customer_do_number' => $pair['customer_do_number'] ?? null,
                     'expected_delivery_date' => $pair['expected_delivery_date'] ?? null,
+                    'pickup_date' => $pair['pickup_date'] ?? null,
                     'instructions' => $pair['instructions'] ?? null,
                     'admin_notes' => $pair['admin_notes'] ?? null,
                     'stops' => $pair['stops'] ?? null,

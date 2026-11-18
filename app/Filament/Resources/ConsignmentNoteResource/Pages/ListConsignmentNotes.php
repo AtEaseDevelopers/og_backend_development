@@ -49,7 +49,7 @@ class ListConsignmentNotes extends ListRecords
 
     /** Every filter bar property: changing one goes back to page 1, Reset clears them all (the CSN date goes back to today). */
     protected const FILTERS = [
-        'search', 'csnFrom', 'csnTo', 'jobFrom', 'jobTo', 'createdFrom', 'createdTo',
+        'search', 'csnFrom', 'csnTo', 'issuedFrom', 'issuedTo', 'jobFrom', 'jobTo', 'createdFrom', 'createdTo',
         'customer', 'orderType', 'serviceType', 'paymentStatus',
         'billingType', 'saLocation', 'transferCode', 'salesperson', 'driver', 'lorry', 'quotation',
         'claimed', 'assigned', 'hasSubsheets', 'amountMin', 'amountMax', 'moved',
@@ -57,17 +57,28 @@ class ListConsignmentNotes extends ListRecords
 
     /** The fields behind "Filters +": the panel opens on load when one of them is set. */
     protected const PANEL_FILTERS = [
-        'billingType', 'saLocation', 'transferCode', 'salesperson', 'driver', 'lorry', 'quotation',
+        'issuedFrom', 'issuedTo', 'billingType', 'saLocation', 'transferCode', 'salesperson', 'driver', 'lorry', 'quotation',
         'claimed', 'assigned', 'hasSubsheets', 'amountMin', 'amountMax',
     ];
 
     #[Url(as: 'q', except: '')]
     public string $search = '';
 
-    /** CSN date (issued_at, the date printed on the CSN). Kept in the URL by queryString(), except for today. */
+    /**
+     * The pickup date (client, 18 Nov 2026: the day strip and the default view list the CSNs picked up that day, not the
+     * ones created that day). The properties keep their names (csn_from / csn_until in the URL). Kept in the URL by
+     * queryString(), except for today.
+     */
     public string $csnFrom = '';
 
     public string $csnTo = '';
+
+    /** CSN date (issued_at, the date printed on the CSN), under "Filters +". */
+    #[Url(as: 'issued_from', except: '')]
+    public string $issuedFrom = '';
+
+    #[Url(as: 'issued_until', except: '')]
+    public string $issuedTo = '';
 
     /**
      * 'all' while the CSN date is cleared (every date shows), so a refresh or Back keeps it cleared
@@ -178,7 +189,7 @@ class ListConsignmentNotes extends ListRecords
 
         parent::mount();
 
-        $this->applyDefaultCsnDate(targetsRecords: $isLegacyLink || filled(trim($this->search)) || filled($this->quotation));
+        $this->applyDefaultCsnDate(targetsRecords: $isLegacyLink || filled(trim($this->search)) || filled($this->quotation) || filled($this->issuedFrom) || filled($this->issuedTo));
 
         // Only the "Filters +" panel fields; the date ranges sit next to the search and are always shown
         $this->filtersOpen = collect(self::PANEL_FILTERS)->contains(fn (string $property): bool => filled($this->{$property}));
@@ -423,7 +434,7 @@ class ListConsignmentNotes extends ListRecords
                 'description' => collect([
                     $csn->customer?->company_name ?: $csn->customer_name,
                     trim(($csn->fromLocation?->name ?? '').' → '.($csn->toLocation?->name ?? ''), ' →'),
-                    $csn->issued_at?->format('d/m/Y'),
+                    ($csn->pickup_date ?? $csn->issued_at)?->format('d/m/Y'),
                 ])->filter()->implode(' · '),
             ]])
             ->all();
@@ -553,7 +564,8 @@ class ListConsignmentNotes extends ListRecords
         }
 
         $dateRanges = [
-            ['issued_at', $withCsnDate ? $this->csnFrom : '', $withCsnDate ? $this->csnTo : ''],
+            ['pickup_date', $withCsnDate ? $this->csnFrom : '', $withCsnDate ? $this->csnTo : ''],
+            ['issued_at', $this->issuedFrom, $this->issuedTo],
             ['job_date', $this->jobFrom, $this->jobTo],
             ['created_at', $this->createdFrom, $this->createdTo],
         ];
@@ -862,7 +874,7 @@ class ListConsignmentNotes extends ListRecords
             });
         }
 
-        foreach (['issued_at' => ['csnFrom', 'csnTo'], 'job_date' => ['jobFrom', 'jobTo'], 'created_at' => ['createdFrom', 'createdTo']] as $filter => [$from, $to]) {
+        foreach (['issued_at' => ['issuedFrom', 'issuedTo'], 'job_date' => ['jobFrom', 'jobTo'], 'created_at' => ['createdFrom', 'createdTo']] as $filter => [$from, $to]) {
             $set($from, $this->legacyDate(data_get($filters, $filter.'.from')));
             $set($to, $this->legacyDate(data_get($filters, $filter.'.until')));
         }
@@ -912,10 +924,10 @@ class ListConsignmentNotes extends ListRecords
         $end = $start->copy()->addDays(6);
 
         $counts = $this->modifyQueryWithActiveTab($this->applyFilterBar(ConsignmentNoteResource::getEloquentQuery(), withCsnDate: false))
-            ->whereBetween('issued_at', [$start->toDateString(), $end->toDateString()])
+            ->whereBetween('pickup_date', [$start->toDateString(), $end->toDateString()])
             ->toBase()
-            ->selectRaw('DATE(issued_at) as day, COUNT(*) as total')
-            ->groupByRaw('DATE(issued_at)')
+            ->selectRaw('DATE(pickup_date) as day, COUNT(*) as total')
+            ->groupByRaw('DATE(pickup_date)')
             ->pluck('total', 'day');
 
         $from = $this->dateOrNull($this->csnFrom);

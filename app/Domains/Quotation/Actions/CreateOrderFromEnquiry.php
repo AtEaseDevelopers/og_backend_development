@@ -126,6 +126,8 @@ class CreateOrderFromEnquiry
                     'customer_do_number' => $explicit ? ($pair['customer_do_number'] ?? null) : ($pair['customer_do_number'] ?? $enquiry->customer_do_number),
                     // free text (a portal order: the date the customer asked for)
                     'expected_delivery_date' => $explicit ? ($pair['expected_delivery_date'] ?? null) : ($pair['expected_delivery_date'] ?? $enquiry->preferred_delivery_date?->format('d/m/Y')),
+                    // keyed on Create order; blank: the portal's date, else the day after the order date (Quotation::creating)
+                    'pickup_date' => filled($pair['pickup_date'] ?? null) ? $pair['pickup_date'] : null,
                     'from_location_id' => $pair['from_location_id'] ?? ($consignor['from_location_id'] ?? null),
                     'consignor_brn' => $pair['consignor_brn'] ?? ($consignor['consignor_brn'] ?? $enquiry->customer?->brn),
                     'customer_address' => $pair['customer_address'] ?? ($consignor['customer_address'] ?? $enquiry->customer?->address),

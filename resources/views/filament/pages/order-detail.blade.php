@@ -269,7 +269,7 @@
                     @php $co = $ov['customer_order']; @endphp
                     <div class="ow-grid-overview">
                         <div class="ow-stack">
-                            @php $detailsEditable = $order && ($can['edit_details'] || $can['change_type']); @endphp
+                            @php $detailsEditable = $order && ($can['edit_details'] || $can['change_type'] || ($can['edit_pickup'] ?? false)); @endphp
                             <div class="ow-card ow-card-pad">
                                 <div class="ow-card-title">
                                     Customer &amp; order
@@ -308,6 +308,16 @@
                                         @endif
                                     </div>
                                     <div><div class="ow-dt">Pricing consent</div><div class="ow-dd">{{ $co['consent'] }}</div></div>
+                                    {{-- the day the goods are picked up (client, 18 Nov 2026): CSN management lists the CSN on that day --}}
+                                    <div>
+                                        <div class="ow-dt">Pickup date</div>
+                                        @if ($this->editingDetails && ($can['edit_pickup'] ?? false))
+                                            <input type="date" wire:model="details.pickup_date" class="ow-input" min="{{ today()->toDateString() }}" aria-label="Pickup date">
+                                            @error('details.pickup_date')<div class="ow-field-error">{{ $message }}</div>@enderror
+                                        @else
+                                            <div class="ow-dd">{{ $co['pickup_date'] ?? '—' }}</div>
+                                        @endif
+                                    </div>
                                     @if ($this->editingDetails && $can['edit_details'])
                                         <div>
                                             <div class="ow-dt">Expected delivery</div>

@@ -367,6 +367,7 @@ class OrderDetailData
                 'service_type' => $order->service_type?->getLabel(),
                 'consent' => $order->customer?->consentSkipsReconfirmation() ? 'Consent letter on file' : 'Pricing reconfirmation required',
                 'expected_delivery' => filled($order->expected_delivery_date) ? (string) $order->expected_delivery_date : null,
+                'pickup_date' => $order->pickup_date?->format('d/m/Y'),
                 // the consignor is picked up or brings the goods to an O&G store; a person in charge on each side
                 'consignor_mode' => match ($order->service_type) {
                     ServiceType::Store => 'Store · '.($order->store?->name ?? $order->storeBranch?->name ?? 'not selected'),
@@ -1219,6 +1220,8 @@ class OrderDetailData
             'change_type' => $order && $status !== QuotationStatus::Converted && ! $status->isTerminal() && ! $order->paymentTermLocked(),
             // DO number / expected delivery date on the order page (Customer & order → Edit) until the record has a CSN
             'edit_details' => $order && $latest && ! $status->isTerminal() && $order->consignmentNotes->isEmpty(),
+            // the pickup date stays editable after the CSN is created (client, 18 Nov 2026): its CSNs follow it
+            'edit_pickup' => $order && $latest && ($status === QuotationStatus::Converted || ! $status->isTerminal()) &&\App\Support\Permissions::allows('orders.edit', $user),
             // Admin release: Credit / Term orders, or a part-paid Cash order (user, 28 Oct 2026: admin may go ahead to the CSN)
             'release' => $order && $status === QuotationStatus::Confirmed
                 && ($order->orderType() === OrderType::Term || ($order->orderType() === OrderType::Cash && (float) $order->paid_amount > 0 && (float) $order->paid_amount + 0.005 < (float) $order->total_amount))

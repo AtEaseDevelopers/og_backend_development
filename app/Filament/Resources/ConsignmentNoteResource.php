@@ -151,6 +151,13 @@ class ConsignmentNoteResource extends Resource
                     ->placeholder('—')
                     ->sortable()
                     ->toggleable(),
+                // the day the goods are picked up (client, 18 Nov 2026); changed on the order page
+                Tables\Columns\TextColumn::make('pickup_date')
+                    ->label('Pickup date')
+                    ->date('d M Y')
+                    ->placeholder('—')
+                    ->sortable()
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('customer_name')
                     ->sortable()
                     ->description(fn (ConsignmentNote $record) => $record->salesperson?->name)

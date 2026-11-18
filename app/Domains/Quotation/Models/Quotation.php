@@ -36,7 +36,7 @@ class Quotation extends Model
 
     protected $fillable = [
         'number', 'company_id', 'branch_id', 'customer_id', 'consignor_name', 'salesperson_id', 'portal_enquiry_id',
-        'status', 'valid_until', 'title', 'is_active', 'quoted_at', 'expected_delivery_date',
+        'status', 'valid_until', 'title', 'is_active', 'quoted_at', 'expected_delivery_date', 'pickup_date',
         'from_location_id', 'to_location_id',
         'consignor_brn', 'pickup_location', 'consignee_name', 'consignee_brn',
         'consignee_address', 'drop_off_location', 'customer_address',
@@ -66,6 +66,23 @@ class Quotation extends Model
 
     protected static function booted(): void
     {
+        // the pickup date (client, 18 Nov 2026): the date the customer gave on the portal, else the day after the
+        // order date; staff can change it on the order page, and the record's CSNs follow it
+        static::creating(function (self $order): void {
+            if (blank($order->pickup_date)) {
+                $enquiry = $order->portal_enquiry_id ? PortalEnquiry::query()->withoutGlobalScopes()->find($order->portal_enquiry_id) : null;
+                $order->pickup_date = $enquiry?->pickupDate()?->toDateString()
+                    ?? ($enquiry?->created_at ?? now())->copy()->addDay()->toDateString();
+            }
+        });
+
+        static::updated(function (self $order): void {
+            if ($order->wasChanged('pickup_date') && $order->pickup_date) {
+                \App\Domains\Consignment\Models\ConsignmentNote::query()->withoutGlobalScopes()
+                    ->where('quotation_id', $order->id)->update(['pickup_date' => $order->pickup_date->toDateString()]);
+            }
+        });
+
         // the consignor / consignee addresses keyed on the order are kept in Master Data → Consignor / Consignee
         // (user, 16 Nov 2026), so a company with several addresses is offered once per address next time
         static::saved(function (self $order): void {
@@ -102,6 +119,7 @@ class Quotation extends Model
             'lock_heartbeat_at' => 'datetime',
             'valid_until' => 'date',
             'quoted_at' => 'date',
+            'pickup_date' => 'date',
             'is_active' => 'boolean',
             'subtotal' => 'decimal:2',
             'tax_amount' => 'decimal:2',

@@ -713,6 +713,15 @@
 
                 {{-- the DO number moved onto the Consignee card (client, 17 Nov 2026) --}}
                 <div class="ow-fgrid ow-fgrid-do">
+                    {{-- the day the goods are picked up (client, 18 Nov 2026): CSN management lists the CSN on that day;
+                         changed later on the order page --}}
+                    @unless ($editing || $isQuote)
+                        <div class="ow-field">
+                            <label for="{{ $fieldId }}-pickup-date">Pickup date</label>
+                            <input id="{{ $fieldId }}-pickup-date" type="date" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.pickup_date" class="ow-input" min="{{ today()->toDateString() }}">
+                            @error($ep.'pairs.'.$i.'.pickup_date')<div class="ow-field-error">The pickup date cannot be earlier than today.</div>@enderror
+                        </div>
+                    @endunless
                     <div class="ow-field">
                         <label for="{{ $fieldId }}-delivery">Expected delivery date</label>
                         <input id="{{ $fieldId }}-delivery" type="text" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.expected_delivery_date" class="ow-input" maxlength="255" autocomplete="off" placeholder="Optional · e.g. 13/10 before noon">

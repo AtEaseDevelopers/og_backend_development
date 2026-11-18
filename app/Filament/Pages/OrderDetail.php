@@ -334,7 +334,7 @@ class OrderDetail extends Page
         $order = $this->order();
         $can = $this->detail()['can'] ?? [];
 
-        if (! $order || $this->refuseOnOldVersion() || ! (($can['edit_details'] ?? false) || ($can['change_type'] ?? false))) {
+        if (! $order || $this->refuseOnOldVersion() || ! (($can['edit_details'] ?? false) || ($can['change_type'] ?? false) || ($can['edit_pickup'] ?? false))) {
             return;
         }
 
@@ -342,6 +342,7 @@ class OrderDetail extends Page
             'order_type' => (string) ($order->orderType()?->value ?? ''),
             'do_number' => (string) ($order->customer_do_number ?? ''),
             'expected_delivery' => (string) ($order->expected_delivery_date ?? ''),
+            'pickup_date' => (string) ($order->pickup_date?->toDateString() ?? ''),
         ];
         $this->resetErrorBag();
         $this->editingDetails = true;
@@ -390,6 +391,10 @@ class OrderDetail extends Page
             $rules['details.expected_delivery'] = 'nullable|string|max:255';
         }
 
+        if ($can['edit_pickup'] ?? false) {
+            $rules['details.pickup_date'] = 'required|date';
+        }
+
         if ($can['change_type'] ?? false) {
             $rules['details.order_type'] = 'required|in:'.implode(',', array_keys($this->paymentTermOptions()));
         }
@@ -398,7 +403,17 @@ class OrderDetail extends Page
             'details.do_number' => 'DO number',
             'details.expected_delivery' => 'expected delivery date',
             'details.order_type' => 'payment term',
+            'details.pickup_date' => 'pickup date',
         ]);
+
+        // the pickup date can move earlier or later, not before today (client, 18 Nov 2026)
+        $pickup = ($can['edit_pickup'] ?? false) ? \Illuminate\Support\Carbon::parse((string) $this->details['pickup_date'])->toDateString() : null;
+
+        if ($pickup !== null && $pickup !== $order->pickup_date?->toDateString() && $pickup < today()->toDateString()) {
+            $this->addError('details.pickup_date', 'The pickup date cannot be earlier than today.');
+
+            return;
+        }
 
         $changes = [];
 
@@ -428,6 +443,18 @@ class OrderDetail extends Page
                         'remarks' => 'Order details edited: '.implode(' · ', $changes),
                     ]);
                 }
+            }
+
+            if ($pickup !== null && $pickup !== $order->pickup_date?->toDateString()) {
+                $changes[] = 'pickup date '.($order->pickup_date?->format('d/m/Y') ?: '—').' → '.\Illuminate\Support\Carbon::parse($pickup)->format('d/m/Y');
+                $order->update(['pickup_date' => $pickup]);
+                QuotationStatusLog::query()->create([
+                    'quotation_id' => $order->id,
+                    'from_status' => $order->status->value,
+                    'to_status' => $order->status->value,
+                    'user_id' => auth()->id(),
+                    'remarks' => 'Order details edited: '.end($changes),
+                ]);
             }
 
             $type = OrderType::tryFrom((string) ($this->details['order_type'] ?? ''));
