@@ -158,7 +158,7 @@
 
             <div style="max-width:16rem;margin-top:.9rem">
                 <label class="og-date-label">Pickup date</label>
-                <input type="date" data-order="pickup_date">
+                <input type="date" data-order="pickup_date" min="{{ today()->toDateString() }}">
             </div>
         </div>
 

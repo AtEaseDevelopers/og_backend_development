@@ -252,13 +252,23 @@ class CustomerPortalTest extends TestCase
             'declaration' => 1,
         ])->assertSessionHasErrors(['orders.0.items.0.item_name', 'orders.0.items.0.length']);
 
+        // the pickup date is today or later (user, 19 Nov 2026)
+        $this->post('/portal/enquiry', [
+            'branch_id' => $customer->branch_id,
+            'pickup_address' => 'No. 1, Jalan Test',
+            'pickup_date' => today()->subDay()->toDateString(),
+            'destinations' => [['consignee_name' => 'Contoh', 'address' => 'No. 8, Jalan Contoh', 'drop_off_type' => 'other']],
+            'items' => [['kind' => 'other', 'quantity' => 1]],
+            'declaration' => 1,
+        ])->assertSessionHasErrors(['orders.0.pickup_date']);
+
         $this->post('/portal/enquiry', [
             'branch_id' => $customer->branch_id,
             'order_type' => 'cash',
             'service_type' => 'pickup',
             'payment_method' => 'bank_transfer',
             'pickup_address' => 'No. 1, Jalan Test',
-            'pickup_date' => '2026-12-01',
+            'pickup_date' => today()->addDays(5)->toDateString(),
             'destinations' => [
                 ['consignee_name' => 'Contoh', 'address' => 'No. 8, Jalan Contoh', 'drop_off_type' => 'other'],
                 ['consignee_name' => 'Extra', 'address' => 'No. 9, Jalan Extra', 'drop_off_type' => 'other'],
@@ -277,7 +287,7 @@ class CustomerPortalTest extends TestCase
         $this->assertSame('multi_dropoff', $enquiry->payload['route_mode']);
         $this->assertSame('A crate of spare parts', $enquiry->payload['items'][1]['item_name']);
         $this->assertNull($enquiry->payload['items'][1]['kind']);
-        $this->assertSame('2026-12-01', $enquiry->pickupDate()?->toDateString());
+        $this->assertSame(today()->addDays(5)->toDateString(), $enquiry->pickupDate()?->toDateString());
         $this->assertNull($enquiry->preferred_delivery_date);
         $this->assertNotNull($enquiry->declarationLine());
         $this->assertCount(2, app(\App\Domains\Quotation\Actions\CreateOrderFromEnquiry::class)->pairsFromPayload($enquiry));

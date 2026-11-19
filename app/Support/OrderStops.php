@@ -49,11 +49,14 @@ class OrderStops
                 continue;
             }
 
+            // several PICs at a pick-up address (client, 18 Nov 2026): joined "A / B", like the consignor's own
+            $pics = \App\Filament\Pages\CreateOrder::joinPics($row['pic_name'] ?? '', $row['pic_phone'] ?? '', is_array($row['pics_extra'] ?? null) ? $row['pics_extra'] : []);
+
             $out[] = [
                 'type' => ($row['type'] ?? '') === self::PICKUP ? self::PICKUP : self::DROPOFF,
                 'name' => $name !== '' ? $name : null,
-                'pic_name' => trim((string) ($row['pic_name'] ?? '')) ?: null,
-                'pic_phone' => trim((string) ($row['pic_phone'] ?? '')) ?: null,
+                'pic_name' => $pics['name'] ?: null,
+                'pic_phone' => $pics['phone'] ?: null,
                 'location' => $location !== '' ? $location : null,
                 'do_number' => $do !== '' ? $do : null,
                 // kept when a CSN's stop was scanned already (the order form never sets these)

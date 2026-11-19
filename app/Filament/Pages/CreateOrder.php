@@ -664,7 +664,7 @@ class CreateOrder extends Page
     /** A button of order n (add / remove a block or product, consignor quick actions, remove a photo). */
     public function inOrder(int $index, string $method, mixed ...$arguments): void
     {
-        $allowed = ['addPair', 'removePair', 'addItem', 'removeItem', 'clearConsignor', 'useCustomerAsConsignor', 'removePhoto', 'addStop', 'removeStop', 'addPic', 'removePic', 'usePicList'];
+        $allowed = ['addPair', 'removePair', 'addItem', 'removeItem', 'clearConsignor', 'useCustomerAsConsignor', 'removePhoto', 'addStop', 'removeStop', 'addPic', 'removePic', 'usePicList', 'addStopPic', 'removeStopPic'];
 
         if (! in_array($method, $allowed, true) || ! isset($this->orders[$index])) {
             return;
@@ -1625,6 +1625,13 @@ class CreateOrder extends Page
             return;
         }
 
+        // the Consignor Address typed or changed: the From follows it (client, 18 Nov 2026)
+        if (preg_match('/^(\d+)\.pickup_location$/', $key, $m)) {
+            $this->fromFollowsAddress((int) $m[1]);
+
+            return;
+        }
+
         // a saved consignor / consignee (user, 21 Oct 2026): its name, address, PIC, telephone and area fill the block
         if (preg_match('/^(\d+)\.(consignor_party_id|consignee_party_id)$/', $key, $m)) {
             $index = (int) $m[1];
@@ -1657,6 +1664,13 @@ class CreateOrder extends Page
 
                 if (($pair['service_type'] ?? '') !== ServiceType::Store->value && $party->location_id) {
                     $pair['from_location_id'] = (string) $party->location_id;
+                }
+
+                // a consignor saved without an area: the area named in its address (client, 18 Nov 2026)
+                unset($pair);
+
+                if (! $party->location_id) {
+                    $this->fromFollowsAddress($index);
                 }
 
                 return;
@@ -1699,6 +1713,9 @@ class CreateOrder extends Page
                     $address = filled($value) ? CustomerAddress::query()->find($value) : null;
                     $pair['pickup_location'] = $address ? $this->formatAddress($address) : '';
                 }
+
+                unset($pair);
+                $this->fromFollowsAddress($index);
             } elseif ($m[2] === 'drop_off_preset') {
                 // same picker as the pickup location: a saved address, or "New address…" typed below it
                 if ($value === OrderFormOptions::NEW_ADDRESS) {
@@ -2123,6 +2140,16 @@ class CreateOrder extends Page
             $pair[$side.'_pics_extra'] = array_slice($rows, 1);
         }
 
+        // each extra pick-up address has its own PICs (client, 18 Nov 2026)
+        foreach ((array) ($pair['pickup_stops'] ?? []) as $si => $stop) {
+            if (is_array($stop) && empty($stop['pics_extra'])) {
+                $rows = static::splitPics($stop['pic_name'] ?? '', $stop['pic_phone'] ?? '');
+                $pair['pickup_stops'][$si]['pic_name'] = $rows[0]['name'];
+                $pair['pickup_stops'][$si]['pic_phone'] = $rows[0]['phone'];
+                $pair['pickup_stops'][$si]['pics_extra'] = array_slice($rows, 1);
+            }
+        }
+
         return $pair;
     }
 
@@ -2283,6 +2310,42 @@ class CreateOrder extends Page
     public function addItem(int $index): void
     {
         $this->pairs[$index]['items'][] = $this->itemTemplate();
+    }
+
+    /**
+     * The From of a Pickup block follows its Consignor Address (client, 18 Nov 2026): the area named in the address;
+     * an address that names none leaves the From as it is. A Customer Drop Off keeps the store's area.
+     */
+    protected function fromFollowsAddress(int $index): void
+    {
+        $pair = $this->pairs[$index] ?? null;
+
+        if (! $pair || ($pair['service_type'] ?? '') === ServiceType::Store->value || $this->isPairLocked($index)) {
+            return;
+        }
+
+        $area = OrderFormOptions::areaIdFromAddress($pair['pickup_location'] ?? null, CurrentCompany::branch()?->code);
+
+        if ($area !== null && $area !== (string) ($pair['from_location_id'] ?? '')) {
+            $this->pairs[$index]['from_location_id'] = $area;
+            $this->refreshPairPrices($index);
+        }
+    }
+
+    /** "+ Add PIC" on an extra pick-up address (client, 18 Nov 2026): each address has its own PICs. */
+    public function addStopPic(int $index, int $stop): void
+    {
+        if (isset($this->pairs[$index]['pickup_stops'][$stop]) && ! $this->isPairLocked($index)) {
+            $this->pairs[$index]['pickup_stops'][$stop]['pics_extra'][] = ['name' => '', 'phone' => ''];
+        }
+    }
+
+    public function removeStopPic(int $index, int $stop, int $row): void
+    {
+        if (isset($this->pairs[$index]['pickup_stops'][$stop]['pics_extra'][$row]) && ! $this->isPairLocked($index)) {
+            unset($this->pairs[$index]['pickup_stops'][$stop]['pics_extra'][$row]);
+            $this->pairs[$index]['pickup_stops'][$stop]['pics_extra'] = array_values($this->pairs[$index]['pickup_stops'][$stop]['pics_extra']);
+        }
     }
 
     /** Another address of a side (consignor = pickup, consignee = dropoff), with its own DO number (user, 28 Oct 2026). */
@@ -2846,6 +2909,9 @@ class CreateOrder extends Page
             'pairs.*.pickup_stops.*.location' => 'nullable|string|max:500',
             // no DO number on the consignor side (client, 17 Nov 2026): it is keyed in per consignee
             'pairs.*.pickup_stops.*.do_number' => 'nullable|string|max:255',
+            'pairs.*.pickup_stops.*.pics_extra' => 'nullable|array',
+            'pairs.*.pickup_stops.*.pics_extra.*.name' => 'nullable|string|max:255',
+            'pairs.*.pickup_stops.*.pics_extra.*.phone' => 'nullable|string|max:50',
             'pairs.*.dropoff_stops' => 'array',
             'pairs.*.dropoff_stops.*.name' => 'nullable|string|max:150',
             'pairs.*.dropoff_stops.*.pic_name' => 'nullable|string|max:100',
@@ -2957,7 +3023,8 @@ class CreateOrder extends Page
             'order_type' => ($pair['order_type'] ?? '') ?: ($this->form['order_type'] ?? null),
             'customer_do_number' => $text($pair['customer_do_number'] ?? null),
             'expected_delivery_date' => $text($pair['expected_delivery_date'] ?? null),
-            'pickup_date' => $text($pair['pickup_date'] ?? null),
+            // a Customer Drop Off has no pickup (user, 19 Nov 2026): no field on the form, its date is the order's day
+            'pickup_date' => $store ? today()->toDateString() : $text($pair['pickup_date'] ?? null),
             'instructions' => $text($pair['instructions'] ?? null),
             'admin_notes' => $text($pair['admin_notes'] ?? null),
             // Consignee 1 (the record's own consignee, PICs joined) is saved as the first drop-off stop

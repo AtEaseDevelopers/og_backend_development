@@ -528,22 +528,41 @@
                                 <textarea id="{{ $fieldId }}-pickup" wire:model.blur="orders.{{ $oi }}.pairs.{{ $i }}.pickup_location" rows="4" class="ow-textarea" style="resize:vertical" placeholder="Filled from the consignor · or type the address" @disabled($locked)></textarea>
                                 @error($ep.'pairs.'.$i.'.pickup_location')<div class="ow-field-error">{{ $message }}</div>@enderror
                             @if (! empty($pair['multi_pickup']))
-                                {{-- the consignor's other pick-up addresses: addresses only, no DO number (client, 17 Nov 2026) --}}
-                                <div class="ow-table-scroll" style="margin-top:.4rem">
-                                    <table class="ow-price-table ow-stops">
-                                        {{-- one consignor with several pick-up addresses (user, 30 Oct 2026): address + DO only; the consignees side may hold other parties --}}
-                                        <thead><tr><th>Pick-up address</th><th style="width:2.5rem"></th></tr></thead>
-                                        <tbody>
-                                            @foreach ($pair['pickup_stops'] ?? [] as $si => $stop)
-                                                <tr wire:key="ow-o{{ $oi }}-pair-{{ $i }}-pickup-stop-{{ $si }}">
-                                                    <td><textarea wire:model="orders.{{ $oi }}.pairs.{{ $i }}.pickup_stops.{{ $si }}.location" rows="1" class="ow-textarea" style="resize:vertical" placeholder="Address" @disabled($locked)></textarea></td>
-                                                    <td style="white-space:nowrap">@if (! $locked && count($pair['pickup_stops']) > 1)<button type="button" wire:click="inOrder({{ $oi }}, 'removeStop', {{ $i }}, 'pickup', {{ $si }})" class="ow-icon-btn" title="Remove address" aria-label="Remove address">✕</button>@endif</td>
-                                                </tr>
-                                            @endforeach
-                                        </tbody>
-                                    </table>
-                                </div>
-                                @unless ($locked)<button type="button" wire:click="inOrder({{ $oi }}, 'addStop', {{ $i }}, 'pickup')" class="ow-btn-link" style="margin-top:.3rem">+ Add address</button>@endunless
+                                {{-- the consignor's other pick-up addresses (no DO number, client 17 Nov 2026): a box each with its own
+                                     PIC name and contact number, and "+ Add PIC" like the consignor's own (client, 18 Nov 2026) --}}
+                                @foreach ($pair['pickup_stops'] ?? [] as $si => $stop)
+                                    @php $sm = "orders.{$oi}.pairs.{$i}.pickup_stops.{$si}"; @endphp
+                                    <div wire:key="ow-o{{ $oi }}-pair-{{ $i }}-pickup-stop-{{ $si }}" style="border:1px solid var(--ow-line);border-radius:.5rem;padding:.5rem .65rem .65rem;margin-top:.5rem">
+                                        <div class="ow-label-row">
+                                            <label style="font-weight:700">Pick-up address {{ $si + 2 }}</label>
+                                            @if (! $locked && count($pair['pickup_stops']) > 1)<button type="button" wire:click="inOrder({{ $oi }}, 'removeStop', {{ $i }}, 'pickup', {{ $si }})" class="ow-icon-btn" title="Remove address" aria-label="Remove address">✕</button>@endif
+                                        </div>
+                                        <textarea wire:model="{{ $sm }}.location" rows="2" class="ow-textarea" style="resize:vertical" placeholder="Address" aria-label="Pick-up address {{ $si + 2 }}" @disabled($locked)></textarea>
+                                        <div class="ow-pic-grid">
+                                            <div class="ow-field">
+                                                <div class="ow-label-row">
+                                                    <label>PIC name</label>
+                                                    @unless ($locked)<button type="button" wire:click="inOrder({{ $oi }}, 'addStopPic', {{ $i }}, {{ $si }})" class="ow-btn-link">+ Add PIC</button>@endunless
+                                                </div>
+                                                <input type="text" wire:model="{{ $sm }}.pic_name" class="ow-input" autocomplete="off" aria-label="PIC name" @disabled($locked)>
+                                                @foreach ($stop['pics_extra'] ?? [] as $pi => $extraPic)
+                                                    <input type="text" wire:key="ow-o{{ $oi }}-pair-{{ $i }}-pickup-stop-{{ $si }}-pic-{{ $pi }}" wire:model="{{ $sm }}.pics_extra.{{ $pi }}.name" class="ow-input ow-pic-extra" autocomplete="off" placeholder="PIC name {{ $pi + 2 }}" @disabled($locked)>
+                                                @endforeach
+                                            </div>
+                                            <div class="ow-field">
+                                                <label>Contact number</label>
+                                                <input type="tel" inputmode="tel" wire:model="{{ $sm }}.pic_phone" class="ow-input" autocomplete="off" aria-label="Contact number" @disabled($locked)>
+                                                @foreach ($stop['pics_extra'] ?? [] as $pi => $extraPic)
+                                                    <div class="ow-pic-extra-row" wire:key="ow-o{{ $oi }}-pair-{{ $i }}-pickup-stop-{{ $si }}-phone-{{ $pi }}">
+                                                        <input type="tel" inputmode="tel" wire:model="{{ $sm }}.pics_extra.{{ $pi }}.phone" class="ow-input" autocomplete="off" placeholder="Contact number {{ $pi + 2 }}" @disabled($locked)>
+                                                        @unless ($locked)<button type="button" wire:click="inOrder({{ $oi }}, 'removeStopPic', {{ $i }}, {{ $si }}, {{ $pi }})" class="ow-icon-btn" title="Remove this PIC" aria-label="Remove this PIC">✕</button>@endunless
+                                                    </div>
+                                                @endforeach
+                                            </div>
+                                        </div>
+                                    </div>
+                                @endforeach
+                                @unless ($locked)<button type="button" wire:click="inOrder({{ $oi }}, 'addStop', {{ $i }}, 'pickup')" class="ow-btn-link" style="margin-top:.4rem">+ Add address</button>@endunless
                             @endif
                             </div>
                     </div>
@@ -715,7 +734,8 @@
                 <div class="ow-fgrid ow-fgrid-do">
                     {{-- the day the goods are picked up (client, 18 Nov 2026): CSN management lists the CSN on that day;
                          changed later on the order page --}}
-                    @unless ($editing || $isQuote)
+                    {{-- not on a Customer Drop Off: there is no pickup (user, 19 Nov 2026) --}}
+                    @unless ($editing || $isQuote || $isStore)
                         <div class="ow-field">
                             <label for="{{ $fieldId }}-pickup-date">Pickup date</label>
                             <input id="{{ $fieldId }}-pickup-date" type="date" wire:model="orders.{{ $oi }}.pairs.{{ $i }}.pickup_date" class="ow-input" min="{{ today()->toDateString() }}">

@@ -44,6 +44,13 @@ class PickupDateTest extends TestCase
         $plain = $order($pair)->first()->fresh();
         $this->assertSame(today()->addDay()->toDateString(), $plain->pickup_date->toDateString());
 
+        // a Customer Drop Off has no pickup: the form has no Pickup date field and saves the order's day
+        $this->actingAs($staff, 'web');
+        Filament::setCurrentPanel(Filament::getPanel('admin'));
+        Filament::setTenant($company);
+        $form = Livewire::test(\App\Filament\Pages\CreateOrder::class);
+        $form->assertSeeHtml('-pickup-date"')->set('orders.0.pairs.0.service_type', 'store')->assertDontSeeHtml('-pickup-date"');
+
         // a pickup date keyed in on Create order, and its CSN carries it
         $in5 = today()->addDays(5)->toDateString();
         $records = $order(['pickup_date' => $in5] + $pair);

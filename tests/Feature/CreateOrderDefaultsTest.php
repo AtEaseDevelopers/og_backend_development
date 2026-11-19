@@ -56,4 +56,50 @@ class CreateOrderDefaultsTest extends TestCase
 
         $page->assertDontSee('Rated:')->assertSee('Confirm, pay');
     }
+
+    /** The From follows the Consignor Address; each extra pick-up address has its own PICs (client, 18 Nov 2026). */
+    public function test_the_from_follows_the_address_and_a_pickup_address_has_its_pics(): void
+    {
+        $this->seed();
+        Permissions::flush();
+
+        $kl = Branch::query()->where('code', 'KL')->firstOrFail();
+        $company = Company::query()->where('branch_id', $kl->id)->firstOrFail();
+        $admin = User::query()->where('is_hq', true)->firstOrFail();
+        $area = fn (string $name) => (string) \App\Domains\MasterData\Models\Location::query()->firstOrCreate(['name' => $name], ['code' => strtoupper(str_replace(' ', '_', $name)), 'is_active' => true])->id;
+        [$klang, $port, $ipoh, $kualaLumpur, $perak] = [$area('Klang'), $area('Port Klang'), $area('Ipoh'), $area('Kuala Lumpur'), $area('Perak')];
+
+        $this->actingAs($admin, 'web');
+        Filament::setCurrentPanel(Filament::getPanel('admin'));
+        Filament::setTenant($company);
+        $code = \App\Support\CurrentCompany::branch()?->code;
+
+        // the town after the postcode, the longer name, not the street, not the state
+        $this->assertSame($port, OrderFormOptions::areaIdFromAddress('LOT 5, JALAN DEMO, 42000 PORT KLANG, SELANGOR', $code));
+        $this->assertSame($kualaLumpur, OrderFormOptions::areaIdFromAddress("12 Jalan Ipoh,
+51200 Kuala Lumpur", $code));
+        $this->assertSame($ipoh, OrderFormOptions::areaIdFromAddress('8 Jalan Demo, 30000 Ipoh, Perak', $code));
+        $this->assertNull(OrderFormOptions::areaIdFromAddress('NO 1, JALAN DEMO', $code));
+
+        $page = Livewire::test(CreateOrder::class)
+            ->set('orders.0.pairs.0.pickup_location', 'LOT 1, JALAN DEMO, 41000 KLANG, SELANGOR')
+            ->assertSet('orders.0.pairs.0.from_location_id', $klang)
+            // an address that names no area leaves the From as it is
+            ->set('orders.0.pairs.0.pickup_location', 'NO 1, JALAN DEMO')
+            ->assertSet('orders.0.pairs.0.from_location_id', $klang)
+            ->set('orders.0.pairs.0.multi_pickup', true);
+
+        if (($page->get('orders.0.pairs.0.pickup_stops') ?? []) === []) {
+            $page->call('inOrder', 0, 'addStop', 0, 'pickup');
+        }
+
+        $page->call('inOrder', 0, 'addStopPic', 0, 0)
+            ->assertSee('Pick-up address 2')
+            ->assertSet('orders.0.pairs.0.pickup_stops.0.pics_extra', [['name' => '', 'phone' => '']]);
+
+        // saved joined, like the consignor's own PICs
+        $stops = \App\Support\OrderStops::merge(['multi_pickup' => true, 'pickup_stops' => [['location' => 'Warehouse B', 'pic_name' => 'ALI', 'pic_phone' => '0100000001', 'pics_extra' => [['name' => 'MEI', 'phone' => '0100000002']]]]]);
+        $this->assertSame('ALI / MEI', $stops[0]['pic_name']);
+        $this->assertSame('0100000001 / 0100000002', $stops[0]['pic_phone']);
+    }
 }

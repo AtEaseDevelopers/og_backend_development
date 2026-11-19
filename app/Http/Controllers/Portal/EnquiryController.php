@@ -127,7 +127,8 @@ class EnquiryController extends Controller
             'orders.*.pickup_address' => ['nullable', 'string'],
             'orders.*.store_id' => ['nullable', 'integer'],
             'orders.*.pickup_maps_url' => ['nullable', 'url', 'max:500'],
-            'orders.*.pickup_date' => ['nullable', 'date'],
+            // the customer picks today or a later day (user, 19 Nov 2026)
+            'orders.*.pickup_date' => ['nullable', 'date', 'after_or_equal:today'],
             'orders.*.preferred_delivery_date' => ['nullable', 'date'],
             'orders.*.special_requirements' => ['nullable', 'string'],
             'orders.*.route_mode' => ['nullable', Rule::in(['single', 'multi_pickup', 'multi_dropoff'])],

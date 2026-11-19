@@ -60,6 +60,55 @@ class OrderFormOptions
         return $options;
     }
 
+    /**
+     * The From area named in an address (client, 18 Nov 2026: "...42100 Klang, Selangor" gives Klang), out of the From
+     * list of the branch; null when the address names none. The town after the postcode counts first, then the area
+     * named last in the address (a street such as Jalan Ipoh comes before the town). On a KL order an area inside
+     * Klang Valley gives Klang Valley, when the list has it.
+     */
+    public static function areaIdFromAddress(?string $address, ?string $branchCode): ?string
+    {
+        $text = mb_strtolower(trim((string) preg_replace('/[ \t]+/', ' ', (string) $address)));
+
+        if ($text === '') {
+            return null;
+        }
+
+        $names = array_map(fn ($name) => mb_strtolower(trim((string) $name)), static::fromLocationOptions($branchCode));
+
+        if (($valley = array_search(mb_strtolower(self::KLANG_VALLEY), $names, true)) !== false) {
+            foreach (self::KLANG_VALLEY_AREAS as $i => $area) {
+                $names['v'.$i] = $area;
+            }
+        }
+
+        $find = function (string $text) use ($names, $valley): ?string {
+            $best = null;
+
+            foreach ($names as $id => $name) {
+                if (mb_strlen($name) < 3 || ! preg_match_all('/(?<![a-z0-9])'.preg_quote($name, '/').'(?![a-z0-9])/u', $text, $m, PREG_OFFSET_CAPTURE)) {
+                    continue;
+                }
+
+                $hit = end($m[0]);
+                $rank = [$hit[1] + strlen($hit[0]), strlen($hit[0])];
+
+                if ($best === null || $rank > $best[0]) {
+                    $best = [$rank, is_string($id) && str_starts_with($id, 'v') ? $valley : $id];
+                }
+            }
+
+            return $best !== null ? (string) $best[1] : null;
+        };
+
+        // the town follows the 5-digit postcode
+        if (preg_match_all('/(?<!\d)\d{5}(?!\d)\s+([^,\n]+)/u', $text, $m) && ($id = $find(end($m[1]))) !== null) {
+            return $id;
+        }
+
+        return $find($text);
+    }
+
     /** @return array<int, string> */
     public static function locationOptions(): array
     {
@@ -144,6 +193,11 @@ class OrderFormOptions
                 // can be typed over
                 $state['pickup_location_preset'] = static::NEW_ADDRESS;
                 $state['pickup_location'] = trim((string) preg_replace('/\s+/', ' ', (string) $customer->address));
+            }
+
+            // the From follows the address (client, 18 Nov 2026), else it stays the branch's
+            if (($area = static::areaIdFromAddress($state['pickup_location'] ?? null, CurrentCompany::branch()?->code)) !== null) {
+                $state['from_location_id'] = $area;
             }
         }
 
