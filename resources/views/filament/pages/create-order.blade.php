@@ -1331,6 +1331,15 @@
                 document.getElementById('ow-order-section1-' + (event.detail?.order ?? 0))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }, 120));
 
+            // a field failed the check (user, 19 Nov 2026): scroll to the first one marked in red and put the cursor in it
+            window.addEventListener('og-order-invalid', () => setTimeout(() => {
+                const error = [...document.querySelectorAll('.ow-page .ow-field-error')].find((el) => el.offsetParent !== null);
+                if (! error) return;
+                error.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                const box = error.parentElement?.querySelector('.ow-input, .ow-select, .ow-textarea') ?? error.previousElementSibling?.querySelector?.('.ow-input, .ow-select, .ow-textarea');
+                if (box && ! box.disabled && box.tagName !== 'SELECT') box.focus({ preventScroll: true });
+            }, 350));
+
             const open = (tile) => window.dispatchEvent(new CustomEvent('og-file-view', { detail: {
                 url: tile.dataset.url,
                 name: tile.dataset.name || '',

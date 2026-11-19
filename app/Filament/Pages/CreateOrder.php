@@ -3096,6 +3096,8 @@ class CreateOrder extends Page
             $payPlan = $this->paymentPlan();
 
             if (! $payPlan['ok']) {
+                $this->flagInvalid();
+
                 throw ValidationException::withMessages(['payment.amount_received' => $payPlan['received'] <= 0
                     ? 'Enter the amount received (blank = the full amount).'
                     : 'Split the RM '.number_format($payPlan['received'], 2).' received over the orders (Paying): together the amount received, each at most its total'.(abs($payPlan['left']) >= 0.005 ? ' · RM '.number_format(abs($payPlan['left']), 2).' '.($payPlan['left'] > 0 ? 'still to give' : 'too much') : '').'.']);
@@ -3206,13 +3208,39 @@ class CreateOrder extends Page
             // the page shows the errors on this order
             $this->errorOrder = $this->activeOrder;
             $this->dispatch('og-order-opened', order: $this->activeOrder);
+            $this->flagInvalid(count($validator->errors()->keys()));
 
             throw new ValidationException($validator);
         }
     }
 
+    /**
+     * A field failed the check (user, 19 Nov 2026): a notice says how many, and the page scrolls to the first one -
+     * each is outlined in red with its message under it, so nobody reads the form top to bottom to find it.
+     */
+    protected function flagInvalid(int $count = 1): void
+    {
+        Notification::make()
+            ->title($count > 1 ? $count.' fields need your attention' : 'A field needs your attention')
+            ->body('Marked in red on the form.')
+            ->danger()
+            ->send();
+        $this->dispatch('og-order-invalid');
+    }
+
     /** The payment of the orders ticked "Pay now": a method and date (one payment for all of them). */
     protected function validatePaymentDetails(): void
+    {
+        try {
+            $this->validatePaymentFields();
+        } catch (ValidationException $e) {
+            $this->flagInvalid(count($e->errors()));
+
+            throw $e;
+        }
+    }
+
+    protected function validatePaymentFields(): void
     {
         $this->validate([
             'payment.method' => 'required|in:'.implode(',', array_keys($this->paymentMethodOptions())),
@@ -3238,6 +3266,8 @@ class CreateOrder extends Page
         };
 
         if ($problem) {
+            $this->flagInvalid();
+
             throw ValidationException::withMessages(['payment.record' => $problem]);
         }
     }

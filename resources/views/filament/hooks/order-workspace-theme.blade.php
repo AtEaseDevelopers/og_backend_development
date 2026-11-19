@@ -264,6 +264,10 @@
     @media (max-width: 1200px) { .ow-fgrid-5 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
     @media (max-width: 900px) { .ow-fgrid, .ow-fgrid-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .ow-field-error { color: #dc2626; font-size: .72rem; margin-top: .2rem; }
+    /* a field that failed the check is outlined in red (user, 19 Nov 2026): the box its message sits under */
+    :is(.ow-field, .ow-dim):has(> .ow-field-error) :is(.ow-input, .ow-select, .ow-textarea),
+    td:has(> .ow-field-error) :is(.ow-input, .ow-select, .ow-textarea):not(.ow-dim *),
+    .ow-field:has(+ .ow-field-error) :is(.ow-input, .ow-select, .ow-textarea) { border-color: #dc2626 !important; box-shadow: 0 0 0 1px #dc2626 !important; }
 
     .ow-table-wrap { overflow-x: auto; }
     .ow-table { width: 100%; border-collapse: separate; border-spacing: 0; }

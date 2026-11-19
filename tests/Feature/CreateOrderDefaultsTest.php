@@ -98,6 +98,14 @@ class CreateOrderDefaultsTest extends TestCase
             ->assertSet('orders.0.pairs.0.pickup_stops.0.pics_extra', [['name' => '', 'phone' => '']]);
 
         // saved joined, like the consignor's own PICs
+        // a field that fails the check (user, 19 Nov 2026): a notice, its message under it, the page scrolls to it
+        Livewire::test(CreateOrder::class)
+            ->call('save')
+            ->assertHasErrors()
+            ->assertDispatched('og-order-invalid')
+            ->assertNotified()
+            ->assertSeeHtml('ow-field-error');
+
         $stops = \App\Support\OrderStops::merge(['multi_pickup' => true, 'pickup_stops' => [['location' => 'Warehouse B', 'pic_name' => 'ALI', 'pic_phone' => '0100000001', 'pics_extra' => [['name' => 'MEI', 'phone' => '0100000002']]]]]);
         $this->assertSame('ALI / MEI', $stops[0]['pic_name']);
         $this->assertSame('0100000001 / 0100000002', $stops[0]['pic_phone']);
