@@ -18,8 +18,10 @@
             <div><label>Company name *</label><input name="company_name" value="{{ old('company_name') }}" required></div>
             <div><label>BRN (business registration no.) *</label><input name="brn" value="{{ old('brn') }}" required></div>
             <div><label>TIN</label><input name="tin" value="{{ old('tin') }}"></div>
-            <div><label>O&amp;G branch you deal with *</label>
-                <select name="branch_id" required>
+            {{-- optional (user, 20 Nov 2026): filled from the salesperson when they have one branch; left blank, O&G fills it --}}
+            <div><label>O&amp;G branch you deal with</label>
+                <select name="branch_id">
+                    <option value="">— Not sure / let O&amp;G choose —</option>
                     @foreach ($branches as $branch)
                         <option value="{{ $branch->id }}" @selected((string) old('branch_id', $linkedBranchId ?? '') === (string) $branch->id)>{{ $branch->name }}</option>
                     @endforeach
@@ -34,7 +36,7 @@
         <select name="salesperson_id">
             <option value="">— I do not have one / not sure —</option>
             @foreach ($salespersons as $sp)
-                <option value="{{ $sp->id }}" @selected((string) old('salesperson_id', $linkedSalesperson?->id) === (string) $sp->id)>{{ $sp->name }}</option>
+                <option value="{{ $sp->id }}" data-branch="{{ $salespersonBranches[$sp->id] ?? '' }}" @selected((string) old('salesperson_id', $linkedSalesperson?->id) === (string) $sp->id)>{{ $sp->name }}</option>
             @endforeach
         </select>
         <p class="muted" style="margin-top:-.5rem;font-size:.85rem">Your future orders will be handled by this salesperson.</p>
@@ -55,4 +57,17 @@
         </div>
     </form>
 </div>
+<script>
+    // the branch follows the salesperson chosen (their only branch, else blank) until the customer chooses one
+    (() => {
+        const branch = document.querySelector('select[name="branch_id"]');
+        const sales = document.querySelector('select[name="salesperson_id"]');
+        if (! branch || ! sales) return;
+        let chosen = {{ filled(old('branch_id')) ? 'true' : 'false' }};
+        branch.addEventListener('change', () => { chosen = branch.value !== ''; });
+        sales.addEventListener('change', () => {
+            if (! chosen) branch.value = sales.selectedOptions[0]?.dataset.branch || '';
+        });
+    })();
+</script>
 @endsection

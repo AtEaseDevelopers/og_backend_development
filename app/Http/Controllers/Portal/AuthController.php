@@ -77,8 +77,11 @@ class AuthController extends Controller
             // the customer's salesperson (user, 11 Nov 2026): optional; the one whose registration link was opened is selected
             'salespersons' => User::query()->role('salesperson')->where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'linkedSalesperson' => $linkedSalesperson,
-            // the branch of the salesperson whose link was opened is the one selected to start with
-            'linkedBranchId' => $linkedSalesperson?->branches()->where('branches.is_active', true)->orderBy('branches.id')->value('branches.id'),
+            // the branch follows the salesperson only when they have one branch (user, 20 Nov 2026): with several it
+            // is left blank - the customer may choose it, else staff fill it when approving
+            'salespersonBranches' => User::query()->role('salesperson')->where('is_active', true)->get()
+                ->mapWithKeys(fn (User $sp) => [$sp->id => static::onlyBranchId($sp)])->filter()->all(),
+            'linkedBranchId' => static::onlyBranchId($linkedSalesperson),
         ]);
     }
 
@@ -93,13 +96,15 @@ class AuthController extends Controller
             'tin' => ['nullable', 'string', 'max:100'],
             'phone' => ['required', 'string', 'max:50'],
             'address' => ['required', 'string', 'max:1000'],
-            'branch_id' => ['required', 'exists:branches,id'],
+            'branch_id' => ['nullable', 'exists:branches,id'],
             'salesperson_id' => ['nullable', 'integer'],
         ]);
 
         $salesperson = filled($data['salesperson_id'] ?? null)
             ? User::query()->role('salesperson')->where('is_active', true)->find($data['salesperson_id'])
             : null;
+        // the customer's own choice, else the salesperson's branch when they have one only, else blank
+        $data['branch_id'] = filled($data['branch_id'] ?? null) ? $data['branch_id'] : static::onlyBranchId($salesperson);
 
         $user = DB::transaction(function () use ($data, $salesperson) {
             $customer = static::findOrCreateCustomer($data, $data['email']);
@@ -140,12 +145,21 @@ class AuthController extends Controller
      *
      * @param  array{company_name: string, brn: string, tin?: ?string, phone?: ?string, address?: ?string, branch_id: int|string, name?: ?string}  $data
      */
+    /** The branch of a salesperson who has one active branch only; null with none or several. */
+    public static function onlyBranchId(?User $salesperson): ?int
+    {
+        $ids = $salesperson?->branches()->where('branches.is_active', true)->pluck('branches.id') ?? collect();
+
+        return $ids->count() === 1 ? (int) $ids->first() : null;
+    }
+
     public static function findOrCreateCustomer(array $data, string $email): Customer
     {
         $brn = strtoupper(trim($data['brn']));
+        $data['branch_id'] = filled($data['branch_id'] ?? null) ? (int) $data['branch_id'] : null;
 
         $existing = Customer::query()
-            ->where('branch_id', $data['branch_id'])
+            ->when($data['branch_id'], fn ($q, $id) => $q->where('branch_id', $id), fn ($q) => $q->whereNull('branch_id'))
             ->whereRaw('UPPER(TRIM(brn)) = ?', [$brn])
             ->first();
 
@@ -154,7 +168,7 @@ class AuthController extends Controller
         }
 
         $customer = Customer::query()->create([
-            'company_id' => Company::query()->where('branch_id', $data['branch_id'])->where('is_active', true)->orderBy('id')->value('id'),
+            'company_id' => $data['branch_id'] ? Company::query()->where('branch_id', $data['branch_id'])->where('is_active', true)->orderBy('id')->value('id') : null,
             'branch_id' => $data['branch_id'],
             'code' => CustomerForm::generateDebtorCode($data['company_name']),
             'company_name' => $data['company_name'],

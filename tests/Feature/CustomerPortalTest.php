@@ -70,6 +70,48 @@ class CustomerPortalTest extends TestCase
         $this->get('/portal')->assertOk()->assertSee('NewCo Sdn Bhd')->assertSee('+ New order')->assertSee('Documents', false);
     }
 
+    public function test_the_branch_follows_a_salesperson_with_one_branch_else_it_is_set_on_approving(): void
+    {
+        $kl = Branch::query()->where('code', 'KL')->firstOrFail();
+        $other = Branch::query()->where('id', '!=', $kl->id)->where('is_active', true)->firstOrFail();
+        $one = $this->salesperson();
+        $many = User::factory()->create(['name' => 'Two Branch Sales', 'email' => 'two@link.test', 'is_active' => true]);
+        $many->assignRole('salesperson');
+        $many->branches()->sync([$kl->id, $other->id]);
+
+        $register = fn (string $email, string $brn, array $extra) => $this->post('/portal/register', $extra + [
+            'name' => 'Ali PIC', 'email' => $email, 'password' => 'secret123', 'password_confirmation' => 'secret123',
+            'company_name' => 'Co '.$brn, 'brn' => $brn, 'phone' => '0123456789', 'address' => '1 Jalan Test',
+        ])->assertSessionHasNoErrors();
+
+        // one branch: the salesperson's branch; several: blank; the customer's own choice is kept
+        $register('a@branch.test', 'BR001', ['salesperson_id' => $one->id]);
+        $register('b@branch.test', 'BR002', ['salesperson_id' => $many->id]);
+        $register('c@branch.test', 'BR003', ['salesperson_id' => $many->id, 'branch_id' => $other->id]);
+        $this->assertSame($kl->id, Customer::query()->where('brn', 'BR001')->value('branch_id'));
+        $this->assertNull(Customer::query()->where('brn', 'BR002')->value('branch_id'));
+        $this->assertSame($other->id, Customer::query()->where('brn', 'BR003')->value('branch_id'));
+
+        // the register page selects the one branch of the link's salesperson, none for several
+        $this->assertSame($kl->id, \App\Http\Controllers\Portal\AuthController::onlyBranchId($one));
+        $this->assertNull(\App\Http\Controllers\Portal\AuthController::onlyBranchId($many));
+
+        // staff choose the branch when approving
+        $blank = Customer::query()->where('brn', 'BR002')->firstOrFail();
+        $link = CustomerPortalLink::query()->where('customer_id', $blank->id)->firstOrFail();
+        $admin = User::query()->where('is_hq', true)->firstOrFail();
+        $this->actingAs($admin, 'web');
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('admin'));
+        \Filament\Facades\Filament::setTenant(\App\Domains\MasterData\Models\Company::query()->where('branch_id', $kl->id)->firstOrFail());
+        \Livewire\Livewire::test(\App\Filament\Pages\PortalAccessApprovals::class)
+            ->assertCanSeeTableRecords([$link])
+            ->callTableAction('approve', $link, ['branch_id' => $kl->id])
+            ->assertHasNoTableActionErrors();
+        $this->assertSame($kl->id, $blank->fresh()->branch_id);
+        $this->assertNotNull($blank->fresh()->company_id);
+        $this->assertTrue((bool) $blank->fresh()->portal_approved);
+    }
+
     /** An active salesperson of the KL branch. */
     private function salesperson(): User
     {
@@ -90,7 +132,7 @@ class CustomerPortalTest extends TestCase
         $this->get(route('portal.salesperson-link', ['token' => $salesperson->ensureOrderingToken()]))->assertRedirect('/portal/register');
         $this->get('/portal/register')->assertOk()
             ->assertSee('Your O&amp;G salesperson (optional)', false)
-            ->assertSee('<option value="'.$salesperson->id.'" selected>', false)
+            ->assertSee('<option value="'.$salesperson->id.'" data-branch="'.$branch->id.'" selected>', false)
             ->assertSee('<option value="'.$branch->id.'" selected>', false);
 
         $this->post('/portal/register', [

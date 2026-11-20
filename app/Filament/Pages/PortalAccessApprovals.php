@@ -71,7 +71,8 @@ class PortalAccessApprovals extends Page implements HasTable
     {
         $branchId = CurrentBranch::id();
 
-        return $query->whereHas('customer', fn (Builder $q) => $q->when($branchId, fn ($b) => $b->where('branch_id', $branchId)));
+        // a registration without a branch yet (user, 20 Nov 2026) shows in every branch, until one is set on approving
+        return $query->whereHas('customer', fn (Builder $q) => $q->when($branchId, fn ($b) => $b->where(fn ($w) => $w->where('branch_id', $branchId)->orWhereNull('branch_id'))));
     }
 
     public function table(Table $table): Table
@@ -87,6 +88,8 @@ class PortalAccessApprovals extends Page implements HasTable
                 Tables\Columns\TextColumn::make('customer.company_name')->label('Company')->searchable()
                     ->description(fn (CustomerPortalLink $r) => trim(($r->customer?->address ?? '').($r->customer?->phone ? ' · '.$r->customer->phone : ''))),
                 Tables\Columns\TextColumn::make('customer.brn')->label('BRN')->searchable(),
+                Tables\Columns\TextColumn::make('customer.branch.name')->label('Branch')->placeholder('Not set')
+                    ->description(fn (CustomerPortalLink $r) => $r->customer?->salesperson?->name),
                 Tables\Columns\TextColumn::make('customer.tin')->label('TIN')->toggleable(),
                 Tables\Columns\TextColumn::make('kind')->label('Request')
                     ->getStateUsing(fn (CustomerPortalLink $r) => $r->customer?->portal_approved ? 'Existing customer' : 'New company')
@@ -116,11 +119,18 @@ class PortalAccessApprovals extends Page implements HasTable
                     ->icon('heroicon-o-check')
                     ->color('success')
                     ->visible(fn (CustomerPortalLink $r) => $r->status !== CustomerPortalLink::STATUS_APPROVED)
-                    ->form([Forms\Components\Textarea::make('remarks')->label('Remarks (optional)')->rows(2)])
+                    ->form(fn (CustomerPortalLink $r) => [
+                        // registered without a branch: it is chosen here (the salesperson's branches, else every branch)
+                        Forms\Components\Select::make('branch_id')->label('Branch')
+                            ->options(fn () => static::branchOptions($r))
+                            ->required()
+                            ->visible($r->customer?->branch_id === null),
+                        Forms\Components\Textarea::make('remarks')->label('Remarks (optional)')->rows(2),
+                    ])
                     ->modalDescription(fn (CustomerPortalLink $r) => $r->customer?->portal_approved
                         ? 'Give '.$r->user?->email.' access to '.$r->customer?->company_name.'.'
                         : $r->customer?->company_name.' is a new company: approving also approves the customer account for the portal. Check the BRN and details first.')
-                    ->action(fn (CustomerPortalLink $record, array $data) => $this->decide($record, true, $data['remarks'] ?? null)),
+                    ->action(fn (CustomerPortalLink $record, array $data) => $this->decide($record, true, $data['remarks'] ?? null, $data['branch_id'] ?? null)),
                 Tables\Actions\Action::make('reject')
                     ->label('Reject')
                     ->icon('heroicon-o-x-mark')
@@ -131,8 +141,36 @@ class PortalAccessApprovals extends Page implements HasTable
             ]);
     }
 
-    private function decide(CustomerPortalLink $link, bool $approve, ?string $remarks): void
+    /** The branches to choose for a registration without one: the salesperson's own, else every active branch. @return array<int, string> */
+    private static function branchOptions(CustomerPortalLink $link): array
     {
+        $own = $link->customer?->salesperson?->branches()->where('branches.is_active', true)->orderBy('name')->pluck('branches.name', 'branches.id')->all() ?? [];
+
+        return $own !== [] ? $own : \App\Domains\MasterData\Models\Branch::query()->where('is_active', true)->orderBy('name')->pluck('name', 'id')->all();
+    }
+
+    private function decide(CustomerPortalLink $link, bool $approve, ?string $remarks, int|string|null $branchId = null): void
+    {
+        if ($approve && $link->customer->branch_id === null) {
+            if (blank($branchId)) {
+                Notification::make()->title('Choose the branch first')->danger()->send();
+
+                return;
+            }
+
+            // the same BRN is in that branch already: this request is rejected and the customer registers under it
+            if (\App\Domains\MasterData\Models\Customer::query()->where('branch_id', $branchId)->where('id', '!=', $link->customer_id)->whereRaw('UPPER(TRIM(brn)) = ?', [strtoupper(trim((string) $link->customer->brn))])->exists()) {
+                Notification::make()->title('This BRN is already a customer of that branch')->body('Reject this request; the customer asks for access to that company account instead.')->danger()->send();
+
+                return;
+            }
+
+            $link->customer->update([
+                'branch_id' => (int) $branchId,
+                'company_id' => \App\Domains\MasterData\Models\Company::query()->where('branch_id', $branchId)->where('is_active', true)->orderBy('id')->value('id'),
+            ]);
+        }
+
         DB::transaction(function () use ($link, $approve, $remarks) {
             $link->update([
                 'status' => $approve ? CustomerPortalLink::STATUS_APPROVED : CustomerPortalLink::STATUS_REJECTED,
